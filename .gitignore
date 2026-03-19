@@ -1,0 +1,24 @@
+# 파이썬 가상환경 (절대 올리면 안 됨)
+.venv/
+venv/
+env/
+
+# Django DB 파일 (각자 로컬에서 생성)
+db.sqlite3
+
+# 파이썬 캐시 파일
+__pycache__/
+*.pyc
+*.pyo
+
+# 환경변수 파일 (비밀키, DB 비밀번호 등)
+.env
+
+# VS Code 설정 (선택사항 - 팀원과 공유 안 할 경우)
+.vscode/
+
+# Mac 시스템 파일
+.DS_Store
+
+# 배포 관련
+*.log
