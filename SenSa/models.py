@@ -1,5 +1,6 @@
 from django.db import models
 
+
 class SensorData(models.Model):
     device_id = models.CharField(max_length=50)
     timestamp = models.DateTimeField()

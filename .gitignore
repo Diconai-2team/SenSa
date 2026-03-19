@@ -1,24 +1,45 @@
-# 파이썬 가상환경 (절대 올리면 안 됨)
+
+# Python 기본 캐시 및 가상환경 파일 제외
 .venv/
 venv/
 env/
 
-# Django DB 파일 (각자 로컬에서 생성)
-db.sqlite3
-
-# 파이썬 캐시 파일
 __pycache__/
 *.pyc
 *.pyo
+*.pyd
 
-# 환경변수 파일 (비밀키, DB 비밀번호 등)
+# 환경 변수 파일 (보안 중요)
 .env
 
-# VS Code 설정 (선택사항 - 팀원과 공유 안 할 경우)
+# 개발중에만 사용
+
+# 데이터베이스 파일 제외 (SQLite 등)
+db.sqlite3
+*.sqlite3
+
+# Django 마이그레이션 캐시 제외
+**/migrations/*.pyc
+!**/migrations/__init__.py
+
+# 로그 파일 제외
+*.log
+*.out
+*.err
+
+# 미디어 및 정적 파일 (수동 업로드 방지)
+# media/
+# staticfiles/
+# static/
+node_modules/
+
+# VS Code 및 IDE 설정 파일 제외
 .vscode/
+.idea/
+*.sublime-workspace
+
+# Docker 관련 파일 제외 (사용할 경우)
+docker-compose.override.yml
 
 # Mac 시스템 파일
 .DS_Store
-
-# 배포 관련
-*.log
