@@ -1,10 +1,13 @@
 /**
  * section_09_map.js — ⑨ 탭 + Leaflet 지도 + 지오펜스 + 마커 + 업로드
  *
+ * [변경] 작업자 마커를 workersLoaded 이벤트 수신 후 동적 생성
+ *
  * 구독 이벤트:
- *   sensa:sensorUpdate → 센서 마커 갱신
- *   sensa:workerMove   → 작업자 마커 이동
- *   sensa:alarm        → 토스트 표시
+ *   sensa:sensorUpdate  → 센서 마커 갱신
+ *   sensa:workerMove    → 작업자 마커 이동
+ *   sensa:workersLoaded → 작업자 마커 최초 생성  ← [신규]
+ *   sensa:alarm         → 토스트 표시
  */
 
 // ─── 탭 전환 ───
@@ -29,7 +32,14 @@ function initMap(W, H) {
   workerLayerGroup = L.layerGroup().addTo(map);
   map.on('mousemove', function (e) { document.getElementById('coord-display').textContent = 'x: ' + Math.round(e.latlng.lng) + ', y: ' + Math.round(e.latlng.lat); });
   map.on('click', function (e) { if (isDrawing) addDrawPoint(e.latlng); });
-  loadGeoFences(); initSensorMarkers(); initWorkerMarkers();
+  loadGeoFences();
+  initSensorMarkers();
+
+  // [변경] WORKERS가 이미 로드됐으면 마커 생성, 아니면 이벤트로 대기
+  if (WORKERS.length > 0) {
+    initWorkerMarkers();
+  }
+
   var ph = document.getElementById('map-placeholder'); if (ph) ph.style.display = 'none';
   var uo = document.getElementById('upload-overlay'); if (uo) uo.style.display = 'none';
 }
@@ -68,18 +78,55 @@ SenSa.on('sensorUpdate', function (d) {
 var workerMarkerCache = {};
 var WORKER_ICON = L.divIcon({ className: '', html: '<div style="background:#2ecc7122;border:2px solid #2ecc71;border-radius:50%;width:28px;height:28px;display:flex;align-items:center;justify-content:center;font-size:13px;">👷</div>', iconSize: [28, 28], iconAnchor: [14, 14] });
 
+/**
+ * [변경] WORKERS 배열 기반으로 마커 생성
+ * 하드코딩이 아니라 API에서 로드된 WORKERS를 사용
+ */
 function initWorkerMarkers() {
+  // 기존 마커 전부 제거 (재호출 대비)
+  workerLayerGroup.clearLayers();
+  workerMarkerCache = {};
+
   WORKERS.forEach(function (w) {
-    var m = L.marker([w.y, w.x], { icon: WORKER_ICON }).bindTooltip(w.name, { permanent: false, direction: 'top' });
-    workerLayerGroup.addLayer(m); workerMarkerCache[w.worker_id] = m;
+    var m = L.marker([w.y, w.x], { icon: WORKER_ICON })
+      .bindTooltip(w.name + (w.department ? ' (' + w.department + ')' : ''), { permanent: false, direction: 'top' });
+    workerLayerGroup.addLayer(m);
+    workerMarkerCache[w.worker_id] = m;
   });
+
+  console.log('작업자 마커 ' + WORKERS.length + '개 생성');
 }
 
-SenSa.on('workerMove', function (d) {
-  d.workers.forEach(function (w) { var m = workerMarkerCache[w.worker_id]; if (m) m.setLatLng([w.y, w.x]); });
+/**
+ * [신규] workersLoaded 이벤트 수신 → 지도가 있으면 마커 생성
+ *
+ * 타이밍 문제 해결:
+ *   - 지도가 먼저 로드 → initMap()에서 WORKERS.length > 0이면 마커 생성
+ *   - API가 먼저 응답 → 여기서 map 존재 확인 후 마커 생성
+ */
+SenSa.on('workersLoaded', function (d) {
+  if (map && workerLayerGroup) {
+    initWorkerMarkers();
+  }
 });
 
-// ─── 토스트 (알람 → 지도 위 표시) ───
+// [기존] 매 초 위치 갱신
+SenSa.on('workerMove', function (d) {
+  d.workers.forEach(function (w) {
+    var m = workerMarkerCache[w.worker_id];
+    if (m) {
+      m.setLatLng([w.y, w.x]);
+    } else {
+      // 아직 마커가 없는 신규 작업자 → 마커 추가
+      var newM = L.marker([w.y, w.x], { icon: WORKER_ICON })
+        .bindTooltip(w.name, { permanent: false, direction: 'top' });
+      workerLayerGroup.addLayer(newM);
+      workerMarkerCache[w.worker_id] = newM;
+    }
+  });
+});
+
+// ─── 토스트 ───
 var EMOJI = { info: 'ℹ️', caution: '⚠️', danger: '🔴', critical: '🚨' };
 SenSa.on('alarm', function (alarm) {
   var c = document.getElementById('alarm-toast-container'), t = document.createElement('div');
