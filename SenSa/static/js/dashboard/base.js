@@ -48,15 +48,41 @@ window.SENSOR_COLORS  = { gas: '#e74c3c', power: '#f39c12', temperature: '#3498d
 window.SENSOR_ICONS   = { gas: '💨', power: '⚡', temperature: '🌡️', motion: '🔊' };
 
 // ─── 임계치 ───
-var GAS_TH = { co: { w: 25, d: 200 }, h2s: { w: 1, d: 5 }, co2: { w: 1000, d: 5000 } };
+var GAS_TH = {
+  co:  { w: 25,   d: 200  },   // 일산화탄소 (ppm)
+  h2s: { w: 1,    d: 5    },   // 황화수소 (ppm)
+  co2: { w: 1000, d: 5000 },   // 이산화탄소 (ppm)
+  no2: { w: 0.1,  d: 1.0  },   // 이산화질소 (ppm)
+  so2: { w: 0.5,  d: 2.0  },   // 이산화황 (ppm)
+  o3:  { w: 0.05, d: 0.1  },   // 오존 (ppm)
+  nh3: { w: 25,   d: 50   },   // 암모니아 (ppm)
+  voc: { w: 0.5,  d: 2.0  },   // 휘발성유기화합물 (ppm)
+  // o2는 양쪽 임계 (낮아도 위험, 높아도 위험) 이라서 classifyGas에서 별도 처리
+};
 
+// ────────────────────────────────────────────────
+// (2) classifyGas 교체 — 9종 전체 고려
+// ────────────────────────────────────────────────
+// 기존 함수 전체 삭제하고 아래로 교체:
+ 
 function classifyGas(g) {
   var worst = 'normal';
-  if (g.o2 < 18 || g.o2 > 25) return 'danger';
-  if (g.o2 < 19.5 || g.o2 > 23.5) worst = 'caution';
-  for (var k in GAS_TH) { if (g[k] >= GAS_TH[k].d) return 'danger'; if (g[k] >= GAS_TH[k].w && worst === 'normal') worst = 'caution'; }
+ 
+  // O2: 양쪽 임계 (저산소 = 질식, 고산소 = 화재 위험)
+  if (g.o2 !== undefined) {
+    if (g.o2 < 18 || g.o2 > 25) return 'danger';
+    if (g.o2 < 19.5 || g.o2 > 23.5) worst = 'caution';
+  }
+ 
+  // 나머지 8종: 단방향 (높을수록 위험)
+  for (var k in GAS_TH) {
+    if (g[k] === undefined) continue;
+    if (g[k] >= GAS_TH[k].d) return 'danger';
+    if (g[k] >= GAS_TH[k].w && worst === 'normal') worst = 'caution';
+  }
   return worst;
 }
+window.classifyGas = classifyGas;
 function classifyPower(p) {
   if (p.current >= 30 || p.watt >= 8000) return 'danger';
   if (p.current >= 20 || p.voltage < 200 || p.voltage > 240) return 'caution';
@@ -71,11 +97,50 @@ function gauss(c, s, mn, mx) {
   return Math.min(mx, Math.max(mn, c + z * s));
 }
 
+// ────────────────────────────────────────────────
+// (3) genGas 교체 — 4종 → 9종 데이터 생성
+// ────────────────────────────────────────────────
+// 기존 함수 전체 삭제하고 아래로 교체:
+ 
 function genGas(tick, mode) {
-  var g = { co: gauss(12, 3, 0, 500), h2s: gauss(0.3, 0.1, 0, 20), co2: gauss(600, 80, 300, 10000), o2: gauss(20.9, 0.2, 15, 25) };
-  if (mode === 'mixed') { if (tick % 30 === 0 && tick) g.co = 30 + Math.random() * 50; if (tick % 60 === 0 && tick) g.h2s = 5 + Math.random() * 7; if (tick % 45 === 0 && tick) g.o2 = 17 + Math.random() * 2; }
-  else if (mode === 'danger') { g.co = 200 + Math.random() * 150; g.h2s = 5 + Math.random() * 10; g.co2 = 5000 + Math.random() * 3000; g.o2 = 15 + Math.random() * 3; }
-  return { co: +g.co.toFixed(2), h2s: +g.h2s.toFixed(2), co2: +g.co2.toFixed(1), o2: +g.o2.toFixed(1) };
+  var g = {
+    co:  gauss(12,    3,     0, 500),
+    h2s: gauss(0.3,   0.1,   0, 20),
+    co2: gauss(600,   80,    300, 10000),
+    o2:  gauss(20.9,  0.2,   15, 25),
+    no2: gauss(0.04,  0.01,  0, 5),
+    so2: gauss(0.2,   0.05,  0, 10),
+    o3:  gauss(0.02,  0.005, 0, 0.5),
+    nh3: gauss(8,     2,     0, 100),
+    voc: gauss(0.15,  0.03,  0, 5),
+  };
+ 
+  if (mode === 'mixed') {
+    if (tick % 30 === 0 && tick) g.co = 30 + Math.random() * 50;
+    if (tick % 60 === 0 && tick) g.h2s = 5 + Math.random() * 7;
+    if (tick % 45 === 0 && tick) g.o2 = 17 + Math.random() * 2;
+    if (Math.random() < 0.05) g.voc = 0.6 + Math.random() * 1.0;
+    if (tick % 90 === 0 && tick) g.nh3 = 30 + Math.random() * 25;
+  } else if (mode === 'danger') {
+    g.co = 200 + Math.random() * 150;
+    g.h2s = 5 + Math.random() * 10;
+    g.co2 = 5000 + Math.random() * 3000;
+    g.o2 = 15 + Math.random() * 3;
+    g.no2 = 1.0 + Math.random() * 2;
+    g.voc = 2.0 + Math.random() * 2;
+  }
+ 
+  return {
+    co:  +g.co.toFixed(2),
+    h2s: +g.h2s.toFixed(2),
+    co2: +g.co2.toFixed(1),
+    o2:  +g.o2.toFixed(1),
+    no2: +g.no2.toFixed(3),
+    so2: +g.so2.toFixed(2),
+    o3:  +g.o3.toFixed(3),
+    nh3: +g.nh3.toFixed(1),
+    voc: +g.voc.toFixed(2),
+  };
 }
 
 function genPower(tick, mode) {
