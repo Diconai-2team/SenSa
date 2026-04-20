@@ -2,7 +2,13 @@
 
 <!-- ⑫ 유해가스 위험 현황 -->
 <div id="section-12-gas-table" class="bottom-panel">
-  <div class="bottom-panel-title">유해가스 위험 현황<span class="sensor-badge">유해가스 1</span></div>
+  <div class="bottom-panel-title">유해가스 위험 현황
+    <div class="sensor-tab-group">
+      <button class="sensor-tab active" data-sensor="sensor_01">가스 1</button>
+      <button class="sensor-tab" data-sensor="sensor_02">가스 2</button>
+      <button class="sensor-tab" data-sensor="sensor_03">가스 3</button>
+    </div>
+  </div>
   <table class="data-table" id="gas-status-table">
     <thead><tr><th>가스 종류</th><th>현재 농도</th><th>단위</th><th>위험도</th></tr></thead>
     <tbody>

@@ -4,7 +4,7 @@
  */
 
 // ─── 임계치 (테이블 배지용) ───
-var TH = { co: { w: 25, d: 200 }, h2s: { w: 1, d: 5 }, co2: { w: 1000, d: 5000 } };
+var TH = { co: { w: 25, d: 200 }, h2s: { w: 10, d: 50 }, co2: { w: 1000, d: 5000 } };
 var LABELS = { normal: '정상', caution: '주의', danger: '위험' };
 
 function gasFieldStatus(key, val) {
@@ -13,8 +13,15 @@ function gasFieldStatus(key, val) {
   return val >= t.d ? 'danger' : val >= t.w ? 'caution' : 'normal';
 }
 
-// 첫 번째 가스 센서의 데이터만 테이블에 표시
 var primaryGas = 'sensor_01';
+
+document.querySelectorAll('.sensor-tab').forEach(function (btn) {
+  btn.addEventListener('click', function () {
+    primaryGas = this.dataset.sensor;
+    document.querySelectorAll('.sensor-tab').forEach(function (b) { b.classList.remove('active'); });
+    this.classList.add('active');
+  });
+});
 
 SenSa.on('gasData', function (d) {
   if (d.device_id !== primaryGas) return;
