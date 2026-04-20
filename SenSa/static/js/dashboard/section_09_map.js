@@ -140,7 +140,6 @@ SenSa.on('alarm', function (alarm) {
 function displayMap(url, W, H, name) {
   initMap(W, H);
   if (imageOverlay) imageOverlay.remove();
- 
   /* 이미지 로드 가능한지 먼저 확인 */
   var testImg = new Image();
   testImg.onload = function () {
@@ -153,11 +152,11 @@ function displayMap(url, W, H, name) {
   testImg.onerror = function () {
     /* ❌ 이미지 404/손상 → 업로드 UI 다시 표시 */
     console.warn('[Map] 이미지 파일을 찾을 수 없습니다: ' + url);
- 
+
     /* 업로드 오버레이 다시 표시 */
     var uo = document.getElementById('upload-overlay');
     if (uo) uo.style.display = '';
- 
+
     /* 안내 메시지 표시 */
     var label = document.getElementById('upload-label');
     if (label) label.textContent = '평면도 재업로드 필요';
@@ -167,7 +166,6 @@ function displayMap(url, W, H, name) {
       var p = area.querySelector('p');
       if (p) p.textContent = '이전 파일 누락';
     }
- 
     /* placeholder 다시 표시 */
     var ph = document.getElementById('map-placeholder');
     if (ph) ph.style.display = '';

@@ -1,11 +1,11 @@
 /**
  * section_14_15_power.js — ⑭ 전력 테이블 + ⑮ 전력 차트
- * 
+ *
  * 구독: sensa:powerData → 테이블 갱신 + 차트 push
- * 
+ *
  * IIFE로 감싸서 전역 변수 충돌 방지
+ * (section_12_13_gas.js도 같은 이름의 변수를 쓰기 때문)
  */
-
 (function () {
 
   var LABELS = { normal: '정상', caution: '주의', danger: '위험' };
@@ -21,8 +21,7 @@
     if (row) {
       var sc = 'status-' + d.status;
 
-      /* ★ 새로 추가: <tr>에 위험도 클래스 적용 */
-      /*    기존 id는 유지하고 className만 갱신 */
+      // 해당 행(<tr>)에 위험도 클래스 적용 (id는 유지, className만 갱신)
       row.className = 'row-' + d.status;
 
       row.innerHTML = '<td class="gas-name">' + (DEVICE_NAMES[d.device_id] || d.device_id) + '</td>' +

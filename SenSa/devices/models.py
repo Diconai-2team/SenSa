@@ -37,9 +37,9 @@ class Device(models.Model):
 class SensorData(models.Model):
     """센서 측정값 히스토리"""
     device      = models.ForeignKey(Device, on_delete=models.CASCADE, related_name='data')
-    co          = models.FloatField(null=True, blank=True)
+    co          = models.FloatField(null=True, blank=True) # 일산화탄소
     h2s         = models.FloatField(null=True, blank=True)
-    co2         = models.FloatField(null=True, blank=True)
+    co2         = models.FloatField(null=True, blank=True) # O2 18 ~ 25(25)
     o2          = models.FloatField(null=True, blank=True)
     temperature = models.FloatField(null=True, blank=True)
     status      = models.CharField(max_length=20, choices=STATUS_CHOICES, default='normal')
