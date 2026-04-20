@@ -1,0 +1,20 @@
+<!-- section_14_15_power.html — ⑭ 전력 테이블 + ⑮ 전력 차트 -->
+
+<!-- ⑭ 스마트 전력 시스템 -->
+<div id="section-14-power-table" class="bottom-panel">
+  <div class="bottom-panel-title">스마트 전력 시스템 위험 현황</div>
+  <div class="power-summary" id="power-total-watt">0 <span class="unit">W</span></div>
+  <table class="data-table" id="power-status-table">
+    <thead><tr><th>설비명</th><th>전류</th><th>전압</th><th>위험도</th></tr></thead>
+    <tbody>
+      <tr id="power-row-1"><td class="gas-name">스마트파워 A</td><td class="gas-value">-</td><td class="gas-value">-</td><td><span class="status-badge status-normal">정상</span></td></tr>
+      <tr id="power-row-2"><td class="gas-name">스마트파워 B</td><td class="gas-value">-</td><td class="gas-value">-</td><td><span class="status-badge status-normal">정상</span></td></tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- ⑮ AI 예측 - 전력 -->
+<div id="section-15-power-chart" class="bottom-panel">
+  <div class="bottom-panel-title">AI 예측 - 스마트 전력 시스템 위험<a class="detail-link" style="font-size:10px;">+ 상세보기</a></div>
+  <div class="chart-area"><canvas id="chart-power"></canvas></div>
+</div>

@@ -1,0 +1,15 @@
+/* section_08_safety.css — ⑧ 나의 안전확인 */
+#section-08-safety .safety-item {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 7px 10px; background: var(--bg-card); border-radius: 6px; margin-bottom: 5px; font-size: 12px;
+}
+.safety-item .label { color: #a0a8c0; }
+.safety-badge { padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: 600; }
+.safety-badge.done    { background: #2ecc7122; color: var(--color-normal); }
+.safety-badge.pending { background: #e74c3c22; color: var(--color-danger); }
+#section-08-safety .safety-action {
+  display: block; width: 100%; padding: 8px; margin-top: 8px;
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: 6px;
+  color: #a0a8c0; font-size: 11px; text-align: center; cursor: pointer;
+}
+.safety-action:hover { border-color: var(--accent); color: var(--text); }

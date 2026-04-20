@@ -1,0 +1,5 @@
+/* section_11_workers.css — ⑪ 작업자 현황 */
+#section-11-workers .worker-chart-area { display: flex; align-items: center; gap: 16px; padding: 8px 0; }
+#section-11-workers .worker-chart-area canvas { width: 100px; height: 100px; }
+#section-11-workers .worker-legend { font-size: 11px; line-height: 2; }
+.legend-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 5px; }
