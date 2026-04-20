@@ -6,8 +6,8 @@ from dotenv import load_dotenv
 # ==========================================================
 # 기본 경로
 # ==========================================================
-BASE_DIR = Path(__file__).resolve().parent.parent   # django_app/
-PROJECT_ROOT = BASE_DIR.parent                       # deconai-auth/
+BASE_DIR = Path(__file__).resolve().parent.parent
+PROJECT_ROOT = BASE_DIR.parent
 
 load_dotenv(PROJECT_ROOT / '.env')
 
@@ -37,11 +37,11 @@ INSTALLED_APPS = [
 
     # 로컬
     'accounts',
-    'dashboard',
     'devices',
     'geofence',
-    'monitor',
     'alerts',
+    'workers',
+    'dashboard',
 ]
 
 # ==========================================================
@@ -86,12 +86,12 @@ TEMPLATES = [
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',    # django_app/db.sqlite3 파일로 생성됨
+        'NAME': BASE_DIR / 'db.sqlite3',
     }
 }
 
 # ==========================================================
-# 커스텀 User 모델 (⚠️ 최초 migrate 전 반드시 설정)
+# 커스텀 User 모델
 # ==========================================================
 AUTH_USER_MODEL = 'accounts.User'
 
@@ -110,7 +110,7 @@ AUTH_PASSWORD_VALIDATORS = [
 # 로그인 관련 URL
 # ==========================================================
 LOGIN_URL = '/accounts/login/'
-LOGIN_REDIRECT_URL = '/home/'
+LOGIN_REDIRECT_URL = '/dashboard/'
 LOGOUT_REDIRECT_URL = '/accounts/login/'
 
 # ==========================================================

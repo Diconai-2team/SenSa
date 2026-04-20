@@ -1,3 +1,3 @@
 from django.db import models
 
-# Create your models here.
+# 향후 Worker, WorkerLocation 모델 추가 예정

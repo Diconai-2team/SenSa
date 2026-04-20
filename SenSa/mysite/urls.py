@@ -5,10 +5,17 @@ from django.conf.urls.static import static
 
 urlpatterns = [
     path('admin/', admin.site.urls),
+
+    # === accounts (인증) ===
     path('', include('accounts.urls')),
-    path('monitor/', include('monitor.urls')),
+
+    # === dashboard (통합 화면) ===
+    path('dashboard/', include('dashboard.urls')),        # 'monitor.urls' → 'dashboard.urls'
+    path('dashboard/api/', include('devices.urls')),      # 'monitor/api/' → 'dashboard/api/'
+    path('dashboard/api/', include('geofence.urls')),
+    path('dashboard/api/', include('alerts.urls')),
 ]
 
 if settings.DEBUG:
     urlpatterns += static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)
-    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT) 
+    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

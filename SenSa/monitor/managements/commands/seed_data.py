@@ -1,5 +1,5 @@
 from django.core.management.base import BaseCommand
-from monitor.models import Device, GeoFence
+from SenSa.monitor.models import Device, GeoFence
 
 
 DUMMY_DEVICES = [

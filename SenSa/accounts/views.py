@@ -25,9 +25,8 @@ from .serializers import LoginSerializer, UserSerializer, SignupSerializer
 # ============================================================
 
 def root_redirect(request):
-    """루트 URL — 로그인 여부에 따라 분기"""
     if request.user.is_authenticated:
-        return redirect('home')
+        return redirect('dashboard')    # 'home' → 'dashboard'
     return redirect('login')
 
 
@@ -57,7 +56,7 @@ def login_page(request):
             login(request, user)
             messages.success(request, f'{user.username}님 환영합니다.')
 
-            next_url = request.GET.get('next') or request.POST.get('next') or '/home/'
+            next_url = request.GET.get('next') or request.POST.get('next') or '/dashboard/'
             if not next_url.startswith('/'):
                 next_url = '/home/'
             return redirect(next_url)

@@ -1,0 +1,155 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SenSa 공장 관제 시스템</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="stylesheet" href="{% static 'css/dashboard/map.css' %}">
+</head>
+<body>
+
+<!-- 사이드바 -->
+<div id="sidebar">
+  <div id="sidebar-header">
+    <h1>🏭 SenSa 공장 관제 시스템</h1>
+    <p>Factory Safety Monitoring v0.1</p>
+  </div>
+
+  <div class="sidebar-section">
+    <h3>공장 평면도</h3>
+    <div id="upload-area" onclick="document.getElementById('file-input').click()">
+      <div class="upload-icon">📐</div>
+      <strong id="upload-label">이미지 업로드</strong>
+      <p>JPG, PNG 파일을 선택하세요</p>
+    </div>
+    <input type="file" id="file-input" accept="image/*">
+  </div>
+
+  <div class="sidebar-section">
+    <h3>시뮬레이션 시나리오</h3>
+    <div class="scenario-btns">
+      <div class="scenario-btn normal" onclick="setScenario('normal')">✅ 정상</div>
+      <div class="scenario-btn mixed active" onclick="setScenario('mixed')">⚠️ 혼합</div>
+      <div class="scenario-btn danger" onclick="setScenario('danger')">🚨 위험</div>
+    </div>
+    <div id="sim-info">
+      <span>경과: <span id="sim-tick">0</span>초</span>
+      <span id="sim-mode-label">모드: 혼합</span>
+    </div>
+  </div>
+
+  <div class="sidebar-section">
+    <h3>레이어</h3>
+    <div class="layer-toggle">
+      <label>⚠️ 지오펜스</label>
+      <label class="toggle-switch"><input type="checkbox" id="layer-geofence" checked><span class="slider"></span></label>
+    </div>
+    <div class="layer-toggle">
+      <label>📡 센서</label>
+      <label class="toggle-switch"><input type="checkbox" id="layer-sensor" checked><span class="slider"></span></label>
+    </div>
+    <div class="layer-toggle">
+      <label>👷 작업자</label>
+      <label class="toggle-switch"><input type="checkbox" id="layer-worker" checked><span class="slider"></span></label>
+    </div>
+  </div>
+
+  <div class="sidebar-section" style="border-bottom:none;padding-bottom:4px;">
+    <h3>센서 상태</h3>
+  </div>
+  <div id="sensor-list"></div>
+
+  <div class="sidebar-section" style="border-bottom:none;padding-bottom:4px;border-top:1px solid #2a2d3a;">
+    <h3>위험 구역</h3>
+  </div>
+  <div id="geofence-list">
+    <p style="font-size:10px;color:#3a3f55;text-align:center;padding:10px;">지오펜스가 없습니다.</p>
+  </div>
+
+  <div id="alarm-section">
+    <div id="alarm-header">
+      <h3>알람</h3>
+      <span id="alarm-badge">0</span>
+      <button id="alarm-read-all" onclick="readAllAlarms()">모두 읽음</button>
+    </div>
+    <div id="alarm-list">
+      <p class="alarm-empty">알람이 없습니다.</p>
+    </div>
+  </div>
+</div>
+
+<!-- 지도 -->
+<div id="map-container">
+  <div id="map-toolbar">
+    <span>📍</span>
+    <span id="coord-display">x: –, y: –</span>
+    <button id="draw-fence-btn" onclick="toggleDrawMode()">✏️ 지오펜스 그리기</button>
+    <button id="clear-draw-btn" onclick="clearCurrentDraw()">↩ 취소</button>
+  </div>
+  <div id="map"></div>
+  <div id="alarm-toast-container"></div>
+  <div id="draw-hint">클릭으로 꼭짓점 추가 → 첫 점 재클릭으로 완성 (최소 3개)</div>
+</div>
+
+<!-- 모달 -->
+<div id="fence-modal">
+  <div class="modal-box">
+    <h2>⚠️ 위험 구역 저장</h2>
+    <div class="form-group">
+      <label>구역명 *</label>
+      <input type="text" id="fence-name" placeholder="예: 위험구역 A">
+    </div>
+    <div class="form-group">
+      <label>구역 유형</label>
+      <select id="fence-type">
+        <option value="danger">위험</option>
+        <option value="caution">주의</option>
+        <option value="restricted">출입금지</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label>위험도</label>
+      <select id="fence-risk">
+        <option value="critical">심각</option>
+        <option value="high">높음</option>
+        <option value="medium">보통</option>
+        <option value="low">낮음</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label>설명</label>
+      <textarea id="fence-desc" placeholder="구역 설명 (선택)"></textarea>
+    </div>
+    <div class="modal-actions">
+      <button class="btn-secondary" onclick="closeModal()">취소</button>
+      <button class="btn-primary" onclick="saveGeoFence()">저장</button>
+    </div>
+  </div>
+</div>
+
+<!-- 차트 패널 -->
+<div id="chart-panel">
+  <div class="chart-box">
+    <div class="chart-box-title">🟡 CO (ppm) &nbsp;|&nbsp; 주의: 35 / 위험: 70</div>
+    <canvas id="chart-co"></canvas>
+  </div>
+  <div class="chart-box">
+    <div class="chart-box-title">🟠 H2S (ppm) &nbsp;|&nbsp; 주의: 15 / 위험: 35</div>
+    <canvas id="chart-h2s"></canvas>
+  </div>
+  <div class="chart-box">
+    <div class="chart-box-title">🔵 CO₂ (ppm) &nbsp;|&nbsp; 주의: 600 / 위험: 800</div>
+    <canvas id="chart-co2"></canvas>
+  </div>
+</div>
+
+<!-- 외부 라이브러리 -->
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+
+<!-- 관제 지도 메인 스크립트 -->
+<script src="{% static 'js/dashboard/map.js' %}"></script>
+</body>
+</html>
