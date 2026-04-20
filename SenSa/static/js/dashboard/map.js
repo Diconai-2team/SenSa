@@ -49,7 +49,7 @@ const SENSOR_DEVICES = [
 // ════════════════════════════════════════
 const GAS_THRESHOLDS = {
   co:  { normal: 25, danger: 200 },
-  h2s: { normal: 1, danger: 5 },
+  h2s: { normal: 10, danger: 50 },
   co2: { normal: 1000, danger: 5000 },
   o2:  { low: 19.5, high: 23.5 },
   no2: { normal: 0.1, danger: 1.0 },
@@ -73,7 +73,7 @@ function classifyGasStatus(gas) {
     if (!t) continue;
     let s;
     if (key === 'o2') {
-      s = (value < 16 || value > 25) ? 'danger' : (value < t.low || value > t.high) ? 'caution' : 'normal';
+      s = (value < 18 || value > 25) ? 'danger' : (value < t.low || value > t.high) ? 'caution' : 'normal';
     } else {
       s = value >= t.danger ? 'danger' : value >= t.normal ? 'caution' : 'normal';
     }
@@ -771,19 +771,19 @@ function pushToChart(gas) {
 
   chartCO.data.labels = chartBuffer.labels;
   chartCO.data.datasets[0].data = chartBuffer.co;
-  chartCO.data.datasets[1].data = Array(len).fill(35);
-  chartCO.data.datasets[2].data = Array(len).fill(70);
+  chartCO.data.datasets[1].data = Array(len).fill(25);
+  chartCO.data.datasets[2].data = Array(len).fill(200);
   chartCO.update();
 
   chartH2S.data.labels = chartBuffer.labels;
   chartH2S.data.datasets[0].data = chartBuffer.h2s;
-  chartH2S.data.datasets[1].data = Array(len).fill(15);
-  chartH2S.data.datasets[2].data = Array(len).fill(35);
+  chartH2S.data.datasets[1].data = Array(len).fill(10);
+  chartH2S.data.datasets[2].data = Array(len).fill(50);
   chartH2S.update();
 
   chartCO2.data.labels = chartBuffer.labels;
   chartCO2.data.datasets[0].data = chartBuffer.co2;
-  chartCO2.data.datasets[1].data = Array(len).fill(600);
-  chartCO2.data.datasets[2].data = Array(len).fill(800);
+  chartCO2.data.datasets[1].data = Array(len).fill(1000);
+  chartCO2.data.datasets[2].data = Array(len).fill(5000);
   chartCO2.update();
 }
