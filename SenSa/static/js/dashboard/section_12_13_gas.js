@@ -13,8 +13,15 @@ function gasFieldStatus(key, val) {
   return val >= t.d ? 'danger' : val >= t.w ? 'caution' : 'normal';
 }
 
-// 첫 번째 가스 센서의 데이터만 테이블에 표시
 var primaryGas = 'sensor_01';
+
+document.querySelectorAll('.sensor-tab').forEach(function (btn) {
+  btn.addEventListener('click', function () {
+    primaryGas = this.dataset.sensor;
+    document.querySelectorAll('.sensor-tab').forEach(function (b) { b.classList.remove('active'); });
+    this.classList.add('active');
+  });
+});
 
 SenSa.on('gasData', function (d) {
   if (d.device_id !== primaryGas) return;
