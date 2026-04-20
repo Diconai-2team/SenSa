@@ -1,0 +1,93 @@
+/* ════════════════════════════════════════════════════════════════
+   section_12_13_gas.css
+   
+   ⑫ 유해가스 위험 현황 (9종 테이블)
+   ⑬ AI 예측 - 유해가스 위험 (차트)
+   ════════════════════════════════════════════════════════════════ */
+
+
+/* ─── ⑫ 가스 테이블: 9종이 세로로 많아서 스크롤 처리 ─── */
+#section-12-gas-table .data-table {
+  display: block;
+  overflow-y: auto;
+}
+
+#section-12-gas-table .data-table thead,
+#section-12-gas-table .data-table tbody {
+  display: table;
+  width: 100%;
+  table-layout: fixed;
+}
+
+
+/* ─── 가스 한글 이름 (CO 옆에 '일산화탄소' 같은 설명) ─── */
+.gas-ko {
+  color: var(--text-dim);
+  font-weight: 400;
+  font-size: 9px;
+  margin-left: 3px;
+  font-family: 'Segoe UI', sans-serif;
+}
+
+
+/* ─── 가스 단위 셀 (base.css에 없음) ─── */
+.data-table .gas-unit {
+  color: var(--text-dim);
+  font-size: 9px;
+}
+
+
+/* ─── AI 예측 섹션 우측 상단 "+ 상세보기" 링크 ─── */
+.bottom-panel-title .detail-link {
+  font-size: 10px;
+  color: var(--accent);
+  text-decoration: none;
+  cursor: pointer;
+  margin-left: auto;
+  font-weight: 500;
+}
+.bottom-panel-title .detail-link:hover {
+  color: #6a9fff;
+}
+
+
+/* ════════════════════════════════════════════════════════════════
+   위험도별 행 배경색 — JS가 <tr>에 클래스를 추가해서 제어
+   row-danger  → 빨간 배경 + 왼쪽 빨간 bar
+   row-caution → 노란 배경 + 왼쪽 노란 bar
+   row-normal  → 기본 (스타일 없음)
+   ════════════════════════════════════════════════════════════════ */
+
+#section-12-gas-table tbody tr.row-danger {
+  background: rgba(231, 76, 60, 0.12);
+  box-shadow: inset 3px 0 0 0 #e74c3c;
+}
+
+#section-12-gas-table tbody tr.row-danger:hover {
+  background: rgba(231, 76, 60, 0.18);
+}
+
+#section-12-gas-table tbody tr.row-caution {
+  background: rgba(241, 196, 15, 0.10);
+  box-shadow: inset 3px 0 0 0 #f1c40f;
+}
+
+#section-12-gas-table tbody tr.row-caution:hover {
+  background: rgba(241, 196, 15, 0.16);
+}
+
+/* 값 셀 색상 강조 (위험도 높을수록 밝게) */
+#section-12-gas-table tbody tr.row-danger .gas-value {
+  color: #ff6b6b;
+  font-weight: 600;
+}
+
+#section-12-gas-table tbody tr.row-caution .gas-value {
+  color: #ffd84d;
+  font-weight: 600;
+}
+
+/* 부드러운 전환 효과 */
+#section-12-gas-table tbody tr {
+  transition: background-color 0.3s ease;
+}

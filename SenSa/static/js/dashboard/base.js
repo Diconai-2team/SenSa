@@ -8,7 +8,7 @@
  *   sensa:powerData     { device_id, power, status }
  *   sensa:sensorUpdate  { device, data }
  *   sensa:workerMove    { workers }
- *   sensa:workersLoaded { workers }        ← [신규] API 로드 완료 시 발행
+ *   sensa:workersLoaded { workers }
  *   sensa:alarm         { alarm_level, message, ... }
  */
 
@@ -39,19 +39,10 @@ window.SENSOR_DEVICES = [
 ];
 
 // ════════════════════════════════════════
-// [변경] WORKERS — 빈 배열로 시작, API에서 동적 로드
+// WORKERS — 빈 배열로 시작, API에서 동적 로드
 // ════════════════════════════════════════
 window.WORKERS = [];
 
-/**
- * Worker API에서 작업자 목록을 가져와 WORKERS 배열을 채움
- *
- * 흐름:
- *   1. GET /dashboard/api/worker/  →  DB의 활성 작업자 목록
- *   2. 각 작업자에 시뮬레이션용 필드(x, y, dx, dy) 추가
- *   3. window.WORKERS에 저장
- *   4. 'workersLoaded' 이벤트 발행 → section_09(마커 생성), section_11(도넛 갱신)
- */
 async function loadWorkersFromAPI() {
   try {
     var res = await fetch('/dashboard/api/worker/', { credentials: 'include' });
@@ -90,16 +81,59 @@ window.ZONE_COLORS   = { danger: '#e74c3c', caution: '#f1c40f', restricted: '#9b
 window.SENSOR_COLORS  = { gas: '#e74c3c', power: '#f39c12', temperature: '#3498db', motion: '#2ecc71' };
 window.SENSOR_ICONS   = { gas: '💨', power: '⚡', temperature: '🌡️', motion: '🔊' };
 
-// ─── 임계치 ───
-var GAS_TH = { co: { w: 25, d: 200 }, h2s: { w: 1, d: 5 }, co2: { w: 1000, d: 5000 } };
+// ════════════════════════════════════════
+// 임계치 — 9종 가스
+// ════════════════════════════════════════
+// 근거:
+//   CO  — ACGIH TWA 25ppm, NIOSH Ceiling 200ppm
+//   H2S — KOSHA 적정공기 10ppm 미만, NIOSH IDLH 50ppm
+//   CO2 — 실내공기질 1,000ppm, TWA 5,000ppm
+//   NO2 — 고용노동부고시 TWA 3ppm, STEL 5ppm
+//   SO2 — 고용노동부고시 TWA 2ppm, STEL 5ppm
+//   O3  — ACGIH TLV-TWA 0.05ppm (경작업), 0.1ppm (중작업)
+//   NH3 — ACGIH TWA 25ppm, STEL 35ppm
+//   VOC — TVOC 실내공기질 기준 (단일 법적 기준 없음)
+//   O2  — 양쪽 임계이므로 classifyGas에서 별도 처리
+var GAS_TH = {
+  co:  { w: 25,   d: 200  },   // 일산화탄소 (ppm)
+  h2s: { w: 10,   d: 50   },   // 황화수소 (ppm)
+  co2: { w: 1000, d: 5000 },   // 이산화탄소 (ppm)
+  no2: { w: 3,    d: 5    },   // 이산화질소 (ppm)
+  so2: { w: 2,    d: 5    },   // 이산화황 (ppm)
+  o3:  { w: 0.05, d: 0.1  },   // 오존 (ppm)
+  nh3: { w: 25,   d: 50   },   // 암모니아 (ppm)
+  voc: { w: 0.5,  d: 2.0  },   // 휘발성유기화합물 (ppm)
+};
 
+// ════════════════════════════════════════
+// classifyGas — O2 구간형 + 나머지 8종 단방향
+// ════════════════════════════════════════
+// 근거: 산업안전보건기준에 관한 규칙 제618조
+//   적정공기: O2 18% 이상 ~ 23.5% 미만
+//   산소결핍: O2 18% 미만
+//   O2 16% 이하: 두통·구토·호흡증가 등 자각증상 (KOSHA)
+//   O2 10% 이하: 의식상실·경련·사망 위험 (KOSHA)
 function classifyGas(g) {
   var worst = 'normal';
-  if (g.o2 < 18 || g.o2 > 25) return 'danger';
-  if (g.o2 < 19.5 || g.o2 > 23.5) worst = 'caution';
-  for (var k in GAS_TH) { if (g[k] >= GAS_TH[k].d) return 'danger'; if (g[k] >= GAS_TH[k].w && worst === 'normal') worst = 'caution'; }
+
+  // O2: 양쪽 임계 (저산소 = 질식, 고산소 = 화재 위험)
+  //   위험: 16% 미만(자각증상+의식상실 구간) 또는 23.5% 이상(산소과잉, 화재·폭발)
+  //   주의: 16~18%(산소결핍 접근) 또는 21.5~23.5%(과잉 접근)
+  //   정상: 18~21.5%(정상 대기 20.9% 중심)
+  if (g.o2 !== undefined) {
+    if (g.o2 < 16 || g.o2 >= 23.5) return 'danger';
+    if (g.o2 < 18 || g.o2 > 21.5) worst = 'caution';
+  }
+
+  // 나머지 8종: 단방향 (높을수록 위험)
+  for (var k in GAS_TH) {
+    if (g[k] === undefined) continue;
+    if (g[k] >= GAS_TH[k].d) return 'danger';
+    if (g[k] >= GAS_TH[k].w && worst === 'normal') worst = 'caution';
+  }
   return worst;
 }
+
 function classifyPower(p) {
   if (p.current >= 30 || p.watt >= 8000) return 'danger';
   if (p.current >= 20 || p.voltage < 200 || p.voltage > 240) return 'caution';
@@ -114,11 +148,48 @@ function gauss(c, s, mn, mx) {
   return Math.min(mx, Math.max(mn, c + z * s));
 }
 
+// ════════════════════════════════════════
+// genGas — 9종 가스 시뮬레이션 데이터 생성
+// ════════════════════════════════════════
 function genGas(tick, mode) {
-  var g = { co: gauss(12, 3, 0, 500), h2s: gauss(0.3, 0.1, 0, 20), co2: gauss(600, 80, 300, 10000), o2: gauss(20.9, 0.2, 15, 25) };
-  if (mode === 'mixed') { if (tick % 30 === 0 && tick) g.co = 30 + Math.random() * 50; if (tick % 60 === 0 && tick) g.h2s = 5 + Math.random() * 7; if (tick % 45 === 0 && tick) g.o2 = 17 + Math.random() * 2; }
-  else if (mode === 'danger') { g.co = 200 + Math.random() * 150; g.h2s = 5 + Math.random() * 10; g.co2 = 5000 + Math.random() * 3000; g.o2 = 15 + Math.random() * 3; }
-  return { co: +g.co.toFixed(2), h2s: +g.h2s.toFixed(2), co2: +g.co2.toFixed(1), o2: +g.o2.toFixed(1) };
+  var g = {
+    co:  gauss(12,    3,     0, 500),
+    h2s: gauss(2,     1,     0, 100),     // 정상 중심값 2ppm (w:10 대비 안전)
+    co2: gauss(600,   80,    300, 10000),
+    o2:  gauss(20.9,  0.2,   10, 25),
+    no2: gauss(0.04,  0.01,  0, 5),
+    so2: gauss(0.2,   0.05,  0, 10),
+    o3:  gauss(0.02,  0.005, 0, 0.5),
+    nh3: gauss(8,     2,     0, 100),
+    voc: gauss(0.15,  0.03,  0, 5),
+  };
+
+  if (mode === 'mixed') {
+    if (tick % 30 === 0 && tick) g.co = 30 + Math.random() * 50;
+    if (tick % 60 === 0 && tick) g.h2s = 12 + Math.random() * 15;   // 12~27ppm → w:10 주의 구간
+    if (tick % 45 === 0 && tick) g.o2 = 16 + Math.random() * 2;     // 16~18% → 주의 구간
+    if (Math.random() < 0.05) g.voc = 0.6 + Math.random() * 1.0;
+    if (tick % 90 === 0 && tick) g.nh3 = 30 + Math.random() * 25;
+  } else if (mode === 'danger') {
+    g.co  = 200 + Math.random() * 150;
+    g.h2s = 50 + Math.random() * 30;     // 50~80ppm → d:50 위험 구간
+    g.co2 = 5000 + Math.random() * 3000;
+    g.o2  = 12 + Math.random() * 4;      // 12~16% → <16 위험 구간
+    g.no2 = 1.0 + Math.random() * 2;
+    g.voc = 2.0 + Math.random() * 2;
+  }
+
+  return {
+    co:  +g.co.toFixed(2),
+    h2s: +g.h2s.toFixed(2),
+    co2: +g.co2.toFixed(1),
+    o2:  +g.o2.toFixed(1),
+    no2: +g.no2.toFixed(3),
+    so2: +g.so2.toFixed(2),
+    o3:  +g.o3.toFixed(3),
+    nh3: +g.nh3.toFixed(1),
+    voc: +g.voc.toFixed(2),
+  };
 }
 
 function genPower(tick, mode) {
@@ -204,12 +275,4 @@ function runSimTick() {
 
 setInterval(runSimTick, 1000);
 
-// ─── ⑤ 시스템 시간 ───
-function updateClock() {
-  var now = new Date().toLocaleString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' });
-  var el1 = document.getElementById('system-time-now'), el2 = document.getElementById('system-time-last');
-  if (el1) el1.textContent = now;
-  if (el2) el2.textContent = now;
-}
-setInterval(updateClock, 1000);
-updateClock();
+// ─── ⑤ 시스템 시간 → header.js로 이동 완료 ───

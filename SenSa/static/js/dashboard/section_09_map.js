@@ -140,10 +140,38 @@ SenSa.on('alarm', function (alarm) {
 function displayMap(url, W, H, name) {
   initMap(W, H);
   if (imageOverlay) imageOverlay.remove();
-  imageOverlay = L.imageOverlay(url, [[0, 0], [H, W]]).addTo(map);
-  map.fitBounds([[0, 0], [H, W]]);
-  document.getElementById('upload-area').classList.add('has-image');
-  document.getElementById('upload-label').textContent = name || '지도 로드됨';
+  /* 이미지 로드 가능한지 먼저 확인 */
+  var testImg = new Image();
+  testImg.onload = function () {
+    /* ✅ 이미지 로드 성공 → 정상적으로 지도에 표시 */
+    imageOverlay = L.imageOverlay(url, [[0, 0], [H, W]]).addTo(map);
+    map.fitBounds([[0, 0], [H, W]]);
+    document.getElementById('upload-area').classList.add('has-image');
+    document.getElementById('upload-label').textContent = name || '지도 로드됨';
+  };
+  testImg.onerror = function () {
+    /* ❌ 이미지 404/손상 → 업로드 UI 다시 표시 */
+    console.warn('[Map] 이미지 파일을 찾을 수 없습니다: ' + url);
+
+    /* 업로드 오버레이 다시 표시 */
+    var uo = document.getElementById('upload-overlay');
+    if (uo) uo.style.display = '';
+
+    /* 안내 메시지 표시 */
+    var label = document.getElementById('upload-label');
+    if (label) label.textContent = '평면도 재업로드 필요';
+    var area = document.getElementById('upload-area');
+    if (area) {
+      area.classList.remove('has-image');
+      var p = area.querySelector('p');
+      if (p) p.textContent = '이전 파일 누락';
+    }
+
+    /* placeholder 다시 표시 */
+    var ph = document.getElementById('map-placeholder');
+    if (ph) ph.style.display = '';
+  };
+  testImg.src = url;
 }
 
 document.getElementById('file-input').addEventListener('change', function (e) {
