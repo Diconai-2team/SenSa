@@ -1,0 +1,63 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="csrf-token" content="{{ csrf_token }}">
+    <title>{% block title %}디코나이 관제 플랫폼{% endblock %}</title>
+    <link rel="stylesheet" href="{% static 'css/components.css' %}">
+    {% block extra_css %}{% endblock %}
+</head>
+<body>
+
+    <!-- 헤더 (메인 기능 정의 2-1, 2-2) -->
+    <header class="header">
+        <div class="header-left">
+            <a href="{% if user.is_authenticated %}{% url 'home' %}{% else %}{% url 'login' %}{% endif %}"
+               class="logo">디코나이 관제 플랫폼</a>
+
+            {% if user.is_authenticated %}
+            <nav class="nav">
+                <a href="{% url 'home' %}"
+                   class="nav-link {% block nav_home %}{% endblock %}">대시보드</a>
+            </nav>
+            {% endif %}
+        </div>
+
+        <div class="header-right">
+            {% if user.is_authenticated %}
+                <!-- 로그인 상태: 사용자 정보 + 로그아웃 -->
+                <span class="user-info">
+                    <strong>{{ user.username }}</strong>
+                    {% if user.role == 'admin' %}
+                    <span class="badge badge-role-admin">{{ user.get_role_display }}</span>
+                    {% else %}
+                    <span class="badge badge-role-operator">{{ user.get_role_display }}</span>
+                    {% endif %}
+                </span>
+                <a href="{% url 'logout' %}" class="btn-logout">로그아웃</a>
+            {% else %}
+                <!-- 비로그인 상태: 로그인 + 회원가입 버튼 -->
+                <a href="{% url 'login' %}" class="btn-header-login">로그인</a>
+                <a href="{% url 'signup' %}" class="btn-header-signup">회원가입</a>
+            {% endif %}
+        </div>
+    </header>
+
+    <!-- 메인 콘텐츠 -->
+    <main class="main-content">
+        {% if messages %}
+        <div class="messages">
+            {% for message in messages %}
+            <div class="alert alert-{{ message.tags }}">{{ message }}</div>
+            {% endfor %}
+        </div>
+        {% endif %}
+
+        {% block content %}{% endblock %}
+    </main>
+
+    {% block extra_js %}{% endblock %}
+</body>
+</html>

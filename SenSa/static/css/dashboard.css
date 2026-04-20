@@ -1,0 +1,558 @@
+/* ===================================================
+   산재 예방 통합 관제 시스템 — Dashboard CSS
+   =================================================== */
+
+/* ===== RESET & BASE ===== */
+*, *::before, *::after {
+  margin: 0; padding: 0; box-sizing: border-box;
+}
+html, body {
+  width: 100%; height: 100%; overflow: hidden;
+}
+body {
+  font-family: 'Noto Sans KR', 'Malgun Gothic', '맑은 고딕', sans-serif;
+  background: #060c1a;
+  color: #c0d4e8;
+  font-size: 12px;
+  line-height: 1.4;
+}
+button { cursor: pointer; border: none; background: none; font-family: inherit; }
+
+/* ===== WRAPPER ===== */
+.wrapper {
+  display: grid;
+  grid-template-rows: 44px 1fr;
+  height: 100vh;
+  width: 100vw;
+}
+
+/* ===================================================
+   HEADER
+   =================================================== */
+.header {
+  background: #07112a;
+  border-bottom: 1px solid #162f58;
+  display: flex;
+  align-items: center;
+  padding: 0 10px;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.logo {
+  font-size: 20px;
+  font-weight: 700;
+  color: #00ccff;
+  letter-spacing: 1px;
+  text-shadow: 0 0 12px rgba(0, 204, 255, 0.45);
+}
+
+.system-title {
+  font-size: 12px;
+  color: #6888a8;
+  white-space: nowrap;
+  font-weight: 400;
+}
+
+.user-badge {
+  background: #112244;
+  border: 1px solid #1e3e70;
+  border-radius: 3px;
+  padding: 2px 8px;
+  font-size: 11px;
+  color: #88aacc;
+  white-space: nowrap;
+}
+
+/* NAV TABS */
+.header-nav {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex: 1;
+  justify-content: center;
+}
+
+.nav-tab {
+  padding: 5px 13px;
+  font-size: 12px;
+  color: #506888;
+  background: transparent;
+  border-bottom: 2px solid transparent;
+  white-space: nowrap;
+  transition: color 0.2s, border-color 0.2s;
+}
+.nav-tab:hover { color: #88aacc; }
+.nav-tab.active {
+  color: #00ccff;
+  border-bottom-color: #00ccff;
+  background: rgba(0, 204, 255, 0.06);
+}
+
+/* HEADER RIGHT */
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.datetime {
+  font-size: 11px;
+  color: #506888;
+  white-space: nowrap;
+}
+.icon-btn {
+  width: 26px; height: 26px;
+  background: #0c1e38;
+  border: 1px solid #1a3060;
+  border-radius: 3px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 14px;
+  color: #506888;
+  transition: color 0.2s, border-color 0.2s;
+}
+.icon-btn:hover { color: #88aacc; border-color: #2a5090; }
+
+/* ===================================================
+   MAIN LAYOUT
+   =================================================== */
+.main {
+  display: grid;
+  grid-template-columns: 216px 1fr 256px;
+  grid-template-rows: 1fr 178px;
+  gap: 5px;
+  padding: 5px;
+  overflow: hidden;
+  min-height: 0;
+}
+
+/* ===== COLUMNS ===== */
+.left-col {
+  grid-row: 1 / 2;
+  grid-column: 1 / 2;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-height: 0;
+  overflow: hidden;
+}
+.center-col {
+  grid-row: 1 / 2;
+  grid-column: 2 / 3;
+  min-height: 0;
+  overflow: hidden;
+}
+.right-col {
+  grid-row: 1 / 2;
+  grid-column: 3 / 4;
+  min-height: 0;
+  overflow: hidden;
+}
+.bottom-row {
+  grid-row: 2 / 3;
+  grid-column: 1 / 4;
+  display: grid;
+  grid-template-columns: 216px 1fr 1fr 256px;
+  gap: 5px;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* ===================================================
+   CARD (shared panel base)
+   =================================================== */
+.card {
+  background: #08152a;
+  border: 1px solid #162f58;
+  border-radius: 4px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-height: 0;
+}
+.card-flex { flex: 1; }
+
+.card-header {
+  background: #0c1e3a;
+  padding: 5px 9px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid #162f58;
+  flex-shrink: 0;
+}
+.card-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: #90b8d8;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.card-title::before {
+  content: '';
+  display: inline-block;
+  width: 3px; height: 11px;
+  background: #009aff;
+  border-radius: 2px;
+}
+.card-body {
+  flex: 1;
+  padding: 7px;
+  overflow: auto;
+  min-height: 0;
+}
+.expand-icon { color: #386090; font-size: 10px; cursor: pointer; }
+
+/* SUB-HEADER (inside card) */
+.subheader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 3px 9px;
+  background: #0a1832;
+  border-bottom: 1px solid #162f58;
+  flex-shrink: 0;
+}
+.subheader-title { font-size: 10px; color: #506888; }
+.more-link { font-size: 10px; color: #3870a8; cursor: pointer; }
+.more-link:hover { color: #60a0d8; }
+
+/* ===================================================
+   LEFT — 나의 안전현황
+   =================================================== */
+.safety-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 5px 0;
+  border-bottom: 1px solid #0d2040;
+}
+.safety-row:last-child { border-bottom: none; }
+.safety-label { color: #507090; font-size: 11px; }
+.safety-value { font-size: 12px; color: #b0ccec; font-weight: 500; }
+.safety-value.highlight { color: #00ccff; font-weight: 700; }
+.safety-btn {
+  background: #0c1e38;
+  border: 1px solid #1a3a70;
+  border-radius: 3px;
+  padding: 2px 8px;
+  font-size: 10px;
+  color: #5080b0;
+  transition: color 0.2s, border-color 0.2s;
+}
+.safety-btn:hover { color: #80b0e0; border-color: #2a5090; }
+
+/* ===================================================
+   LEFT — 작업자 현황 / Donut Chart
+   =================================================== */
+.donut-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  height: 100%;
+  padding: 6px;
+}
+.donut-wrapper {
+  position: relative;
+  width: 96px; height: 96px;
+  flex-shrink: 0;
+}
+.donut-wrapper canvas { width: 96px !important; height: 96px !important; }
+.donut-center {
+  position: absolute;
+  top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  text-align: center;
+  pointer-events: none;
+}
+.donut-number { font-size: 20px; font-weight: 700; color: #dceeff; line-height: 1; }
+.donut-unit { font-size: 10px; color: #507090; }
+
+.donut-legend { display: flex; flex-direction: column; gap: 5px; }
+.legend-item {
+  display: flex; align-items: center; gap: 5px;
+  font-size: 11px; color: #708090;
+}
+.legend-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.legend-cnt { margin-left: auto; color: #a0b8d0; font-weight: 500; }
+
+/* ===================================================
+   CENTER — Factory Map
+   =================================================== */
+.map-container {
+  width: 100%; height: 100%;
+  background: #050d1a;
+  border: 1px solid #162f58;
+  border-radius: 4px;
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+.map-topbar {
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 5px 10px;
+  background: rgba(8, 18, 40, 0.85);
+  border-bottom: 1px solid #162f58;
+  z-index: 10;
+}
+.map-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: #90b8d8;
+  display: flex; align-items: center; gap: 6px;
+}
+.map-title::before {
+  content: '';
+  display: inline-block;
+  width: 3px; height: 11px;
+  background: #009aff; border-radius: 2px;
+}
+.map-controls { display: flex; gap: 3px; }
+.map-btn {
+  background: #0c1e38;
+  border: 1px solid #1a3060;
+  border-radius: 3px;
+  padding: 2px 8px;
+  font-size: 10px;
+  color: #507090;
+  transition: all 0.2s;
+}
+.map-btn.active { background: #003070; border-color: #0060c0; color: #60b0ff; }
+.map-btn:hover { color: #90b8d8; }
+.map-svg { width: 100%; height: 100%; padding-top: 28px; }
+
+/* ===================================================
+   RIGHT — 비상연락망
+   =================================================== */
+.alert-list { display: flex; flex-direction: column; gap: 4px; }
+
+.alert-item {
+  background: #1e0808;
+  border: 1px solid #440018;
+  border-left: 3px solid #ff2020;
+  border-radius: 3px;
+  padding: 5px 7px;
+}
+.alert-item.warning {
+  background: #181000;
+  border: 1px solid #402000;
+  border-left: 3px solid #ff8800;
+}
+.alert-item-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 3px;
+}
+.alert-badge {
+  background: #cc1010;
+  color: #fff;
+  font-size: 9px;
+  padding: 1px 5px;
+  border-radius: 2px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+}
+.alert-badge.warn { background: #cc6600; }
+.alert-time { font-size: 10px; color: #507090; }
+.alert-desc { font-size: 11px; color: #c09090; }
+.alert-location { font-size: 10px; color: #705858; margin-top: 1px; }
+
+/* ===================================================
+   BOTTOM PANELS (shared)
+   =================================================== */
+.panel {
+  background: #08152a;
+  border: 1px solid #162f58;
+  border-radius: 4px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-height: 0;
+}
+.panel-header {
+  background: #0c1e3a;
+  padding: 4px 8px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  border-bottom: 1px solid #162f58;
+  flex-shrink: 0;
+}
+.panel-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: #90b8d8;
+  display: flex; align-items: center; gap: 5px;
+  white-space: nowrap;
+}
+.panel-title::before {
+  content: '';
+  display: inline-block;
+  width: 3px; height: 11px;
+  background: #009aff; border-radius: 2px;
+}
+.panel-body {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  min-height: 0;
+}
+.panel-badge {
+  background: #0c2440;
+  border: 1px solid #184470;
+  border-radius: 3px;
+  padding: 1px 5px;
+  font-size: 9px;
+  color: #5090c8;
+}
+.panel-badge.danger { background: #280808; border-color: #601010; color: #ff8080; }
+
+/* ===================================================
+   PANEL 13 — 유해가스 위험 현황
+   =================================================== */
+.gas-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 10px;
+}
+.gas-table th {
+  background: #091828;
+  color: #507090;
+  padding: 3px 4px;
+  text-align: center;
+  border-bottom: 1px solid #162f58;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.gas-table td {
+  padding: 3px 4px;
+  text-align: center;
+  border-bottom: 1px solid #0c1e38;
+  color: #7090b0;
+}
+.gas-table tr:hover td { background: #0c2244; }
+
+.status-cell {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 2px;
+  font-weight: 700;
+  font-size: 10px;
+}
+.status-danger  { background: #300808; color: #ff4040; }
+.status-warning { background: #281600; color: #ff9900; }
+.status-normal  { background: #061e0c; color: #00cc66; }
+
+/* ===================================================
+   PANEL 14 — AI 예측·가스 위험 현황
+   =================================================== */
+.ai-gas-content {
+  display: grid;
+  grid-template-columns: 86px 1fr;
+  width: 100%;
+}
+.ai-gas-stats {
+  padding: 6px;
+  border-right: 1px solid #162f58;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow: hidden;
+}
+.stat-label { font-size: 9px; color: #507090; }
+.stat-value {
+  font-size: 16px;
+  font-weight: 700;
+  color: #00ccff;
+  line-height: 1.2;
+}
+.stat-unit { font-size: 9px; color: #406080; }
+.ai-gas-chart {
+  padding: 4px 6px 4px 4px;
+  min-width: 0;
+  position: relative;
+}
+.ai-gas-chart canvas { width: 100% !important; height: 100% !important; }
+
+/* ===================================================
+   PANEL 15 — 현재 전체 시스템 현황
+   =================================================== */
+.power-content {
+  display: grid;
+  grid-template-columns: 100px 1fr;
+  width: 100%;
+}
+.power-stats {
+  padding: 6px;
+  border-right: 1px solid #162f58;
+  overflow: hidden;
+}
+.power-table {
+  width: 100%;
+  font-size: 10px;
+  border-collapse: collapse;
+}
+.power-table td {
+  padding: 3px 2px;
+  border-bottom: 1px solid #0c1e38;
+  color: #7090b0;
+}
+.power-table td:last-child { text-align: right; }
+
+.power-main {
+  padding: 4px 6px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+}
+.power-unit { font-size: 9px; color: #5080a0; }
+.power-number {
+  font-size: 26px;
+  font-weight: 700;
+  color: #00e8ff;
+  line-height: 1;
+  text-shadow: 0 0 16px rgba(0, 232, 255, 0.35);
+}
+.power-chart-area {
+  width: 100%;
+  flex: 1;
+  min-height: 0;
+  position: relative;
+}
+.power-chart-area canvas { width: 100% !important; height: 100% !important; }
+
+/* ===================================================
+   PANEL — 스마트 안전 시스템
+   =================================================== */
+.smart-chart {
+  width: 100%;
+  height: 100%;
+  padding: 4px 6px;
+  position: relative;
+}
+.smart-chart canvas { width: 100% !important; height: 100% !important; }
+
+/* ===================================================
+   SCROLLBAR (webkit)
+   =================================================== */
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: #0a1828; }
+::-webkit-scrollbar-thumb { background: #1a3a68; border-radius: 2px; }
+::-webkit-scrollbar-thumb:hover { background: #2a5090; }

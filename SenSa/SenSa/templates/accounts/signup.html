@@ -1,0 +1,140 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>회원가입 — 디코나이 관제 플랫폼</title>
+    <link rel="stylesheet" href="{% static 'css/components.css' %}">
+    <link rel="stylesheet" href="{% static 'css/accounts/login.css' %}">
+    <link rel="stylesheet" href="{% static 'css/accounts/signup-page.css' %}">
+</head>
+<body>
+    <div class="auth-wrapper signup">
+        <div class="auth-card">
+            <div class="auth-header signup-header">
+                <h1>회원가입</h1>
+                <p>디코나이 관제 플랫폼 계정 만들기</p>
+            </div>
+
+            {% if error_message %}
+            <div class="error-msg">{{ error_message }}</div>
+            {% endif %}
+
+            <form method="POST" action="{% url 'signup' %}" id="signup-form" class="signup-form">
+                {% csrf_token %}
+
+                {# === 필수 항목 === #}
+                <div class="form-group">
+                    <label for="username">
+                        아이디<span class="required">*</span>
+                    </label>
+                    <input type="text"
+                           id="username"
+                           name="username"
+                           value="{{ form_data.username|default:'' }}"
+                           placeholder="4~20자, 영문/숫자/_"
+                           minlength="4"
+                           maxlength="20"
+                           pattern="[a-zA-Z0-9_]+"
+                           required
+                           autofocus
+                           class="{% if field_errors.username %}has-error{% endif %}">
+                    {% if field_errors.username %}
+                    <span class="field-error">{{ field_errors.username }}</span>
+                    {% else %}
+                    <span class="field-hint">영문, 숫자, 언더스코어(_)만 사용 가능</span>
+                    {% endif %}
+                </div>
+
+                <div class="form-group">
+                    <label for="password">
+                        비밀번호<span class="required">*</span>
+                    </label>
+                    <input type="password"
+                           id="password"
+                           name="password"
+                           placeholder="8자 이상"
+                           minlength="8"
+                           required
+                           autocomplete="new-password"
+                           class="{% if field_errors.password %}has-error{% endif %}">
+                    {% if field_errors.password %}
+                    <span class="field-error">{{ field_errors.password }}</span>
+                    {% else %}
+                    <span class="field-hint">8자 이상, 너무 단순한 비밀번호는 거부됩니다</span>
+                    {% endif %}
+                </div>
+
+                <div class="form-group">
+                    <label for="password_confirm">
+                        비밀번호 확인<span class="required">*</span>
+                    </label>
+                    <input type="password"
+                           id="password_confirm"
+                           name="password_confirm"
+                           placeholder="비밀번호를 한 번 더 입력"
+                           minlength="8"
+                           required
+                           autocomplete="new-password"
+                           class="{% if field_errors.password_confirm %}has-error{% endif %}">
+                    {% if field_errors.password_confirm %}
+                    <span class="field-error">{{ field_errors.password_confirm }}</span>
+                    {% endif %}
+                </div>
+
+                {# === 선택 항목 === #}
+                <div class="form-divider">선택 입력 항목</div>
+
+                <div class="form-group">
+                    <label for="email">
+                        이메일<span class="optional">(선택)</span>
+                    </label>
+                    <input type="email"
+                           id="email"
+                           name="email"
+                           value="{{ form_data.email|default:'' }}"
+                           placeholder="example@deconai.com"
+                           class="{% if field_errors.email %}has-error{% endif %}">
+                    {% if field_errors.email %}
+                    <span class="field-error">{{ field_errors.email }}</span>
+                    {% endif %}
+                </div>
+
+                <div class="form-group">
+                    <label for="department">
+                        소속 부서<span class="optional">(선택)</span>
+                    </label>
+                    <input type="text"
+                           id="department"
+                           name="department"
+                           value="{{ form_data.department|default:'' }}"
+                           placeholder="예: 관제팀, 현장팀"
+                           maxlength="100">
+                </div>
+
+                <div class="form-group">
+                    <label for="phone">
+                        연락처<span class="optional">(선택)</span>
+                    </label>
+                    <input type="text"
+                           id="phone"
+                           name="phone"
+                           value="{{ form_data.phone|default:'' }}"
+                           placeholder="010-0000-0000"
+                           maxlength="20">
+                </div>
+
+                <button type="submit" class="btn-signup">회원가입</button>
+            </form>
+
+            <div class="back-to-login">
+                이미 계정이 있으신가요?
+                <a href="{% url 'login' %}">로그인 페이지로</a>
+            </div>
+        </div>
+    </div>
+
+    <script src="{% static 'js/accounts/signup-validation.js' %}"></script>
+</body>
+</html>

@@ -1,0 +1,78 @@
+/* ============================================================
+   회원가입 페이지 전용 스타일
+   ============================================================ */
+
+.auth-wrapper.signup {
+    max-width: 460px;
+}
+
+.signup-header h1 {
+    margin: 0 0 4px 0;
+    font-size: 26px;
+    font-weight: 700;
+}
+
+.signup-header p {
+    margin: 0;
+    color: #6b7280;
+    font-size: 14px;
+}
+
+/* 가입 버튼 */
+.btn-signup {
+    width: 100%;
+    padding: 12px;
+    background: #1a73e8;
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    font-size: 15px;
+    font-weight: 500;
+    cursor: pointer;
+    margin-top: 8px;
+}
+
+.btn-signup:hover {
+    background: #1557b0;
+}
+
+.btn-signup:active {
+    transform: translateY(1px);
+}
+
+/* 로그인 페이지로 돌아가기 링크 */
+.back-to-login {
+    margin-top: 20px;
+    text-align: center;
+    font-size: 13px;
+    color: #6b7280;
+}
+
+.back-to-login a {
+    color: #1a73e8;
+    font-weight: 500;
+}
+
+/* 선택 입력 항목 구분선 */
+.form-divider {
+    margin: 20px 0 14px 0;
+    padding-top: 14px;
+    border-top: 1px dashed #e5e7eb;
+    font-size: 12px;
+    color: #9ca3af;
+    text-align: center;
+}
+
+/* 회원가입 폼은 항목이 많아서 간격 조정 */
+.signup-form .form-group {
+    margin-bottom: 16px;
+}
+
+.signup-form .form-group label {
+    font-size: 13px;
+}
+
+.signup-form .form-group input {
+    padding: 10px 12px;
+    font-size: 14px;
+}
