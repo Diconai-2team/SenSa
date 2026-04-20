@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block title %}공개 테스트 페이지{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h2>공개 테스트 페이지</h2>
+</div>
+
+<div class="card" style="max-width: 600px;">
+    <p>이 페이지는 비로그인 상태에서도 접근 가능합니다.</p>
+    <p>상단 헤더 우측에 <strong>로그인</strong>과 <strong>회원가입</strong> 버튼이 보여야 합니다.</p>
+    <p>로그인한 상태라면 사용자명 + 로그아웃 버튼이 보입니다.</p>
+</div>
+{% endblock %}

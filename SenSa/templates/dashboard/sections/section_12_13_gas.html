@@ -1,0 +1,21 @@
+<!-- section_12_13_gas.html — ⑫ 가스 테이블 + ⑬ 가스 차트 -->
+
+<!-- ⑫ 유해가스 위험 현황 -->
+<div id="section-12-gas-table" class="bottom-panel">
+  <div class="bottom-panel-title">유해가스 위험 현황<span class="sensor-badge">유해가스 1</span></div>
+  <table class="data-table" id="gas-status-table">
+    <thead><tr><th>가스 종류</th><th>현재 농도</th><th>단위</th><th>위험도</th></tr></thead>
+    <tbody>
+      <tr><td class="gas-name">O2(산소)</td><td class="gas-value" id="val-o2">20.9</td><td class="gas-unit">%</td><td><span class="status-badge status-normal" id="badge-o2">정상</span></td></tr>
+      <tr><td class="gas-name">CO(일산화탄소)</td><td class="gas-value" id="val-co">12</td><td class="gas-unit">ppm</td><td><span class="status-badge status-normal" id="badge-co">정상</span></td></tr>
+      <tr><td class="gas-name">CO2(이산화탄소)</td><td class="gas-value" id="val-co2">600</td><td class="gas-unit">ppm</td><td><span class="status-badge status-normal" id="badge-co2">정상</span></td></tr>
+      <tr><td class="gas-name">H2S(황화수소)</td><td class="gas-value" id="val-h2s">0.3</td><td class="gas-unit">ppm</td><td><span class="status-badge status-normal" id="badge-h2s">정상</span></td></tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- ⑬ AI 예측 - 유해가스 -->
+<div id="section-13-gas-chart" class="bottom-panel">
+  <div class="bottom-panel-title">AI 예측 - 유해가스 위험<a class="detail-link" style="font-size:10px;">+ 상세보기</a></div>
+  <div class="chart-area"><canvas id="chart-gas"></canvas></div>
+</div>

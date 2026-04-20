@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}내 정보{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h2>내 정보</h2>
+</div>
+
+<div class="card" style="max-width: 500px;">
+    <table class="detail-table">
+        <tr>
+            <th>아이디</th>
+            <td>{{ user.username }}</td>
+        </tr>
+        <tr>
+            <th>이메일</th>
+            <td>{{ user.email|default:"-" }}</td>
+        </tr>
+        <tr>
+            <th>역할</th>
+            <td>{{ user.get_role_display }}</td>
+        </tr>
+        <tr>
+            <th>소속</th>
+            <td>{{ user.department|default:"-" }}</td>
+        </tr>
+        <tr>
+            <th>가입일</th>
+            <td>{{ user.date_joined|date:"Y-m-d H:i" }}</td>
+        </tr>
+        <tr>
+            <th>마지막 로그인</th>
+            <td>{{ user.last_login|date:"Y-m-d H:i"|default:"-" }}</td>
+        </tr>
+    </table>
+</div>
+{% endblock %}

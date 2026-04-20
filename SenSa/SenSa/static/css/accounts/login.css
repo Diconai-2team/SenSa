@@ -1,0 +1,109 @@
+/* ============================================================
+   로그인/회원가입 공통 레이아웃
+   ============================================================ */
+
+body {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    margin: 0;
+    padding: 20px 0;
+    background: linear-gradient(135deg, #f0f2f5 0%, #e0e7ff 100%);
+}
+
+.auth-wrapper {
+    width: 100%;
+    padding: 20px;
+}
+
+.auth-card {
+    background: #fff;
+    padding: 40px;
+    border-radius: 14px;
+    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.08);
+}
+
+.auth-header {
+    text-align: center;
+    margin-bottom: 28px;
+}
+
+/* 폼 공통 */
+.form-group {
+    margin-bottom: 18px;
+}
+
+.form-group label {
+    display: block;
+    margin-bottom: 6px;
+    font-size: 14px;
+    font-weight: 500;
+    color: #333;
+}
+
+.form-group label .required {
+    color: #dc2626;
+    margin-left: 2px;
+}
+
+.form-group label .optional {
+    color: #9ca3af;
+    font-weight: 400;
+    font-size: 11px;
+    margin-left: 4px;
+}
+
+.form-group input {
+    width: 100%;
+    padding: 11px 14px;
+    border: 1px solid #d1d5db;
+    border-radius: 8px;
+    font-size: 15px;
+    font-family: inherit;
+    transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.form-group input:focus {
+    outline: none;
+    border-color: #1a73e8;
+    box-shadow: 0 0 0 3px rgba(26, 115, 232, 0.1);
+}
+
+.form-group input.has-error {
+    border-color: #dc2626;
+    background: #fef2f2;
+}
+
+.field-error {
+    display: block;
+    color: #dc2626;
+    font-size: 12px;
+    margin-top: 4px;
+}
+
+.field-hint {
+    display: block;
+    color: #6b7280;
+    font-size: 11px;
+    margin-top: 4px;
+}
+
+/* 에러 메시지 박스 */
+.error-msg {
+    background: #FFEBEE;
+    color: #C62828;
+    padding: 10px 14px;
+    border-radius: 8px;
+    margin-bottom: 18px;
+    font-size: 13px;
+    border: 1px solid #fecaca;
+}
+
+/* 푸터 공통 */
+.auth-footer {
+    margin-top: 24px;
+    text-align: center;
+    font-size: 12px;
+    color: #9ca3af;
+}
