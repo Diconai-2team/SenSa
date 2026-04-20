@@ -1,15 +1,15 @@
 /**
  * base.js — SenSa 공통 모듈
  *
- * 역할: 이벤트 버스, 센서/작업자 정의, 데이터 생성, 시뮬레이션 루프
- * 각 섹션 JS는 SenSa.on() 으로 이벤트를 구독하여 독립 동작
+ * [변경] WORKERS를 하드코딩 → Worker API(/dashboard/api/worker/)에서 동적 로드
  *
  * 이벤트 목록:
- *   sensa:gasData      { device_id, gas, status }
- *   sensa:powerData    { device_id, power, status }
- *   sensa:sensorUpdate { device, data }          → section_09 마커 갱신
- *   sensa:workerMove   { workers }               → section_09 마커 이동
- *   sensa:alarm        { alarm_level, message, ...}  → section_10 알람 표시
+ *   sensa:gasData       { device_id, gas, status }
+ *   sensa:powerData     { device_id, power, status }
+ *   sensa:sensorUpdate  { device, data }
+ *   sensa:workerMove    { workers }
+ *   sensa:workersLoaded { workers }        ← [신규] API 로드 완료 시 발행
+ *   sensa:alarm         { alarm_level, message, ... }
  */
 
 // ─── 이벤트 버스 ───
@@ -38,11 +38,54 @@ window.SENSOR_DEVICES = [
   { device_id: 'power_02',  device_name: '스마트파워 B', sensor_type: 'power', location: { x: 130, y: 390 } },
 ];
 
-window.WORKERS = [
-  { worker_id: 'worker_01', name: '작업자 A', x: 300, y: 250, dx: 2.5, dy: 1.5 },
-  { worker_id: 'worker_02', name: '작업자 B', x: 500, y: 400, dx: -2.0, dy: 2.0 },
-];
+// ════════════════════════════════════════
+// [변경] WORKERS — 빈 배열로 시작, API에서 동적 로드
+// ════════════════════════════════════════
+window.WORKERS = [];
 
+/**
+ * Worker API에서 작업자 목록을 가져와 WORKERS 배열을 채움
+ *
+ * 흐름:
+ *   1. GET /dashboard/api/worker/  →  DB의 활성 작업자 목록
+ *   2. 각 작업자에 시뮬레이션용 필드(x, y, dx, dy) 추가
+ *   3. window.WORKERS에 저장
+ *   4. 'workersLoaded' 이벤트 발행 → section_09(마커 생성), section_11(도넛 갱신)
+ */
+async function loadWorkersFromAPI() {
+  try {
+    var res = await fetch('/dashboard/api/worker/', { credentials: 'include' });
+    if (!res.ok) {
+      console.error('Worker API 호출 실패:', res.status);
+      return;
+    }
+    var data = await res.json();
+    var list = data.results || data;
+
+    window.WORKERS = list.map(function (worker, index) {
+      return {
+        worker_id:  worker.worker_id,
+        name:       worker.name,
+        department: worker.department || '',
+        x: 200 + (index % 3) * 200 + Math.random() * 50,
+        y: 200 + Math.floor(index / 3) * 150 + Math.random() * 50,
+        dx: (Math.random() - 0.5) * 4,
+        dy: (Math.random() - 0.5) * 4,
+      };
+    });
+
+    console.log('Worker ' + window.WORKERS.length + '명 로드 완료:',
+      window.WORKERS.map(function(w) { return w.name; }).join(', '));
+
+    SenSa.emit('workersLoaded', { workers: window.WORKERS });
+  } catch (e) {
+    console.error('Worker 로드 에러:', e);
+  }
+}
+
+loadWorkersFromAPI();
+
+// ─── 색상/아이콘 상수 ───
 window.ZONE_COLORS   = { danger: '#e74c3c', caution: '#f1c40f', restricted: '#9b59b6' };
 window.SENSOR_COLORS  = { gas: '#e74c3c', power: '#f39c12', temperature: '#3498db', motion: '#2ecc71' };
 window.SENSOR_ICONS   = { gas: '💨', power: '⚡', temperature: '🌡️', motion: '🔊' };
@@ -164,6 +207,7 @@ window.updateMapBounds = function (W, H) { IMG_W = W; IMG_H = H; };
 // ─── 지오펜스 API 호출 ───
 var recentAlarmKeys = new Map();
 async function checkGeofence(sensorList) {
+  if (WORKERS.length === 0) return;
   try {
     var res = await fetch('/dashboard/api/check-geofence/', {
       method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken() },
@@ -212,8 +256,10 @@ function runSimTick() {
     list.push(data);
   });
 
-  WORKERS.forEach(function (w) { moveWorker(w); });
-  SenSa.emit('workerMove', { workers: WORKERS });
+  if (WORKERS.length > 0) {
+    WORKERS.forEach(function (w) { moveWorker(w); });
+    SenSa.emit('workerMove', { workers: WORKERS });
+  }
 
   checkGeofence(list);
   simTick++;

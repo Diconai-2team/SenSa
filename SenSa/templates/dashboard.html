@@ -1,0 +1,560 @@
+{% load static %}
+{% static 'css/dashboard.css' %}
+
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>산재 예방 통합 관제 시스템</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700&display=swap" rel="stylesheet" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <link rel="stylesheet" href="../css/dashboard.css" />
+</head>
+<body>
+<div class="wrapper">
+
+  <!-- ===================== HEADER ===================== -->
+  <header class="header">
+    <div class="header-left">
+      <span class="logo">SenSa</span>
+      <span class="system-title">산재 예방 통합 관제 시스템</span>
+      <span class="user-badge">통 오 수</span>
+    </div>
+
+    <nav class="header-nav">
+      <button class="nav-tab active">현황</button>
+      <button class="nav-tab">작업자</button>
+      <button class="nav-tab">설비/장비</button>
+      <button class="nav-tab">공정관리</button>
+      <button class="nav-tab">스마트 안전 시스템</button>
+      <button class="nav-tab">기타</button>
+    </nav>
+
+    <div class="header-right">
+      <span class="datetime">현재 시각: <span id="clock">2026-01-13 12:00:51</span></span>
+      <div class="icon-btn" title="홈">⌂</div>
+      <div class="icon-btn" title="설정">⚙</div>
+    </div>
+  </header>
+
+  <!-- ===================== MAIN BODY ===================== -->
+  <div class="main">
+
+    <!-- ===== LEFT COLUMN ===== -->
+    <div class="left-col">
+
+      <!-- 나의 안전현황 -->
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">나의 안전현황</span>
+          <span class="expand-icon">▶</span>
+        </div>
+        <div class="card-body">
+          <div class="safety-row">
+            <span class="safety-label">나의 위치</span>
+            <span class="safety-value">2공장 3구역</span>
+          </div>
+          <div class="safety-row">
+            <span class="safety-label">근무 중인 작업자수</span>
+            <span class="safety-value highlight">100 명</span>
+          </div>
+          <div class="safety-row">
+            <span class="safety-label">나의 업무 매뉴얼</span>
+            <button class="safety-btn">바로가기</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 작업자 현황 -->
+      <div class="card card-flex">
+        <div class="card-header">
+          <span class="card-title">작업자 현황</span>
+          <span class="expand-icon">▶</span>
+        </div>
+        <div class="card-body donut-container">
+          <div class="donut-wrapper">
+            <canvas id="donutChart"></canvas>
+            <div class="donut-center">
+              <div class="donut-number">100</div>
+              <div class="donut-unit">명</div>
+            </div>
+          </div>
+          <div class="donut-legend">
+            <div class="legend-item"><span class="legend-dot" style="background:#00e676"></span>정상 <span class="legend-cnt">72</span></div>
+            <div class="legend-item"><span class="legend-dot" style="background:#ffcc00"></span>경보 <span class="legend-cnt">15</span></div>
+            <div class="legend-item"><span class="legend-dot" style="background:#ff3d3d"></span>위험 <span class="legend-cnt">8</span></div>
+            <div class="legend-item"><span class="legend-dot" style="background:#4090ff"></span>대기 <span class="legend-cnt">5</span></div>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /left-col -->
+
+    <!-- ===== CENTER COLUMN (MAP) ===== -->
+    <div class="center-col">
+      <div class="map-container">
+        <div class="map-topbar">
+          <span class="map-title">실시간 현장 배치도</span>
+          <div class="map-controls">
+            <button class="map-btn">2D</button>
+            <button class="map-btn active">3D</button>
+          </div>
+        </div>
+        <svg class="map-svg" viewBox="0 0 680 360" xmlns="http://www.w3.org/2000/svg">
+          <!-- Background grid -->
+          <defs>
+            <pattern id="grid" width="30" height="30" patternUnits="userSpaceOnUse">
+              <path d="M 30 0 L 0 0 0 30" fill="none" stroke="#0e2248" stroke-width="0.5"/>
+            </pattern>
+          </defs>
+          <rect width="680" height="360" fill="#060f20"/>
+          <rect width="680" height="360" fill="url(#grid)"/>
+
+          <!-- Outer boundary -->
+          <rect x="30" y="30" width="620" height="300" fill="none" stroke="#1a4060" stroke-width="1.5" rx="2"/>
+
+          <!-- Road / internal paths -->
+          <line x1="30" y1="180" x2="650" y2="180" stroke="#0e2a48" stroke-width="8"/>
+          <line x1="200" y1="30" x2="200" y2="330" stroke="#0e2a48" stroke-width="8"/>
+          <line x1="420" y1="30" x2="420" y2="330" stroke="#0e2a48" stroke-width="8"/>
+
+          <!-- Building A - 원자재 창고 -->
+          <rect x="45" y="45" width="140" height="120" fill="#0a1e3a" stroke="#1e5080" stroke-width="1.2" rx="2"/>
+          <text x="115" y="95" fill="#4080b0" font-size="9" text-anchor="middle" font-family="sans-serif">원자재</text>
+          <text x="115" y="107" fill="#4080b0" font-size="9" text-anchor="middle" font-family="sans-serif">창고</text>
+          <text x="115" y="78" fill="#6090b8" font-size="8" text-anchor="middle" font-family="sans-serif">A-01</text>
+
+          <!-- Building B - 제1공장 -->
+          <rect x="215" y="45" width="185" height="120" fill="#091a2e" stroke="#1e5080" stroke-width="1.2" rx="2"/>
+          <text x="307" y="98" fill="#4080b0" font-size="10" text-anchor="middle" font-family="sans-serif">제1공장</text>
+          <text x="307" y="78" fill="#6090b8" font-size="8" text-anchor="middle" font-family="sans-serif">B-01</text>
+          <!-- Warning marker on B -->
+          <circle cx="355" cy="60" r="8" fill="#ff2020" opacity="0.9"/>
+          <text x="355" y="64" fill="white" font-size="9" text-anchor="middle" font-family="sans-serif" font-weight="bold">!</text>
+
+          <!-- Building C - 제2공장 -->
+          <rect x="435" y="45" width="200" height="120" fill="#091a2e" stroke="#1e5080" stroke-width="1.2" rx="2"/>
+          <text x="535" y="98" fill="#4080b0" font-size="10" text-anchor="middle" font-family="sans-serif">제2공장</text>
+          <text x="535" y="78" fill="#6090b8" font-size="8" text-anchor="middle" font-family="sans-serif">C-01</text>
+
+          <!-- Building D - 유해물질 보관소 -->
+          <rect x="45" y="195" width="140" height="120" fill="#180a0a" stroke="#5a1818" stroke-width="1.2" rx="2"/>
+          <text x="115" y="248" fill="#8040a0" font-size="9" text-anchor="middle" font-family="sans-serif">유해물질</text>
+          <text x="115" y="260" fill="#8040a0" font-size="9" text-anchor="middle" font-family="sans-serif">보관소</text>
+          <text x="115" y="232" fill="#a06090" font-size="8" text-anchor="middle" font-family="sans-serif">D-01</text>
+          <!-- Danger marker -->
+          <circle cx="160" cy="205" r="8" fill="#ff8800" opacity="0.9"/>
+          <text x="160" y="209" fill="white" font-size="9" text-anchor="middle" font-family="sans-serif" font-weight="bold">!</text>
+
+          <!-- Building E - 작업장 1 -->
+          <rect x="215" y="195" width="185" height="120" fill="#0a1e3a" stroke="#1e5080" stroke-width="1.2" rx="2"/>
+          <text x="307" y="248" fill="#4080b0" font-size="10" text-anchor="middle" font-family="sans-serif">작업장 1</text>
+          <text x="307" y="232" fill="#6090b8" font-size="8" text-anchor="middle" font-family="sans-serif">E-01</text>
+
+          <!-- Building F - 발전실 -->
+          <rect x="435" y="195" width="200" height="120" fill="#0a1e3a" stroke="#1e5080" stroke-width="1.2" rx="2"/>
+          <text x="535" y="248" fill="#4080b0" font-size="10" text-anchor="middle" font-family="sans-serif">발전실</text>
+          <text x="535" y="232" fill="#6090b8" font-size="8" text-anchor="middle" font-family="sans-serif">F-01</text>
+
+          <!-- Worker dots (blue circles) -->
+          <circle cx="90" cy="100" r="4" fill="#0080ff" opacity="0.8"/>
+          <circle cx="270" cy="80" r="4" fill="#0080ff" opacity="0.8"/>
+          <circle cx="290" cy="120" r="4" fill="#0080ff" opacity="0.8"/>
+          <circle cx="310" cy="80" r="4" fill="#0080ff" opacity="0.8"/>
+          <circle cx="480" cy="90" r="4" fill="#0080ff" opacity="0.8"/>
+          <circle cx="520" cy="110" r="4" fill="#0080ff" opacity="0.8"/>
+          <circle cx="260" cy="240" r="4" fill="#0080ff" opacity="0.8"/>
+          <circle cx="300" cy="260" r="4" fill="#0080ff" opacity="0.8"/>
+          <circle cx="350" cy="240" r="4" fill="#0080ff" opacity="0.8"/>
+          <circle cx="480" cy="250" r="4" fill="#00cc66" opacity="0.9"/>
+          <circle cx="560" cy="270" r="4" fill="#00cc66" opacity="0.9"/>
+
+          <!-- Sensor labels -->
+          <rect x="60" y="210" width="32" height="13" fill="#1a0a30" rx="2"/>
+          <text x="76" y="220" fill="#a060e0" font-size="8" text-anchor="middle" font-family="sans-serif">GAS</text>
+          <rect x="230" y="210" width="32" height="13" fill="#0a1a10" rx="2"/>
+          <text x="246" y="220" fill="#00aa44" font-size="8" text-anchor="middle" font-family="sans-serif">TEMP</text>
+          <rect x="450" y="210" width="32" height="13" fill="#1a1000" rx="2"/>
+          <text x="466" y="220" fill="#ff8800" font-size="8" text-anchor="middle" font-family="sans-serif">FIRE</text>
+
+          <!-- Legend -->
+          <circle cx="50" cy="345" r="4" fill="#0080ff"/>
+          <text x="58" y="349" fill="#4080a0" font-size="8" font-family="sans-serif">작업자</text>
+          <circle cx="110" cy="345" r="4" fill="#ff2020"/>
+          <text x="118" y="349" fill="#4080a0" font-size="8" font-family="sans-serif">위험</text>
+          <circle cx="160" cy="345" r="4" fill="#ff8800"/>
+          <text x="168" y="349" fill="#4080a0" font-size="8" font-family="sans-serif">경보</text>
+          <circle cx="210" cy="345" r="4" fill="#00cc66"/>
+          <text x="218" y="349" fill="#4080a0" font-size="8" font-family="sans-serif">정상</text>
+        </svg>
+      </div>
+    </div><!-- /center-col -->
+
+    <!-- ===== RIGHT COLUMN ===== -->
+    <div class="right-col">
+      <div class="card" style="height:100%;">
+        <div class="card-header">
+          <span class="card-title">비상연락망</span>
+          <span class="expand-icon">▶</span>
+        </div>
+        <div class="subheader">
+          <span class="subheader-title">최근 알림</span>
+          <span class="more-link">더보기 &gt;</span>
+        </div>
+        <div class="card-body" style="padding:6px;">
+          <div class="alert-list">
+            <div class="alert-item">
+              <div class="alert-item-header">
+                <span class="alert-badge">경보 01</span>
+                <span class="alert-time">12:00:22</span>
+              </div>
+              <div class="alert-desc">유해가스 농도 초과 감지</div>
+              <div class="alert-location">D구역 · 보관소 3번</div>
+            </div>
+            <div class="alert-item">
+              <div class="alert-item-header">
+                <span class="alert-badge">경보 02</span>
+                <span class="alert-time">11:58:45</span>
+              </div>
+              <div class="alert-desc">CO2 센서 임계값 초과</div>
+              <div class="alert-location">B구역 · 제1공장</div>
+            </div>
+            <div class="alert-item warning">
+              <div class="alert-item-header">
+                <span class="alert-badge warn">주의 03</span>
+                <span class="alert-time">11:55:10</span>
+              </div>
+              <div class="alert-desc">고온 구역 작업자 접근</div>
+              <div class="alert-location">F구역 · 발전실</div>
+            </div>
+            <div class="alert-item warning">
+              <div class="alert-item-header">
+                <span class="alert-badge warn">주의 04</span>
+                <span class="alert-time">11:52:33</span>
+              </div>
+              <div class="alert-desc">안전모 미착용 감지</div>
+              <div class="alert-location">E구역 · 작업장 1</div>
+            </div>
+            <div class="alert-item">
+              <div class="alert-item-header">
+                <span class="alert-badge">경보 05</span>
+                <span class="alert-time">11:48:07</span>
+              </div>
+              <div class="alert-desc">화재 감지 센서 반응</div>
+              <div class="alert-location">D구역 · 2번 구역</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div><!-- /right-col -->
+
+    <!-- ===================== BOTTOM ROW ===================== -->
+    <div class="bottom-row">
+
+      <!-- Panel 13: 유해가스 위험 현황 -->
+      <div class="panel">
+        <div class="panel-header">
+          <span class="panel-title">유해가스 위험 현황</span>
+          <span class="panel-badge danger">ZONE 3</span>
+          <span class="expand-icon" style="margin-left:auto">▶</span>
+        </div>
+        <div class="panel-body">
+          <table class="gas-table">
+            <thead>
+              <tr>
+                <th>구역</th>
+                <th>CO₂</th>
+                <th>FIRE</th>
+                <th>GAS</th>
+                <th>상태</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>D-01</td>
+                <td>842</td>
+                <td>38℃</td>
+                <td>450</td>
+                <td><span class="status-cell status-danger">위험</span></td>
+              </tr>
+              <tr>
+                <td>B-02</td>
+                <td>621</td>
+                <td>34℃</td>
+                <td>320</td>
+                <td><span class="status-cell status-danger">위험</span></td>
+              </tr>
+              <tr>
+                <td>F-01</td>
+                <td>480</td>
+                <td>42℃</td>
+                <td>210</td>
+                <td><span class="status-cell status-warning">경보</span></td>
+              </tr>
+              <tr>
+                <td>E-03</td>
+                <td>310</td>
+                <td>28℃</td>
+                <td>180</td>
+                <td><span class="status-cell status-warning">경보</span></td>
+              </tr>
+              <tr>
+                <td>A-01</td>
+                <td>215</td>
+                <td>24℃</td>
+                <td>90</td>
+                <td><span class="status-cell status-normal">정상</span></td>
+              </tr>
+              <tr>
+                <td>C-02</td>
+                <td>198</td>
+                <td>22℃</td>
+                <td>75</td>
+                <td><span class="status-cell status-normal">정상</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Panel 14: AI 예측·가스 위험 현황 -->
+      <div class="panel">
+        <div class="panel-header">
+          <span class="panel-title">AI 예측·가스 위험 현황</span>
+          <div style="display:flex;gap:4px;margin-left:auto;">
+            <span class="panel-badge">일</span>
+            <span class="panel-badge">월</span>
+          </div>
+          <span class="expand-icon">▶</span>
+        </div>
+        <div class="panel-body ai-gas-content">
+          <div class="ai-gas-stats">
+            <div class="stat-item">
+              <div class="stat-label">CHARGED</div>
+              <div class="stat-value">842<span class="stat-unit">ppm</span></div>
+            </div>
+            <div class="stat-item" style="margin-top:6px;">
+              <div class="stat-label">예측 위험도</div>
+              <div class="stat-value" style="color:#ff8800;font-size:12px;">HIGH</div>
+            </div>
+            <div class="stat-item" style="margin-top:6px;">
+              <div class="stat-label">평균 농도</div>
+              <div class="stat-value" style="font-size:12px;">412<span class="stat-unit">ppm</span></div>
+            </div>
+          </div>
+          <div class="ai-gas-chart">
+            <canvas id="gasChart"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <!-- Panel 15: 현재 전체 시스템 현황 -->
+      <div class="panel">
+        <div class="panel-header">
+          <span class="panel-title">현재 전체 시스템 현황</span>
+          <span class="expand-icon" style="margin-left:auto">▶</span>
+        </div>
+        <div class="panel-body power-content">
+          <div class="power-stats">
+            <table class="power-table">
+              <tr><td>압력</td><td style="color:#00cc88">1.8 MPa</td></tr>
+              <tr><td>온도</td><td style="color:#ff8800">78℃</td></tr>
+              <tr><td>습도</td><td style="color:#4090ff">62 %</td></tr>
+              <tr><td>유량</td><td style="color:#a0d0ff">320 m³</td></tr>
+              <tr><td>가동률</td><td style="color:#00e676">96.2 %</td></tr>
+            </table>
+          </div>
+          <div class="power-main">
+            <div class="power-unit">전력 출력</div>
+            <div class="power-number">1,280</div>
+            <div class="power-unit">MW</div>
+            <div class="power-chart-area">
+              <canvas id="powerChart"></canvas>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Panel: 스마트 안전 시스템 현황 -->
+      <div class="panel">
+        <div class="panel-header">
+          <span class="panel-title">스마트 안전 시스템 현황</span>
+          <span class="expand-icon" style="margin-left:auto">▶</span>
+        </div>
+        <div class="panel-body smart-chart">
+          <canvas id="smartChart"></canvas>
+        </div>
+      </div>
+
+    </div><!-- /bottom-row -->
+
+  </div><!-- /main -->
+</div><!-- /wrapper -->
+
+<script>
+  /* ====== Clock ====== */
+  function updateClock() {
+    const now = new Date();
+    const pad = n => String(n).padStart(2, '0');
+    document.getElementById('clock').textContent =
+      `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())} ` +
+      `${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
+  }
+  updateClock();
+  setInterval(updateClock, 1000);
+
+  /* ====== Donut Chart ====== */
+  new Chart(document.getElementById('donutChart'), {
+    type: 'doughnut',
+    data: {
+      datasets: [{
+        data: [72, 15, 8, 5],
+        backgroundColor: ['#00e676', '#ffcc00', '#ff3d3d', '#4090ff'],
+        borderWidth: 0,
+        hoverOffset: 2,
+      }]
+    },
+    options: {
+      cutout: '68%',
+      plugins: { legend: { display: false }, tooltip: { enabled: false } },
+      animation: { duration: 800 },
+    }
+  });
+
+  /* ====== Gas Chart ====== */
+  const gasLabels = ['06:00','08:00','10:00','11:00','12:00'];
+  new Chart(document.getElementById('gasChart'), {
+    type: 'line',
+    data: {
+      labels: gasLabels,
+      datasets: [
+        {
+          label: 'CO₂',
+          data: [280, 320, 510, 720, 842],
+          borderColor: '#ff4444',
+          backgroundColor: 'rgba(255,68,68,0.08)',
+          fill: true,
+          tension: 0.4,
+          borderWidth: 1.5,
+          pointRadius: 2,
+        },
+        {
+          label: 'GAS',
+          data: [90, 130, 220, 380, 450],
+          borderColor: '#ffaa00',
+          backgroundColor: 'rgba(255,170,0,0.06)',
+          fill: true,
+          tension: 0.4,
+          borderWidth: 1.5,
+          pointRadius: 2,
+        },
+        {
+          label: '예측',
+          data: [280, 340, 540, 760, 900],
+          borderColor: '#00c8ff',
+          backgroundColor: 'transparent',
+          borderDash: [4, 3],
+          tension: 0.4,
+          borderWidth: 1.5,
+          pointRadius: 0,
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: {
+          display: true,
+          position: 'top',
+          labels: { color: '#5080a0', font: { size: 9 }, boxWidth: 10, padding: 6 }
+        },
+        tooltip: { mode: 'index', intersect: false }
+      },
+      scales: {
+        x: { ticks: { color: '#406080', font: { size: 8 } }, grid: { color: '#0e2040' } },
+        y: { ticks: { color: '#406080', font: { size: 8 } }, grid: { color: '#0e2040' } }
+      },
+      animation: { duration: 600 }
+    }
+  });
+
+  /* ====== Power Chart ====== */
+  new Chart(document.getElementById('powerChart'), {
+    type: 'line',
+    data: {
+      labels: ['06','07','08','09','10','11','12'],
+      datasets: [{
+        data: [1100, 1150, 1220, 1200, 1260, 1250, 1280],
+        borderColor: '#00e8ff',
+        backgroundColor: 'rgba(0,232,255,0.08)',
+        fill: true,
+        tension: 0.4,
+        borderWidth: 1.5,
+        pointRadius: 0,
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { display: false }, tooltip: { enabled: false } },
+      scales: {
+        x: { ticks: { color: '#406080', font: { size: 8 } }, grid: { color: '#0e2040' } },
+        y: { ticks: { color: '#406080', font: { size: 8 } }, grid: { color: '#0e2040' }, min: 1000 }
+      },
+      animation: { duration: 600 }
+    }
+  });
+
+  /* ====== Smart Safety Chart ====== */
+  const timeLabels = ['10:00','10:30','11:00','11:30','12:00'];
+  new Chart(document.getElementById('smartChart'), {
+    type: 'line',
+    data: {
+      labels: timeLabels,
+      datasets: [
+        {
+          label: '충돌감지',
+          data: [2, 3, 2, 5, 4],
+          borderColor: '#ff4444',
+          backgroundColor: 'rgba(255,68,68,0.06)',
+          fill: true, tension: 0.4, borderWidth: 1.5, pointRadius: 2,
+        },
+        {
+          label: '추락감지',
+          data: [0, 1, 0, 0, 1],
+          borderColor: '#ffaa00',
+          backgroundColor: 'rgba(255,170,0,0.06)',
+          fill: true, tension: 0.4, borderWidth: 1.5, pointRadius: 2,
+        },
+        {
+          label: '화재감지',
+          data: [1, 1, 2, 3, 2],
+          borderColor: '#00e676',
+          backgroundColor: 'rgba(0,230,118,0.04)',
+          fill: true, tension: 0.4, borderWidth: 1.5, pointRadius: 2,
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: {
+          display: true,
+          position: 'top',
+          labels: { color: '#5080a0', font: { size: 9 }, boxWidth: 10, padding: 6 }
+        }
+      },
+      scales: {
+        x: { ticks: { color: '#406080', font: { size: 8 } }, grid: { color: '#0e2040' } },
+        y: { ticks: { color: '#406080', font: { size: 8 } }, grid: { color: '#0e2040' }, min: 0 }
+      },
+      animation: { duration: 600 }
+    }
+  });
+</script>
+</body>
+</html>

@@ -14,6 +14,8 @@ urlpatterns = [
     path('dashboard/api/', include('devices.urls')),      # 'monitor/api/' → 'dashboard/api/'
     path('dashboard/api/', include('geofence.urls')),
     path('dashboard/api/', include('alerts.urls')),
+    path('dashboard/api/', include('workers.urls')),     # ← Worker API 추가
+
 ]
 
 if settings.DEBUG:

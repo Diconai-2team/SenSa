@@ -40,6 +40,7 @@ class SensorData(models.Model):
     co          = models.FloatField(null=True, blank=True)
     h2s         = models.FloatField(null=True, blank=True)
     co2         = models.FloatField(null=True, blank=True)
+    o2          = models.FloatField(null=True, blank=True)
     temperature = models.FloatField(null=True, blank=True)
     status      = models.CharField(max_length=20, choices=STATUS_CHOICES, default='normal')
     timestamp   = models.DateTimeField(auto_now_add=True)

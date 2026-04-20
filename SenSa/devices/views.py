@@ -51,20 +51,38 @@ class SensorDataView(APIView):
         try:
             device = Device.objects.get(device_id=device_id)
 
-            co = float(request.data.get('co', round(random.uniform(0, 100), 1)))
-            h2s = float(request.data.get('h2s', round(random.uniform(0, 50), 1)))
+            co  = float(request.data.get('co',  round(random.uniform(0, 100), 1)))
+            h2s = float(request.data.get('h2s', round(random.uniform(0, 50),  1)))
             co2 = float(request.data.get('co2', round(random.uniform(300, 1000), 1)))
+            o2  = request.data.get('o2')
+            o2  = float(o2) if o2 is not None else None
 
-            # 상태 판별
-            if co > 70 or h2s > 35 or co2 > 800:
+            # 상태 판별 — MD 스펙 임계치 기준
+            # O2: 구간형 (19.5~23.5 정상 / 18~19.5 또는 23.5~25 주의 / <18 또는 >25 위험)
+            def classify_o2(val):
+                if val is None:
+                    return 'normal'
+                if val < 18 or val > 25:
+                    return 'danger'
+                if val < 19.5 or val > 23.5:
+                    return 'caution'
+                return 'normal'
+
+            gas_status = [
+                'danger'  if co  >= 200  else 'caution' if co  >= 25   else 'normal',
+                'danger'  if h2s >= 50   else 'caution' if h2s >= 10   else 'normal',
+                'danger'  if co2 >= 5000 else 'caution' if co2 >= 1000 else 'normal',
+                classify_o2(o2),
+            ]
+            if 'danger' in gas_status:
                 s = 'danger'
-            elif co > 35 or h2s > 15 or co2 > 600:
+            elif 'caution' in gas_status:
                 s = 'caution'
             else:
                 s = 'normal'
 
             sd = SensorData.objects.create(
-                device=device, co=co, h2s=h2s, co2=co2, status=s,
+                device=device, co=co, h2s=h2s, co2=co2, o2=o2, status=s,
             )
             device.status = s
             device.last_value = co

@@ -57,6 +57,9 @@ body { font-family: 'Segoe UI', -apple-system, sans-serif; background: var(--bg-
 .bottom-panel:last-child { border-right: none; }
 .bottom-panel-title { font-size: 11px; font-weight: 700; color: var(--text); margin-bottom: 8px; display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; }
 .bottom-panel-title .sensor-badge { padding: 2px 8px; border-radius: 4px; font-size: 9px; font-weight: 600; background: #4a7fff22; color: var(--accent); border: 1px solid #4a7fff44; }
+.sensor-tab-group { display: flex; gap: 4px; }
+.sensor-tab { padding: 2px 8px; border-radius: 4px; font-size: 9px; font-weight: 600; background: transparent; color: var(--text-muted, #5a6080); border: 1px solid #2a2d3a; cursor: pointer; }
+.sensor-tab.active { background: #4a7fff22; color: var(--accent); border-color: #4a7fff44; }
 .chart-area { flex: 1; min-height: 0; }
 .chart-area canvas { width: 100% !important; height: 100% !important; }
 

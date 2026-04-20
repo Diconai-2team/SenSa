@@ -1,0 +1,91 @@
+/* ============================================================
+   로그인 페이지 전용 스타일
+   ============================================================ */
+
+.auth-wrapper.login {
+    max-width: 420px;
+}
+
+.login-header h1 {
+    margin: 0 0 6px 0;
+    font-size: 32px;
+    font-weight: 800;
+    color: #1a1a1a;
+}
+
+.login-header .tagline {
+    margin: 0 0 10px 0;
+    color: #374151;
+    font-size: 15px;
+    font-weight: 500;
+}
+
+.login-header .desc {
+    margin: 0;
+    color: #9ca3af;
+    font-size: 12px;
+    line-height: 1.6;
+}
+
+/* 로그인 버튼 (solid) */
+.btn-login {
+    width: 100%;
+    padding: 12px;
+    background: #1a73e8;
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    font-size: 16px;
+    font-weight: 500;
+    cursor: pointer;
+    margin-top: 4px;
+}
+
+.btn-login:hover {
+    background: #1557b0;
+}
+
+.btn-login:active {
+    transform: translateY(1px);
+}
+
+/* 회원가입 버튼 (outline) */
+.btn-signup-outline {
+    display: block;
+    width: 100%;
+    padding: 12px;
+    margin-top: 10px;
+    background: #fff;
+    color: #1a73e8;
+    border: 1px solid #1a73e8;
+    border-radius: 8px;
+    font-size: 16px;
+    font-weight: 500;
+    text-align: center;
+    text-decoration: none;
+    box-sizing: border-box;
+    cursor: pointer;
+}
+
+.btn-signup-outline:hover {
+    background: #f0f7ff;
+    text-decoration: none;
+}
+
+.btn-signup-outline:active {
+    transform: translateY(1px);
+}
+
+/* 테스트 계정 안내 */
+.demo-hint {
+    margin-top: 16px;
+    padding: 12px;
+    background: #f9fafb;
+    border-radius: 8px;
+    font-size: 12px;
+    color: #6b7280;
+}
+
+.demo-hint strong {
+    color: #374151;
+}
