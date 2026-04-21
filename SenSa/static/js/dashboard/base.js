@@ -205,6 +205,20 @@ async function checkGeofence(sensorList) {
     });
     if (!res.ok) return;
     var data = await res.json();
+
+    // 서버가 분류한 센서 데이터 → 화면 emit (JS 직접 분류 대신 서버 기준 사용)
+    (data.sensors || []).forEach(function (s) {
+      var device = SENSOR_DEVICES.find(function (d) { return d.device_id === s.device_id; });
+      if (s.sensor_type === 'gas' && s.gas) {
+        SenSa.emit('gasData', { device_id: s.device_id, gas: s.gas, status: s.status });
+      } else if (s.sensor_type === 'power' && s.power) {
+        SenSa.emit('powerData', { device_id: s.device_id, power: s.power, status: s.status });
+      }
+      if (device) {
+        SenSa.emit('sensorUpdate', { device: device, data: s });
+      }
+    });
+
     (data.alarms || []).forEach(function (alarm) {
       var key = [alarm.alarm_type, alarm.worker_id || '', alarm.geofence_id || '', alarm.device_id || ''].join('-');
       var now = Date.now(), last = recentAlarmKeys.get(key);
@@ -231,15 +245,12 @@ function runSimTick() {
   SENSOR_DEVICES.forEach(function (device) {
     var data;
     if (device.sensor_type === 'gas') {
-      var gas = genGas(simTick, window.simMode), status = classifyGas(gas);
-      data = { gas: gas, status: status, device_id: device.device_id, sensor_type: 'gas', detail: 'CO:' + gas.co };
-      SenSa.emit('gasData', { device_id: device.device_id, gas: gas, status: status });
+      var gas = genGas(simTick, window.simMode);
+      data = { gas: gas, device_id: device.device_id, sensor_type: 'gas' };
     } else {
-      var power = genPower(simTick, window.simMode), status = classifyPower(power);
-      data = { power: power, status: status, device_id: device.device_id, sensor_type: 'power', detail: '전류:' + power.current + 'A' };
-      SenSa.emit('powerData', { device_id: device.device_id, power: power, status: status });
+      var power = genPower(simTick, window.simMode);
+      data = { power: power, device_id: device.device_id, sensor_type: 'power' };
     }
-    SenSa.emit('sensorUpdate', { device: device, data: data });
     list.push(data);
   });
 

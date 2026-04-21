@@ -62,6 +62,31 @@ def classify_gas(gas: dict) -> str:
     return worst
 
 
+def _find_sensor_geofence(device_id: str):
+    """센서 device_id로 Device.x/y 조회 → 속한 지오펜스 반환. 없으면 None."""
+    try:
+        from devices.models import Device  # 순환 import 방지
+        device = Device.objects.get(device_id=device_id)
+    except Exception:
+        return None
+    for fence in GeoFence.objects.filter(is_active=True):
+        if fence.polygon and len(fence.polygon) >= 3:
+            if point_in_polygon(device.x, device.y, fence.polygon):
+                return fence
+    return None
+
+
+def classify_power(power: dict) -> str:
+    cur = float(power.get('current', 0))
+    vol = float(power.get('voltage', 220))
+    wat = float(power.get('watt', 0))
+    if cur >= 25 or wat >= 4500 or vol < 200 or vol > 240:
+        return 'danger'
+    if cur >= 15 or wat >= 3000 or vol < 210 or vol > 230:
+        return 'caution'
+    return 'normal'
+
+
 def check_worker_in_geofences(worker_id: str, worker_name: str,
                                x: float, y: float) -> list:
     """
@@ -141,11 +166,14 @@ def create_sensor_alarm(device_id: str, sensor_type: str,
     alarm_level = status
     msg = f"센서 [{device_id}] {status.upper()} 상태 감지. {detail}"
 
+    fence = _find_sensor_geofence(device_id)
+
     alarm = Alarm.objects.create(
         alarm_type=alarm_type,
         alarm_level=alarm_level,
         device_id=device_id,
         sensor_type=sensor_type,
+        geofence=fence,
         message=msg,
     )
 
@@ -154,6 +182,7 @@ def create_sensor_alarm(device_id: str, sensor_type: str,
         "alarm_level": alarm_level,
         "alarm_type": alarm_type,
         "status": status,
+        "geofence_id": fence.id if fence else None,
         "message": msg,
     }
 

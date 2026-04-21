@@ -20,7 +20,10 @@ from alerts.services import (
     check_worker_in_geofences,
     create_sensor_alarm,
     create_combined_alarm,
+    classify_gas,
+    classify_power,
 )
+from devices.models import Device, SensorData
 from .models import MapImage
 from .serializers import MapImageSerializer
 
@@ -93,28 +96,26 @@ class CheckGeofenceView(APIView):
         workers_in_fences = []
 
         for worker in workers:
-            w_id = worker.get('worker_id', '')
+            w_id   = worker.get('worker_id', '')
             w_name = worker.get('name', w_id)
-            w_x = float(worker.get('x', 0))
-            w_y = float(worker.get('y', 0))
+            w_x    = float(worker.get('x', 0))
+            w_y    = float(worker.get('y', 0))
 
             fence_results = check_worker_in_geofences(w_id, w_name, w_x, w_y)
 
             for fr in fence_results:
-                all_alarms.append({
-                    **fr,
-                    "worker_id": w_id,
-                    "worker_name": w_name,
-                })
+                all_alarms.append({**fr, "worker_id": w_id, "worker_name": w_name})
                 workers_in_fences.append({
-                    "worker_id": w_id,
-                    "geofence_id": fr["geofence_id"],
+                    "worker_id":    w_id,
+                    "worker_name":  w_name,
+                    "geofence_id":  fr["geofence_id"],
                     "geofence_name": fr["geofence_name"],
-                    "zone_type": fr["zone_type"],
+                    "zone_type":    fr["zone_type"],
                 })
 
-        # 2. 센서 raw값 수신 → 서버 직접 판별 → 알람 생성
-        classified_sensors = []
+        # 2. 센서 raw값 → 분류 + SensorData DB 저장 + 알람 생성
+        processed_sensors = []   # 응답용 전체 (normal 포함)
+        classified_sensors = []  # 복합 알람 매칭용 (caution/danger만)
 
         for sensor in sensors:
             s_id   = sensor.get('device_id', '')
@@ -122,6 +123,38 @@ class CheckGeofenceView(APIView):
             gas    = sensor.get('gas')
             power  = sensor.get('power')
 
+            # 서버에서 분류 (응답에 포함할 status)
+            if s_type == 'gas' and gas:
+                sensor_status = classify_gas(gas)
+            elif s_type == 'power' and power:
+                sensor_status = classify_power(power)
+            else:
+                sensor_status = 'normal'
+
+            # SensorData DB 저장 (가스 센서만, 매 틱 기록)
+            if s_type == 'gas' and gas:
+                try:
+                    device = Device.objects.get(device_id=s_id)
+                    SensorData.objects.create(
+                        device=device,
+                        co=gas.get('co'),   h2s=gas.get('h2s'), co2=gas.get('co2'),
+                        o2=gas.get('o2'),   no2=gas.get('no2'), so2=gas.get('so2'),
+                        o3=gas.get('o3'),   nh3=gas.get('nh3'), voc=gas.get('voc'),
+                        status=sensor_status,
+                    )
+                except Device.DoesNotExist:
+                    pass
+
+            # 응답용 (모든 센서, normal 포함)
+            processed_sensors.append({
+                'device_id':   s_id,
+                'sensor_type': s_type,
+                'gas':         gas,
+                'power':       power,
+                'status':      sensor_status,
+            })
+
+            # 알람 생성 (쿨다운·임계치 판별은 create_sensor_alarm 내부)
             alarm = create_sensor_alarm(s_id, s_type, gas=gas, power=power)
             if alarm:
                 all_alarms.append(alarm)
@@ -129,31 +162,35 @@ class CheckGeofenceView(APIView):
                     'device_id':   s_id,
                     'sensor_type': s_type,
                     'status':      alarm['status'],
+                    'geofence_id': alarm.get('geofence_id'),
                 })
 
-        # 3. 복합 위험 판별 (위치 조건 AND 데이터 조건)
+        # 3. 복합 위험 — 같은 지오펜스 안의 센서+워커만 매칭
         danger_sensors = [s for s in classified_sensors if s['status'] in ('danger', 'caution')]
 
         if workers_in_fences and danger_sensors:
             for wf in workers_in_fences:
                 for ds in danger_sensors:
+                    # 센서가 워커와 같은 지오펜스 안에 있을 때만 복합 알람
+                    if ds.get('geofence_id') != wf['geofence_id']:
+                        continue
                     try:
                         fence_obj = GeoFence.objects.get(id=wf['geofence_id'])
                         combined = create_combined_alarm(
                             worker_id=wf['worker_id'],
-                            worker_name=wf.get('worker_name', wf['worker_id']),
+                            worker_name=wf['worker_name'],
                             geofence=fence_obj,
-                            device_id=ds.get('device_id', ''),
-                            sensor_status=ds.get('status', ''),
+                            device_id=ds['device_id'],
+                            sensor_status=ds['status'],
                         )
-                        all_alarms.append(combined)
+                        if combined:
+                            all_alarms.append(combined)
                     except GeoFence.DoesNotExist:
                         pass
 
-
-
         return Response({
-            "alarms": all_alarms,
+            "alarms":            all_alarms,
             "workers_in_fences": workers_in_fences,
-            "alarm_count": len(all_alarms),
+            "alarm_count":       len(all_alarms),
+            "sensors":           processed_sensors,
         })
