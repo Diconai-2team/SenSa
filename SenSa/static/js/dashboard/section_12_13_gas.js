@@ -3,12 +3,22 @@
  * 구독: sensa:gasData → 테이블 값 갱신 + 차트 push
  */
 
-// ─── 임계치 (테이블 배지용) ───
-var TH = { co: { w: 25, d: 200 }, h2s: { w: 10, d: 50 }, co2: { w: 1000, d: 5000 } };
+// ─── 임계치 (실제 센서 스펙 기준) ───
+var TH = {
+  co:  { w: 25,   d: 200  },
+  h2s: { w: 10,   d: 15   },
+  co2: { w: 1000, d: 5000 },
+  no2: { w: 3,    d: 5    },
+  so2: { w: 2,    d: 5    },
+  o3:  { w: 0.06, d: 0.12 },
+  nh3: { w: 25,   d: 35   },
+  voc: { w: 0.5,  d: 1.0  },
+};
 var LABELS = { normal: '정상', caution: '주의', danger: '위험' };
 
 function gasFieldStatus(key, val) {
-  if (key === 'o2') return (val < 18 || val > 25) ? 'danger' : (val < 19.5 || val > 23.5) ? 'caution' : 'normal';
+  if (val === undefined || val === null) return 'normal';
+  if (key === 'o2') return val < 16 ? 'danger' : val < 18 ? 'caution' : 'normal';
   var t = TH[key]; if (!t) return 'normal';
   return val >= t.d ? 'danger' : val >= t.w ? 'caution' : 'normal';
 }
@@ -26,7 +36,7 @@ document.querySelectorAll('.sensor-tab').forEach(function (btn) {
 SenSa.on('gasData', function (d) {
   if (d.device_id !== primaryGas) return;
   var gas = d.gas;
-  ['o2', 'co', 'co2', 'h2s'].forEach(function (k) {
+  ['o2', 'co', 'co2', 'h2s', 'no2', 'so2', 'o3', 'nh3', 'voc'].forEach(function (k) {
     var el = document.getElementById('val-' + k); if (el) el.textContent = gas[k];
     var badge = document.getElementById('badge-' + k);
     if (badge) { var s = gasFieldStatus(k, gas[k]); badge.className = 'status-badge status-' + s; badge.textContent = LABELS[s]; }

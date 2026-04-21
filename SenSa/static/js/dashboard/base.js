@@ -81,10 +81,36 @@ function gauss(c, s, mn, mx) {
 }
 
 function genGas(tick, mode) {
-  var g = { co: gauss(12, 3, 0, 500), h2s: gauss(0.3, 0.1, 0, 20), co2: gauss(600, 80, 300, 10000), o2: gauss(20.9, 0.2, 15, 25) };
-  if (mode === 'mixed') { if (tick % 30 === 0 && tick) g.co = 30 + Math.random() * 50; if (tick % 60 === 0 && tick) g.h2s = 5 + Math.random() * 7; if (tick % 45 === 0 && tick) g.o2 = 17 + Math.random() * 2; }
-  else if (mode === 'danger') { g.co = 200 + Math.random() * 150; g.h2s = 5 + Math.random() * 10; g.co2 = 5000 + Math.random() * 3000; g.o2 = 15 + Math.random() * 3; }
-  return { co: +g.co.toFixed(2), h2s: +g.h2s.toFixed(2), co2: +g.co2.toFixed(1), o2: +g.o2.toFixed(1) };
+  var g = {
+    co:  gauss(12,   3,    0,   500),
+    h2s: gauss(5,    2,    0,   20),
+    co2: gauss(600,  80,   300, 10000),
+    o2:  gauss(20.9, 0.2,  15,  25),
+    no2: gauss(1.5,  0.5,  0,   10),
+    so2: gauss(1.0,  0.3,  0,   10),
+    o3:  gauss(0.03, 0.01, 0,   0.5),
+    nh3: gauss(10,   3,    0,   100),
+    voc: gauss(0.3,  0.1,  0,   5),
+  };
+  if (mode === 'mixed') {
+    if (tick % 30 === 0 && tick) g.co  = 30 + Math.random() * 50;
+    if (tick % 60 === 0 && tick) g.h2s = 11 + Math.random() * 5;
+    if (tick % 45 === 0 && tick) g.o2  = 17 + Math.random() * 2;
+  } else if (mode === 'danger') {
+    g.co  = 200 + Math.random() * 150;
+    g.h2s = 15  + Math.random() * 10;
+    g.co2 = 5000 + Math.random() * 3000;
+    g.o2  = 15  + Math.random() * 2;
+    g.no2 = 5   + Math.random() * 3;
+    g.nh3 = 35  + Math.random() * 10;
+  }
+  return {
+    co:  +g.co.toFixed(2),  h2s: +g.h2s.toFixed(2),
+    co2: +g.co2.toFixed(1), o2:  +g.o2.toFixed(1),
+    no2: +g.no2.toFixed(3), so2: +g.so2.toFixed(2),
+    o3:  +g.o3.toFixed(3),  nh3: +g.nh3.toFixed(1),
+    voc: +g.voc.toFixed(2),
+  };
 }
 
 function genPower(tick, mode) {
