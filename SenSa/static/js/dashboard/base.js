@@ -194,7 +194,6 @@ window.updateMapBounds = function (W, H) { IMG_W = W; IMG_H = H; };
 // ─── 지오펜스 API 호출 ───
 var recentAlarmKeys = new Map();
 async function checkGeofence(sensorList) {
-  if (WORKERS.length === 0) return;
   try {
     var res = await fetch('/dashboard/api/check-geofence/', {
       method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken() },
