@@ -273,6 +273,102 @@ function runSimTick() {
   if (el) el.textContent = simTick;
 }
 
-setInterval(runSimTick, 1000);
+// ─── WebSocket 실시간 연결 ───
+var wsSimInterval = null;
+var wsReconnectTimer = null;
+var wsConnected = false;
+
+function startSimFallback() {
+  if (!wsSimInterval) {
+    console.log('[SenSa] WebSocket 없음 → 시뮬레이션 모드');
+    wsSimInterval = setInterval(runSimTick, 1000);
+  }
+}
+
+function stopSimFallback() {
+  if (wsSimInterval) {
+    clearInterval(wsSimInterval);
+    wsSimInterval = null;
+  }
+}
+
+function updateWsStatus(status) {
+  var el = document.getElementById('ws-status');
+  if (!el) return;
+  var labels = {
+    connecting:   '🟡 연결 중...',
+    connected:    '🟢 실시간 연결됨',
+    disconnected: '🔴 연결 끊김',
+    reconnecting: '🟠 재연결 시도 중...',
+  };
+  el.textContent = labels[status] || status;
+}
+
+function connectWebSocket() {
+  updateWsStatus('connecting');
+  var ws = new WebSocket('ws://127.0.0.1:8001/ws/sensors/');
+
+  ws.onopen = function () {
+    console.log('[SenSa] WebSocket 연결됨');
+    wsConnected = true;
+    stopSimFallback();
+    updateWsStatus('connected');
+    if (wsReconnectTimer) { clearTimeout(wsReconnectTimer); wsReconnectTimer = null; }
+  };
+
+  ws.onmessage = function (event) {
+    try {
+      var msg = JSON.parse(event.data);
+
+      if (msg.type === 'update') {
+        (msg.sensors || []).forEach(function (sensor) {
+          if (sensor.sensor_type === 'gas') {
+            SenSa.emit('gasData', { device_id: sensor.device_id, gas: sensor.gas, status: sensor.status });
+          } else {
+            SenSa.emit('powerData', { device_id: sensor.device_id, power: sensor.power, status: sensor.status });
+          }
+          var device = SENSOR_DEVICES.find(function (d) { return d.device_id === sensor.device_id; });
+          if (device) SenSa.emit('sensorUpdate', { device: device, data: sensor });
+        });
+
+        if (msg.workers && msg.workers.length > 0) {
+          msg.workers.forEach(function (wData) {
+            var w = WORKERS.find(function (w) { return w.worker_id === wData.worker_id; });
+            if (w) { w.x = wData.x; w.y = wData.y; }
+          });
+          SenSa.emit('workerMove', { workers: WORKERS });
+        }
+
+        simTick++;
+        var el = document.getElementById('sim-tick');
+        if (el) el.textContent = simTick;
+      }
+
+      if (msg.type === 'alert') {
+        console.log('[SenSa] 알람 수신:', msg);
+        SenSa.emit('alarm', msg);
+      }
+
+    } catch (e) {
+      console.error('[SenSa] 메시지 파싱 오류:', e);
+    }
+  };
+
+  ws.onclose = function () {
+    console.log('[SenSa] WebSocket 연결 종료 → 재연결 시도');
+    wsConnected = false;
+    updateWsStatus('reconnecting');
+    startSimFallback();
+    wsReconnectTimer = setTimeout(connectWebSocket, 3000);
+  };
+
+  ws.onerror = function (err) {
+    console.error('[SenSa] WebSocket 오류:', err);
+    updateWsStatus('disconnected');
+  };
+}
+
+connectWebSocket();
+setTimeout(function () { if (!wsConnected) startSimFallback(); }, 3000);
 
 // ─── ⑤ 시스템 시간 → header.js로 이동 완료 ───
