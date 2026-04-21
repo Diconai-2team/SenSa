@@ -22,6 +22,57 @@ window.SenSa = {
   },
 };
 
+// ════════════════════════════════════════
+// WebSocket 연결 — 실시간 수신 채널
+// ════════════════════════════════════════
+// Phase C: alarm.new 수신
+// Phase D: worker.position, sensor.update 수신 예정
+window.sensaWS = null;
+
+function connectWebSocket() {
+  var protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+  var url = protocol + '//' + window.location.host + '/ws/dashboard/';
+  
+  var ws = new WebSocket(url);
+  window.sensaWS = ws;
+  
+  ws.onopen = function () {
+    console.log('[WS] connected');
+  };
+  
+  ws.onmessage = function (event) {
+    var msg;
+    try {
+      msg = JSON.parse(event.data);
+    } catch (e) {
+      console.error('[WS] invalid JSON:', event.data);
+      return;
+    }
+    
+    // 메시지 타입별 디스패치
+    // Phase C에서는 alarm.new만, 이후 추가 예정
+    if (msg.type === 'alarm.new') {
+      SenSa.emit('alarm', msg.payload);    // ← 기존 이벤트 버스 재사용
+    } else if (msg.type === 'connection.established') {
+      console.log('[WS] auth ok, groups:', msg.payload || msg.groups);
+    }
+    // 그 외 타입은 조용히 무시 (Phase D에서 추가)
+  };
+  
+  ws.onclose = function (e) {
+    console.warn('[WS] closed:', e.code, e.reason);
+    // Phase F에서 재접속 로직 추가 예정
+  };
+  
+  ws.onerror = function (e) {
+    console.error('[WS] error:', e);
+  };
+}
+
+// 페이지 로드 직후 연결
+connectWebSocket();
+
+
 // ─── CSRF 유틸 ───
 function getCsrfToken() {
   var c = document.cookie.split(';').find(function (c) { return c.trim().startsWith('csrftoken='); });
@@ -215,21 +266,14 @@ var recentAlarmKeys = new Map();
 async function checkGeofence(sensorList) {
   if (WORKERS.length === 0) return;
   try {
-    var res = await fetch('/dashboard/api/check-geofence/', {
+    // POST는 그대로 — 서버가 알람 생성 + DB 저장 + WS push를 수행
+    // 응답 body는 이제 무시 (알람은 WS로 받음)
+    await fetch('/dashboard/api/check-geofence/', {
       method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken() },
       body: JSON.stringify({
         workers: WORKERS.map(function (w) { return { worker_id: w.worker_id, name: w.name, x: Math.round(w.x), y: Math.round(w.y) }; }),
         sensors: sensorList.filter(function (s) { return s.status !== 'normal'; }).map(function (s) { return { device_id: s.device_id, sensor_type: s.sensor_type, status: s.status, detail: s.detail || '' }; }),
       }),
-    });
-    if (!res.ok) return;
-    var data = await res.json();
-    (data.alarms || []).forEach(function (alarm) {
-      var key = [alarm.alarm_type, alarm.worker_id || '', alarm.geofence_id || '', alarm.device_id || ''].join('-');
-      var now = Date.now(), last = recentAlarmKeys.get(key);
-      if (last && now - last < 30000) return;
-      recentAlarmKeys.set(key, now);
-      SenSa.emit('alarm', alarm);
     });
   } catch (e) {}
 }

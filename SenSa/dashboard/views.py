@@ -23,6 +23,12 @@ from alerts.services import (
 )
 from .models import MapImage
 from .serializers import MapImageSerializer
+from alerts.services import (
+    check_worker_in_geofences,
+    create_sensor_alarm,
+    create_combined_alarm,
+)
+from realtime.publishers import publish_alarm   # ← 추가
 
 
 # ============================================================
@@ -143,6 +149,16 @@ class CheckGeofenceView(APIView):
                     except GeoFence.DoesNotExist:
                         pass
 
+        # ═══════════════════════════════════════════════
+        # WebSocket 알람 push — 이 한 블록이 Phase C의 핵심
+        # ═══════════════════════════════════════════════
+        # 생성된 알람을 전부 WS로 방송.
+        # HTTP 응답도 그대로 유지하는 이유:
+        #   - 기존 JS가 HTTP 응답을 아직 파싱 중 (C4에서 제거 예정)
+        #   - WS 연결 안 된 클라이언트용 fallback
+        for alarm in all_alarms:
+            publish_alarm(alarm)
+        
         return Response({
             "alarms": all_alarms,
             "workers_in_fences": workers_in_fences,

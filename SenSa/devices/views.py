@@ -12,6 +12,7 @@ from rest_framework.views import APIView
 
 from .models import Device, SensorData
 from .serializers import DeviceSerializer
+from realtime.publishers import publish_sensor_update
 
 
 class DeviceViewSet(viewsets.ModelViewSet):
@@ -60,12 +61,9 @@ class SensorDataView(APIView):
             # 상태 판별 — MD 스펙 임계치 기준
             # O2: 구간형 (19.5~23.5 정상 / 18~19.5 또는 23.5~25 주의 / <18 또는 >25 위험)
             def classify_o2(val):
-                if val is None:
-                    return 'normal'
-                if val < 18 or val > 25:
-                    return 'danger'
-                if val < 19.5 or val > 23.5:
-                    return 'caution'
+                if val is None: return 'normal'
+                if val < 18 or val > 25: return 'danger'
+                if val < 19.5 or val > 23.5: return 'caution'
                 return 'normal'
 
             gas_status = [
@@ -87,6 +85,23 @@ class SensorDataView(APIView):
             device.status = s
             device.last_value = co
             device.save()
+            
+            # ═══════════════════════════════════════════════
+            # WS push — Phase D 추가
+            # ═══════════════════════════════════════════════
+            publish_sensor_update({
+                "device_id": device.device_id,
+                "sensor_type": device.sensor_type,
+                "status": s,
+                "values": {
+                    "co": co,
+                    "h2s": h2s,
+                    "co2": co2,
+                    "o2": o2,
+                },
+                "timestamp": sd.timestamp.isoformat(),
+            })
+            
             return Response({'id': sd.id, 'status': s}, status=201)
         except Device.DoesNotExist:
             return Response({'error': '센서 없음'}, status=404)

@@ -22,6 +22,11 @@ ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',')
 # 앱
 # ==========================================================
 INSTALLED_APPS = [
+    # ── daphne는 반드시 최상단 ──
+    # runserver가 자동으로 ASGI/Daphne 모드로 뜨려면
+    # django.contrib.staticfiles 보다 먼저 와야 함
+    'daphne', # ← 추가[0421.1]
+
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -34,8 +39,10 @@ INSTALLED_APPS = [
     'rest_framework_simplejwt',
     'rest_framework_simplejwt.token_blacklist',
     'corsheaders',
+    'channels', # ← 추가[0421.1]
 
     # 로컬
+    'realtime',          # ← 추가 (다른 로컬 앱보다 먼저, 4차에서도 배관 역할 유지)
     'accounts',
     'devices',
     'geofence',
@@ -60,6 +67,7 @@ MIDDLEWARE = [
 
 ROOT_URLCONF = 'mysite.urls'
 WSGI_APPLICATION = 'mysite.wsgi.application'
+ASGI_APPLICATION = 'mysite.asgi.application'   # ← 추가[0421.1]
 
 # ==========================================================
 # 템플릿
@@ -168,3 +176,20 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 MEDIA_URL = '/media/'
 MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
+
+
+# ==========================================================
+# Channels — WebSocket용 Channel Layer (Redis 백엔드) 추가[0421.1]
+# 4차에서 Celery broker, 캐시로 확장 예정
+# ==========================================================
+REDIS_HOST = os.getenv('REDIS_HOST', '127.0.0.1')
+REDIS_PORT = int(os.getenv('REDIS_PORT', '6379'))
+
+CHANNEL_LAYERS = {
+    'default': {
+        'BACKEND': 'channels_redis.core.RedisChannelLayer',
+        'CONFIG': {
+            'hosts': [(REDIS_HOST, REDIS_PORT)],
+        },
+    },
+}
