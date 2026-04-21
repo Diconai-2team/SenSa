@@ -113,19 +113,26 @@ class CheckGeofenceView(APIView):
                     "zone_type": fr["zone_type"],
                 })
 
-        # 2. 센서 상태 알람 처리
-        for sensor in sensors:
-            s_id = sensor.get('device_id', '')
-            s_type = sensor.get('sensor_type', '')
-            s_status = sensor.get('status', 'normal')
-            s_detail = sensor.get('detail', '')
+        # 2. 센서 raw값 수신 → 서버 직접 판별 → 알람 생성
+        classified_sensors = []
 
-            alarm = create_sensor_alarm(s_id, s_type, s_status, s_detail)
+        for sensor in sensors:
+            s_id   = sensor.get('device_id', '')
+            s_type = sensor.get('sensor_type', '')
+            gas    = sensor.get('gas')
+            power  = sensor.get('power')
+
+            alarm = create_sensor_alarm(s_id, s_type, gas=gas, power=power)
             if alarm:
                 all_alarms.append(alarm)
+                classified_sensors.append({
+                    'device_id':   s_id,
+                    'sensor_type': s_type,
+                    'status':      alarm['status'],
+                })
 
-        # 3. 복합 위험 판별
-        danger_sensors = [s for s in sensors if s.get('status') in ('danger', 'caution')]
+        # 3. 복합 위험 판별 (위치 조건 AND 데이터 조건)
+        danger_sensors = [s for s in classified_sensors if s['status'] in ('danger', 'caution')]
 
         if workers_in_fences and danger_sensors:
             for wf in workers_in_fences:
@@ -142,6 +149,8 @@ class CheckGeofenceView(APIView):
                         all_alarms.append(combined)
                     except GeoFence.DoesNotExist:
                         pass
+
+
 
         return Response({
             "alarms": all_alarms,

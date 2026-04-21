@@ -47,8 +47,17 @@ window.ZONE_COLORS   = { danger: '#e74c3c', caution: '#f1c40f', restricted: '#9b
 window.SENSOR_COLORS  = { gas: '#e74c3c', power: '#f39c12', temperature: '#3498db', motion: '#2ecc71' };
 window.SENSOR_ICONS   = { gas: '💨', power: '⚡', temperature: '🌡️', motion: '🔊' };
 
-// ─── 임계치 ───
-var GAS_TH = { co: { w: 25, d: 200 }, h2s: { w: 1, d: 5 }, co2: { w: 1000, d: 5000 } };
+// ─── 임계치 — 9종 가스 (실제 센서 스펙 기준) ───
+var GAS_TH = {
+  co:  { w: 25,   d: 200  },
+  h2s: { w: 10,   d: 15   },
+  co2: { w: 1000, d: 5000 },
+  no2: { w: 3,    d: 5    },
+  so2: { w: 2,    d: 5    },
+  o3:  { w: 0.06, d: 0.12 },
+  nh3: { w: 25,   d: 35   },
+  voc: { w: 0.5,  d: 1.0  },
+};
 
 function classifyGas(g) {
   var worst = 'normal';
@@ -104,7 +113,7 @@ async function checkGeofence(sensorList) {
       method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken() },
       body: JSON.stringify({
         workers: WORKERS.map(function (w) { return { worker_id: w.worker_id, name: w.name, x: Math.round(w.x), y: Math.round(w.y) }; }),
-        sensors: sensorList.filter(function (s) { return s.status !== 'normal'; }).map(function (s) { return { device_id: s.device_id, sensor_type: s.sensor_type, status: s.status, detail: s.detail || '' }; }),
+        sensors: sensorList.map(function (s) { return { device_id: s.device_id, sensor_type: s.sensor_type, gas: s.gas || null, power: s.power || null }; }),
       }),
     });
     if (!res.ok) return;
