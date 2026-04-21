@@ -1,5 +1,71 @@
-/* section_11_workers.css — ⑪ 작업자 현황 */
-#section-11-workers .worker-chart-area { display: flex; align-items: center; gap: 16px; padding: 8px 0; }
-#section-11-workers .worker-chart-area canvas { width: 100px; height: 100px; }
-#section-11-workers .worker-legend { font-size: 11px; line-height: 2; }
-.legend-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 5px; }
+/* section_11_workers.css — ⑪ 작업자 현황 (실시간 지오펜스 연동) */
+
+/* 차트 + 범례 레이아웃 */
+#section-11-workers .worker-chart-area {
+  display: flex; align-items: center; gap: 14px; padding: 6px 0 10px;
+}
+
+/* 도넛 래퍼 (중앙 총원 표시) */
+.donut-wrapper {
+  position: relative; width: 90px; height: 90px; flex-shrink: 0;
+}
+.donut-wrapper canvas { width: 90px !important; height: 90px !important; }
+.donut-center {
+  position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+  text-align: center; pointer-events: none;
+}
+.donut-center-num { display: block; font-size: 18px; font-weight: 800; color: #fff; line-height: 1; }
+.donut-center-label { font-size: 9px; color: var(--text-dim); letter-spacing: 1px; }
+
+/* 범례 */
+.worker-legend { flex: 1; }
+.legend-row {
+  display: flex; align-items: center; gap: 6px;
+  padding: 3px 0; font-size: 11px;
+}
+.legend-dot {
+  width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+}
+.legend-dot.normal  { background: var(--color-normal); }
+.legend-dot.caution { background: var(--color-caution); }
+.legend-dot.danger  { background: var(--color-danger); }
+.legend-label { color: var(--text-muted); width: 24px; }
+.legend-count { color: #fff; font-size: 13px; min-width: 14px; text-align: right; }
+.legend-unit  { color: var(--text-dim); font-size: 10px; }
+
+/* 작업자 개별 상태 목록 */
+#worker-status-list {
+  max-height: 130px; overflow-y: auto;
+  border-top: 1px solid var(--border); padding-top: 8px; margin-top: 2px;
+}
+.worker-row {
+  display: flex; align-items: center; gap: 8px;
+  padding: 4px 6px; border-radius: 5px; margin-bottom: 3px;
+  transition: background 0.3s;
+}
+.worker-row.status-normal  { background: transparent; }
+.worker-row.status-caution { background: #f1c40f0a; }
+.worker-row.status-danger  { background: #e74c3c12; }
+.worker-row .worker-icon {
+  width: 22px; height: 22px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px; flex-shrink: 0;
+  border: 1.5px solid;
+}
+.worker-row.status-normal  .worker-icon { border-color: var(--color-normal);  background: #2ecc7115; }
+.worker-row.status-caution .worker-icon { border-color: var(--color-caution); background: #f1c40f15; }
+.worker-row.status-danger  .worker-icon { border-color: var(--color-danger);  background: #e74c3c15; }
+.worker-row .worker-name {
+  flex: 1; font-size: 11px; color: var(--text); white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis;
+}
+.worker-row .worker-dept {
+  font-size: 9px; color: var(--text-dim); white-space: nowrap;
+}
+.worker-row .worker-zone-badge {
+  padding: 1px 6px; border-radius: 3px; font-size: 9px; font-weight: 600;
+  flex-shrink: 0;
+}
+.worker-zone-badge.zone-normal  { background: #2ecc7118; color: var(--color-normal); }
+.worker-zone-badge.zone-caution { background: #f1c40f18; color: var(--color-caution); }
+.worker-zone-badge.zone-danger  { background: #e74c3c18; color: var(--color-danger); }
