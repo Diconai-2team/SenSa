@@ -81,28 +81,16 @@ window.ZONE_COLORS   = { danger: '#e74c3c', caution: '#f1c40f', restricted: '#9b
 window.SENSOR_COLORS  = { gas: '#e74c3c', power: '#f39c12', temperature: '#3498db', motion: '#2ecc71' };
 window.SENSOR_ICONS   = { gas: '💨', power: '⚡', temperature: '🌡️', motion: '🔊' };
 
-// ════════════════════════════════════════
-// 임계치 — 9종 가스
-// ════════════════════════════════════════
-// 근거:
-//   CO  — ACGIH TWA 25ppm, NIOSH Ceiling 200ppm
-//   H2S — KOSHA 적정공기 10ppm 미만, NIOSH IDLH 50ppm
-//   CO2 — 실내공기질 1,000ppm, TWA 5,000ppm
-//   NO2 — 고용노동부고시 TWA 3ppm, STEL 5ppm
-//   SO2 — 고용노동부고시 TWA 2ppm, STEL 5ppm
-//   O3  — ACGIH TLV-TWA 0.05ppm (경작업), 0.1ppm (중작업)
-//   NH3 — ACGIH TWA 25ppm, STEL 35ppm
-//   VOC — TVOC 실내공기질 기준 (단일 법적 기준 없음)
-//   O2  — 양쪽 임계이므로 classifyGas에서 별도 처리
+// ─── 임계치 — 9종 가스 (실제 센서 스펙 기준) ───
 var GAS_TH = {
-  co:  { w: 25,   d: 200  },   // 일산화탄소 (ppm)
-  h2s: { w: 10,   d: 50   },   // 황화수소 (ppm)
-  co2: { w: 1000, d: 5000 },   // 이산화탄소 (ppm)
-  no2: { w: 3,    d: 5    },   // 이산화질소 (ppm)
-  so2: { w: 2,    d: 5    },   // 이산화황 (ppm)
-  o3:  { w: 0.05, d: 0.1  },   // 오존 (ppm)
-  nh3: { w: 25,   d: 50   },   // 암모니아 (ppm)
-  voc: { w: 0.5,  d: 2.0  },   // 휘발성유기화합물 (ppm)
+  co:  { w: 25,   d: 200  },
+  h2s: { w: 10,   d: 15   },
+  co2: { w: 1000, d: 5000 },
+  no2: { w: 3,    d: 5    },
+  so2: { w: 2,    d: 5    },
+  o3:  { w: 0.06, d: 0.12 },
+  nh3: { w: 25,   d: 35   },
+  voc: { w: 0.5,  d: 1.0  },
 };
 
 // ════════════════════════════════════════
@@ -154,41 +142,33 @@ function gauss(c, s, mn, mx) {
 // ════════════════════════════════════════
 function genGas(tick, mode) {
   var g = {
-    co:  gauss(12,    3,     0, 500),
-    h2s: gauss(2,     1,     0, 100),     // 정상 중심값 2ppm (w:10 대비 안전)
-    co2: gauss(600,   80,    300, 10000),
-    o2:  gauss(20.9,  0.2,   10, 25),
-    no2: gauss(0.04,  0.01,  0, 5),
-    so2: gauss(0.2,   0.05,  0, 10),
-    o3:  gauss(0.02,  0.005, 0, 0.5),
-    nh3: gauss(8,     2,     0, 100),
-    voc: gauss(0.15,  0.03,  0, 5),
+    co:  gauss(12,   3,    0,   500),
+    h2s: gauss(5,    2,    0,   20),
+    co2: gauss(600,  80,   300, 10000),
+    o2:  gauss(20.9, 0.2,  15,  25),
+    no2: gauss(1.5,  0.5,  0,   10),
+    so2: gauss(1.0,  0.3,  0,   10),
+    o3:  gauss(0.03, 0.01, 0,   0.5),
+    nh3: gauss(10,   3,    0,   100),
+    voc: gauss(0.3,  0.1,  0,   5),
   };
-
   if (mode === 'mixed') {
-    if (tick % 30 === 0 && tick) g.co = 30 + Math.random() * 50;
-    if (tick % 60 === 0 && tick) g.h2s = 12 + Math.random() * 15;   // 12~27ppm → w:10 주의 구간
-    if (tick % 45 === 0 && tick) g.o2 = 16 + Math.random() * 2;     // 16~18% → 주의 구간
-    if (Math.random() < 0.05) g.voc = 0.6 + Math.random() * 1.0;
-    if (tick % 90 === 0 && tick) g.nh3 = 30 + Math.random() * 25;
+    if (tick % 30 === 0 && tick) g.co  = 30 + Math.random() * 50;
+    if (tick % 60 === 0 && tick) g.h2s = 11 + Math.random() * 5;
+    if (tick % 45 === 0 && tick) g.o2  = 17 + Math.random() * 2;
   } else if (mode === 'danger') {
     g.co  = 200 + Math.random() * 150;
-    g.h2s = 50 + Math.random() * 30;     // 50~80ppm → d:50 위험 구간
+    g.h2s = 15  + Math.random() * 10;
     g.co2 = 5000 + Math.random() * 3000;
-    g.o2  = 12 + Math.random() * 4;      // 12~16% → <16 위험 구간
-    g.no2 = 1.0 + Math.random() * 2;
-    g.voc = 2.0 + Math.random() * 2;
+    g.o2  = 15  + Math.random() * 2;
+    g.no2 = 5   + Math.random() * 3;
+    g.nh3 = 35  + Math.random() * 10;
   }
-
   return {
-    co:  +g.co.toFixed(2),
-    h2s: +g.h2s.toFixed(2),
-    co2: +g.co2.toFixed(1),
-    o2:  +g.o2.toFixed(1),
-    no2: +g.no2.toFixed(3),
-    so2: +g.so2.toFixed(2),
-    o3:  +g.o3.toFixed(3),
-    nh3: +g.nh3.toFixed(1),
+    co:  +g.co.toFixed(2),  h2s: +g.h2s.toFixed(2),
+    co2: +g.co2.toFixed(1), o2:  +g.o2.toFixed(1),
+    no2: +g.no2.toFixed(3), so2: +g.so2.toFixed(2),
+    o3:  +g.o3.toFixed(3),  nh3: +g.nh3.toFixed(1),
     voc: +g.voc.toFixed(2),
   };
 }
@@ -220,7 +200,7 @@ async function checkGeofence(sensorList) {
       method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken() },
       body: JSON.stringify({
         workers: WORKERS.map(function (w) { return { worker_id: w.worker_id, name: w.name, x: Math.round(w.x), y: Math.round(w.y) }; }),
-        sensors: sensorList.filter(function (s) { return s.status !== 'normal'; }).map(function (s) { return { device_id: s.device_id, sensor_type: s.sensor_type, status: s.status, detail: s.detail || '' }; }),
+        sensors: sensorList.map(function (s) { return { device_id: s.device_id, sensor_type: s.sensor_type, gas: s.gas || null, power: s.power || null }; }),
       }),
     });
     if (!res.ok) return;

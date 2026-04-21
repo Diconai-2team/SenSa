@@ -8,22 +8,25 @@
  */
 (function () {
 
-  // ─── 임계치 (테이블 배지용) ───
-  // 근거: 고용노동부고시 (화학물질 및 물리적 인자의 노출기준)
-  var TH = {
-    co:  { w: 25,   d: 200  },   // ACGIH TWA 25ppm, NIOSH C 200ppm
-    h2s: { w: 10,   d: 50   },   // KOSHA 적정공기 10ppm, IDLH 50ppm
-    co2: { w: 1000, d: 5000 },   // 실내공기질 1,000ppm, TWA 5,000ppm
-    no2: { w: 3,    d: 5    },   // 고용노동부 TWA 3ppm, STEL 5ppm
-    so2: { w: 2,    d: 5    },   // 고용노동부 TWA 2ppm, STEL 5ppm
-    o3:  { w: 0.05, d: 0.1  },   // ACGIH TLV 0.05~0.1ppm
-    nh3: { w: 25,   d: 50   },   // ACGIH TWA 25ppm, STEL 35ppm
-    voc: { w: 0.5,  d: 2.0  },   // TVOC 실내기준
-  };
-  var LABELS = { normal: '정상', caution: '주의', danger: '위험' };
+// ─── 임계치 (실제 센서 스펙 기준) ───
+var TH = {
+  co:  { w: 25,   d: 200  },
+  h2s: { w: 10,   d: 15   },
+  co2: { w: 1000, d: 5000 },
+  no2: { w: 3,    d: 5    },
+  so2: { w: 2,    d: 5    },
+  o3:  { w: 0.06, d: 0.12 },
+  nh3: { w: 25,   d: 35   },
+  voc: { w: 0.5,  d: 1.0  },
+};
+var LABELS = { normal: '정상', caution: '주의', danger: '위험' };
 
-  // 9종 가스 키 목록
-  var GAS_KEYS = ['o2', 'co', 'co2', 'h2s', 'no2', 'so2', 'o3', 'nh3', 'voc'];
+function gasFieldStatus(key, val) {
+  if (val === undefined || val === null) return 'normal';
+  if (key === 'o2') return val < 16 ? 'danger' : val < 18 ? 'caution' : 'normal';
+  var t = TH[key]; if (!t) return 'normal';
+  return val >= t.d ? 'danger' : val >= t.w ? 'caution' : 'normal';
+}
 
   // ─── 개별 가스 상태 판별 ───
   // O2는 양쪽 임계 (저산소=질식, 고산소=화재), 나머지는 단방향
@@ -51,32 +54,13 @@
     });
   });
 
-  // ─── gasData 이벤트 수신 → 테이블 + 차트 갱신 ───
-  SenSa.on('gasData', function (d) {
-    if (d.device_id !== primaryGas) return;
-    var gas = d.gas;
-
-    // 9종 모두 순회
-    GAS_KEYS.forEach(function (k) {
-      var el = document.getElementById('val-' + k);
-      if (el && gas[k] !== undefined) el.textContent = gas[k];
-
-      var badge = document.getElementById('badge-' + k);
-      if (badge && gas[k] !== undefined) {
-        var s = gasFieldStatus(k, gas[k]);
-        badge.className = 'status-badge status-' + s;
-        badge.textContent = LABELS[s];
-
-        // 해당 행(<tr>)에도 위험도 클래스 적용
-        var tr = badge.closest('tr');
-        if (tr) {
-          tr.classList.remove('row-normal', 'row-caution', 'row-danger');
-          tr.classList.add('row-' + s);
-        }
-      }
-    });
-
-    pushChart(gas);
+SenSa.on('gasData', function (d) {
+  if (d.device_id !== primaryGas) return;
+  var gas = d.gas;
+  ['o2', 'co', 'co2', 'h2s', 'no2', 'so2', 'o3', 'nh3', 'voc'].forEach(function (k) {
+    var el = document.getElementById('val-' + k); if (el) el.textContent = gas[k];
+    var badge = document.getElementById('badge-' + k);
+    if (badge) { var s = gasFieldStatus(k, gas[k]); badge.className = 'status-badge status-' + s; badge.textContent = LABELS[s]; }
   });
 
   // ─── ⑬ 차트 (CO 중심) ───
