@@ -13,14 +13,15 @@ from rest_framework.views import APIView
 from .models import Device, SensorData
 from .serializers import DeviceSerializer
 from realtime.publishers import publish_sensor_update
-
+from django.utils.decorators import method_decorator
+from django.views.decorators.csrf import csrf_exempt
 
 class DeviceViewSet(viewsets.ModelViewSet):
     """센서 장비 CRUD API"""
     queryset = Device.objects.filter(is_active=True)
     serializer_class = DeviceSerializer
 
-
+@method_decorator(csrf_exempt, name='dispatch')
 class SensorDataView(APIView):
     """
     센서 데이터 히스토리 API

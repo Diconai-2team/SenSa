@@ -14,6 +14,8 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.parsers import MultiPartParser, FormParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from django.utils.decorators import method_decorator
+from django.views.decorators.csrf import csrf_exempt
 
 from geofence.models import GeoFence
 from alerts.services import (
@@ -73,7 +75,7 @@ class MapImageViewSet(viewsets.ModelViewSet):
             status=status.HTTP_404_NOT_FOUND
         )
 
-
+@method_decorator(csrf_exempt, name='dispatch')
 class CheckGeofenceView(APIView):
     """
     지오펜스 내부 판별 + 센서 이상 + 복합 위험 알람 생성

@@ -61,6 +61,7 @@ MIDDLEWARE = [
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
+    'mysite.middleware.InternalAPIKeyMiddleware',    # ← 추가 (Auth 뒤)
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
@@ -193,3 +194,17 @@ CHANNEL_LAYERS = {
         },
     },
 }
+
+# ==========================================================
+# 내부 서비스 간 인증 (FastAPI 데이터 생성기용)
+# Phase E에서 추가. FastAPI가 /dashboard/api/* 의 일부 경로를
+# 내부 API 키로 인증하여 호출할 수 있게 함.
+# ==========================================================
+INTERNAL_API_KEY = os.getenv('INTERNAL_API_KEY', '')
+
+# 내부 키로 인증 가능한 경로 프리픽스 (세션 인증 우회 허용)
+INTERNAL_API_ALLOWED_PATHS = [
+    '/dashboard/api/sensor-data/',
+    '/dashboard/api/worker-location/',
+    '/dashboard/api/check-geofence/',
+]
