@@ -1,8 +1,16 @@
 """
 alerts/services.py
 알람 생성 로직 — 지오펜스 진입, 센서 이상, 복합 위험 알람 생성
+
+변경점 (v2):
+  - _find_sensor_geofence: Device.geofence FK 우선 사용 (좌표 fallback 유지)
+  - latest_worker_locations: 각 worker의 최신 위치 조회 헬퍼 추가
+  - workers_inside_geofence: 지오펜스 내부 worker 목록
+  - create_sensor_alarm: 지오펜스 내 worker에게 자동으로 combined 알람 전파
 """
 import time
+from django.db.models import Subquery, OuterRef
+
 from geofence.models import GeoFence
 from geofence.services import point_in_polygon
 from .models import Alarm
@@ -62,20 +70,6 @@ def classify_gas(gas: dict) -> str:
     return worst
 
 
-def _find_sensor_geofence(device_id: str):
-    """센서 device_id로 Device.x/y 조회 → 속한 지오펜스 반환. 없으면 None."""
-    try:
-        from devices.models import Device  # 순환 import 방지
-        device = Device.objects.get(device_id=device_id)
-    except Exception:
-        return None
-    for fence in GeoFence.objects.filter(is_active=True):
-        if fence.polygon and len(fence.polygon) >= 3:
-            if point_in_polygon(device.x, device.y, fence.polygon):
-                return fence
-    return None
-
-
 def classify_power(power: dict) -> str:
     cur = float(power.get('current', 0))
     vol = float(power.get('voltage', 220))
@@ -87,11 +81,86 @@ def classify_power(power: dict) -> str:
     return 'normal'
 
 
+# ─────────────────────────────────────────────────────────
+# 센서 → 지오펜스 매핑
+# v2: Device.geofence FK 우선 사용 (좌표 계산 불필요)
+#     FK가 null인 경우에만 좌표 기반 fallback
+# ─────────────────────────────────────────────────────────
+def _find_sensor_geofence(device_id: str):
+    """센서 device_id로 속한 지오펜스 반환. 없으면 None."""
+    try:
+        from devices.models import Device  # 순환 import 방지
+        device = Device.objects.select_related('geofence').get(device_id=device_id)
+    except Exception:
+        return None
+
+    # 1순위: 명시적으로 지정된 FK
+    if device.geofence and device.geofence.is_active:
+        return device.geofence
+
+    # 2순위 (fallback): 좌표 기반 자동 판정 (FK 미지정 센서용)
+    for fence in GeoFence.objects.filter(is_active=True):
+        if fence.polygon and len(fence.polygon) >= 3:
+            if point_in_polygon(device.x, device.y, fence.polygon):
+                return fence
+    return None
+
+
+# ─────────────────────────────────────────────────────────
+# Worker 위치 헬퍼
+# ─────────────────────────────────────────────────────────
+def latest_worker_locations():
+    """
+    각 활성 worker의 최신 WorkerLocation을 (worker, x, y)로 yield.
+    WorkerLocation은 1초마다 쌓이므로 worker별 최신 1건만 필요.
+    """
+    from workers.models import Worker, WorkerLocation  # 순환 import 방지
+
+    latest_loc_sq = WorkerLocation.objects.filter(
+        worker=OuterRef('pk')
+    ).order_by('-timestamp').values('id')[:1]
+
+    workers = Worker.objects.filter(is_active=True).annotate(
+        latest_loc_id=Subquery(latest_loc_sq)
+    )
+
+    loc_ids = [w.latest_loc_id for w in workers if w.latest_loc_id]
+    locations = {
+        loc.id: loc
+        for loc in WorkerLocation.objects.filter(id__in=loc_ids)
+    }
+
+    for w in workers:
+        loc = locations.get(w.latest_loc_id)
+        if loc:
+            yield w, loc.x, loc.y
+
+
+def workers_inside_geofence(geofence: GeoFence) -> list:
+    """
+    geofence polygon 내부에 최신 위치가 있는 worker 목록 반환.
+    각 원소: (worker, x, y) 튜플
+    """
+    if not geofence.polygon or len(geofence.polygon) < 3:
+        return []
+    result = []
+    for worker, x, y in latest_worker_locations():
+        if point_in_polygon(x, y, geofence.polygon):
+            result.append((worker, x, y))
+    return result
+
+
+# ─────────────────────────────────────────────────────────
+# 지오펜스 진입 알람 (기존 유지)
+# ─────────────────────────────────────────────────────────
 def check_worker_in_geofences(worker_id: str, worker_name: str,
                                x: float, y: float) -> list:
     """
     작업자 좌표(x, y)가 어떤 지오펜스 안에 있는지 확인.
-    진입이 감지된 지오펜스마다 알람을 생성하고 목록으로 반환.
+
+    v3 수정: 쿨다운이 결과 목록 자체를 막던 버그 수정.
+      - worker가 지오펜스 안에 있다는 "사실"은 항상 results에 포함 (combined 매칭용)
+      - "Alarm 레코드 생성"만 30초 쿨다운 적용
     """
     results = []
     fences = GeoFence.objects.filter(is_active=True)
@@ -100,14 +169,24 @@ def check_worker_in_geofences(worker_id: str, worker_name: str,
         if not fence.polygon or len(fence.polygon) < 3:
             continue
 
-        if point_in_polygon(x, y, fence.polygon):
-            level = _zone_to_alarm_level(fence.zone_type)
-            msg = f"{worker_name}이(가) [{fence.name}]에 진입했습니다. (zone: {fence.zone_type})"
+        if not point_in_polygon(x, y, fence.polygon):
+            continue
 
-            key = f"geofence_enter-{worker_id}-{fence.id}"
-            if _is_duplicate(key):
-                continue
+        level = _zone_to_alarm_level(fence.zone_type)
+        msg = f"{worker_name}이(가) [{fence.name}]에 진입했습니다. (zone: {fence.zone_type})"
 
+        entry = {
+            "geofence_id": fence.id,
+            "geofence_name": fence.name,
+            "zone_type": fence.zone_type,
+            "alarm_level": level,
+            "message": msg,
+        }
+
+        # Alarm 레코드 생성만 쿨다운 적용 (중복 알림 방지)
+        # workers_in_fences 매칭 용도의 "있다는 사실"은 항상 반환
+        key = f"geofence_enter-{worker_id}-{fence.id}"
+        if not _is_duplicate(key):
             alarm = Alarm.objects.create(
                 alarm_type='geofence_enter',
                 alarm_level=level,
@@ -118,39 +197,34 @@ def check_worker_in_geofences(worker_id: str, worker_name: str,
                 geofence=fence,
                 message=msg,
             )
+            entry["alarm_id"] = alarm.id
 
-            results.append({
-                "geofence_id": fence.id,
-                "geofence_name": fence.name,
-                "zone_type": fence.zone_type,
-                "alarm_id": alarm.id,
-                "alarm_level": level,
-                "message": msg,
-            })
+        results.append(entry)
 
     return results
 
 
+# ─────────────────────────────────────────────────────────
+# 센서 알람 + worker 전파 (핵심 변경)
+# ─────────────────────────────────────────────────────────
 def create_sensor_alarm(device_id: str, sensor_type: str,
                         gas: dict = None, power: dict = None) -> dict | None:
     """
     raw 센서값을 받아 서버가 직접 임계치 판별 후 알람 생성.
     normal이면 None 반환.
+
+    v2 추가:
+      센서가 속한 지오펜스 내에 worker가 있으면
+      → 각 worker에게 별도의 combined 알람도 생성
     """
     if sensor_type == 'gas' and gas:
         status = classify_gas(gas)
         detail = ', '.join(f"{k.upper()}:{v}" for k, v in gas.items() if v is not None)
     elif sensor_type == 'power' and power:
-        # 전력은 1단계 단순 비교 (4차에서 평균 기반으로 확장)
+        status = classify_power(power)
         cur = float(power.get('current', 0))
         vol = float(power.get('voltage', 220))
         wat = float(power.get('watt', 0))
-        if cur >= 25 or wat >= 4500 or vol < 200 or vol > 240:
-            status = 'danger'
-        elif cur >= 15 or wat >= 3000 or vol < 210 or vol > 230:
-            status = 'caution'
-        else:
-            status = 'normal'
         detail = f"전류:{cur}A 전압:{vol}V 전력:{wat}W"
     else:
         return None
@@ -168,6 +242,7 @@ def create_sensor_alarm(device_id: str, sensor_type: str,
 
     fence = _find_sensor_geofence(device_id)
 
+    # 1) 센서 단독 알람 (항상 1건 생성)
     alarm = Alarm.objects.create(
         alarm_type=alarm_type,
         alarm_level=alarm_level,
@@ -177,6 +252,22 @@ def create_sensor_alarm(device_id: str, sensor_type: str,
         message=msg,
     )
 
+    # 2) 지오펜스 안에 worker가 있으면 각자에게 combined 알람 전파
+    propagated = []
+    if fence is not None:
+        for worker, wx, wy in workers_inside_geofence(fence):
+            combined = create_combined_alarm(
+                worker_id=worker.worker_id,
+                worker_name=worker.name,
+                geofence=fence,
+                device_id=device_id,
+                sensor_status=status,
+                worker_x=wx,
+                worker_y=wy,
+            )
+            if combined:
+                propagated.append(combined)
+
     return {
         "alarm_id": alarm.id,
         "alarm_level": alarm_level,
@@ -184,12 +275,15 @@ def create_sensor_alarm(device_id: str, sensor_type: str,
         "status": status,
         "geofence_id": fence.id if fence else None,
         "message": msg,
+        "propagated_to_workers": propagated,   # 전파된 combined 알람 목록
     }
 
 
 def create_combined_alarm(worker_id: str, worker_name: str,
                           geofence: GeoFence, device_id: str,
-                          sensor_status: str) -> dict:
+                          sensor_status: str,
+                          worker_x: float = None,
+                          worker_y: float = None) -> dict:
     """
     작업자가 지오펜스 안에 있는데 + 해당 구역 센서도 위험 수치일 때.
     가장 높은 수준의 알람(critical) 생성.
@@ -208,6 +302,8 @@ def create_combined_alarm(worker_id: str, worker_name: str,
         alarm_level='critical',
         worker_id=worker_id,
         worker_name=worker_name,
+        worker_x=worker_x,
+        worker_y=worker_y,
         geofence=geofence,
         device_id=device_id,
         message=msg,
@@ -217,6 +313,8 @@ def create_combined_alarm(worker_id: str, worker_name: str,
         "alarm_id": alarm.id,
         "alarm_level": "critical",
         "alarm_type": "combined",
+        "worker_id": worker_id,
+        "worker_name": worker_name,
         "message": msg,
     }
 

@@ -27,6 +27,19 @@ class Device(models.Model):
     last_value_unit = models.CharField(max_length=20, blank=True, default='')
     is_active       = models.BooleanField(default=True)
 
+    # ── 신규: 소속 지오펜스 ──
+    # null=True → 지오펜스에 속하지 않은 센서도 허용 (바깥 공용 구역 등)
+    # on_delete=SET_NULL → 지오펜스 삭제해도 센서는 남음 (센서 자체는 물리적으로 존재)
+    # related_name='devices' → geofence.devices.all() 로 역참조
+    # 앱 간 참조는 문자열 'geofence.GeoFence' 사용 (순환 import 방지)
+    geofence = models.ForeignKey(
+        'geofence.GeoFence',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='devices',
+        help_text='이 센서가 속한 지오펜스 (없으면 공용 구역)'
+    )
+    
     class Meta:
         ordering = ['device_id']
 
