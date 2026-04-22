@@ -208,3 +208,6 @@ INTERNAL_API_ALLOWED_PATHS = [
     '/dashboard/api/worker-location/',
     '/dashboard/api/check-geofence/',
 ]
+
+ALARM_RE_ALARM_INTERVAL_SEC = 60   # 상태 지속 시 재알림 주기
+ALARM_RECOVERY_CONFIRM_TICKS = 3   # 회복 전이에 필요한 연속 관측 횟수 (3 = 약 3초)
