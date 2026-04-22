@@ -81,7 +81,7 @@ def classify_gas(gas: dict) -> str:
 _POWER_RATED_RATIO   = 1.5
 _POWER_CAUTION_MULT  = _POWER_RATED_RATIO * 1.1   # 1.65
 _POWER_DANGER_MULT   = _POWER_RATED_RATIO * 1.5   # 2.25
-_POWER_MIN_SAMPLES   = 1440                        # 동적 판정 최소 샘플 (1분 × 1440 = 24시간)
+_POWER_MIN_SAMPLES   = 180                         # 동적 판정 최소 샘플 (테스트: 1초×180=3분 / 운영: 1440=24시간)
 
 
 def _get_24h_avg_watt(device_id: str) -> float | None:

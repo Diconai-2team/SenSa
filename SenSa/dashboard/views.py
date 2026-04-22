@@ -31,7 +31,7 @@ from .serializers import MapImageSerializer
 
 # 센서별 마지막 저장 시각 (메모리) — 1분 주기 제어용
 _last_saved: dict[str, float] = {}
-_SAVE_INTERVAL = 60  # 초
+_SAVE_INTERVAL = 1   # 초 (테스트: 1초 / 운영: 60)
 
 
 # ============================================================
