@@ -8,8 +8,12 @@ alerts/services.py
   - workers_inside_geofence: 지오펜스 내부 worker 목록
   - create_sensor_alarm: 지오펜스 내 worker에게 자동으로 combined 알람 전파
 """
+import statistics
 import time
+from datetime import timedelta
+
 from django.db.models import Subquery, OuterRef
+from django.utils import timezone
 
 from geofence.models import GeoFence
 from geofence.services import point_in_polygon
@@ -70,13 +74,68 @@ def classify_gas(gas: dict) -> str:
     return worst
 
 
-def classify_power(power: dict) -> str:
-    cur = float(power.get('current', 0))
-    vol = float(power.get('voltage', 220))
-    wat = float(power.get('watt', 0))
-    if cur >= 25 or wat >= 4500 or vol < 200 or vol > 240:
+# 전력 동적 임계치 계수
+# 산업용 설비 기준: 정격 = 평상시 평균 × 1.5배 여유
+# 과부하 주의: 정격 × 1.1 = 평균 × 1.65
+# 과부하 위험: 정격 × 1.5 = 평균 × 2.25
+_POWER_RATED_RATIO   = 1.5
+_POWER_CAUTION_MULT  = _POWER_RATED_RATIO * 1.1   # 1.65
+_POWER_DANGER_MULT   = _POWER_RATED_RATIO * 1.5   # 2.25
+_POWER_MIN_SAMPLES   = 30                          # 동적 판정 최소 샘플
+
+
+def _get_24h_avg_watt(device_id: str) -> float | None:
+    """
+    최근 24시간 전력(watt) 측정값의 중앙값 반환.
+    중앙값 사용 이유: 기동전류(정격의 5~8배) 같은 순간 스파이크에 강건함.
+    샘플이 부족하면 None 반환 → 고정 임계치 fallback.
+    """
+    from devices.models import SensorData
+    cutoff = timezone.now() - timedelta(hours=24)
+    values = list(
+        SensorData.objects.filter(
+            device__device_id=device_id,
+            timestamp__gte=cutoff,
+            watt__isnull=False,
+        ).values_list('watt', flat=True)
+    )
+    if len(values) < _POWER_MIN_SAMPLES:
+        return None
+    return statistics.median(values)
+
+
+def classify_power(power: dict, device_id: str = '') -> str:
+    """
+    전력 측정값 동적 임계치 분류.
+
+    1순위: 최근 24시간 중앙값 기반 동적 판정
+      - 평균 × 1.65 초과 → caution (정격의 1.1배 초과)
+      - 평균 × 2.25 초과 → danger  (정격의 1.5배 초과)
+    2순위(fallback): 고정 임계치 (초기 데이터 부족 시)
+    전압 이상(200V 미만 / 240V 초과)은 항상 위험으로 고정.
+    """
+    watt = float(power.get('watt', 0))
+    vol  = float(power.get('voltage', 220))
+    cur  = float(power.get('current', 0))
+
+    # 전압 이상 — 설비 안전 기준, 항상 고정
+    if vol < 200 or vol > 240:
         return 'danger'
-    if cur >= 15 or wat >= 3000 or vol < 210 or vol > 230:
+
+    # 동적 판정 (24시간 누적 데이터 있을 때)
+    if device_id:
+        avg = _get_24h_avg_watt(device_id)
+        if avg and avg > 0:
+            if watt > avg * _POWER_DANGER_MULT:
+                return 'danger'
+            if watt > avg * _POWER_CAUTION_MULT:
+                return 'caution'
+            return 'normal'
+
+    # fallback — 고정 임계치
+    if cur >= 25 or watt >= 4500:
+        return 'danger'
+    if cur >= 15 or watt >= 3000:
         return 'caution'
     return 'normal'
 
@@ -221,7 +280,7 @@ def create_sensor_alarm(device_id: str, sensor_type: str,
         status = classify_gas(gas)
         detail = ', '.join(f"{k.upper()}:{v}" for k, v in gas.items() if v is not None)
     elif sensor_type == 'power' and power:
-        status = classify_power(power)
+        status = classify_power(power, device_id)
         cur = float(power.get('current', 0))
         vol = float(power.get('voltage', 220))
         wat = float(power.get('watt', 0))

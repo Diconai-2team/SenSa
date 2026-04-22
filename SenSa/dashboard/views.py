@@ -127,14 +127,14 @@ class CheckGeofenceView(APIView):
             if s_type == 'gas' and gas:
                 sensor_status = classify_gas(gas)
             elif s_type == 'power' and power:
-                sensor_status = classify_power(power)
+                sensor_status = classify_power(power, s_id)
             else:
                 sensor_status = 'normal'
 
-            # SensorData DB 저장 (가스 센서만, 매 틱 기록)
-            if s_type == 'gas' and gas:
-                try:
-                    device = Device.objects.get(device_id=s_id)
+            # SensorData DB 저장 (매 틱 기록)
+            try:
+                device = Device.objects.get(device_id=s_id)
+                if s_type == 'gas' and gas:
                     SensorData.objects.create(
                         device=device,
                         co=gas.get('co'),   h2s=gas.get('h2s'), co2=gas.get('co2'),
@@ -142,8 +142,16 @@ class CheckGeofenceView(APIView):
                         o3=gas.get('o3'),   nh3=gas.get('nh3'), voc=gas.get('voc'),
                         status=sensor_status,
                     )
-                except Device.DoesNotExist:
-                    pass
+                elif s_type == 'power' and power:
+                    SensorData.objects.create(
+                        device=device,
+                        current=power.get('current'),
+                        voltage=power.get('voltage'),
+                        watt=power.get('watt'),
+                        status=sensor_status,
+                    )
+            except Device.DoesNotExist:
+                pass
 
             # 응답용 (모든 센서, normal 포함)
             processed_sensors.append({

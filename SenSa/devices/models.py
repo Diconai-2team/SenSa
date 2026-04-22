@@ -60,6 +60,10 @@ class SensorData(models.Model):
     nh3         = models.FloatField(null=True, blank=True)
     voc         = models.FloatField(null=True, blank=True)
     temperature = models.FloatField(null=True, blank=True)
+    # 전력 센서 필드
+    current     = models.FloatField(null=True, blank=True)  # 전류 (A)
+    voltage     = models.FloatField(null=True, blank=True)  # 전압 (V)
+    watt        = models.FloatField(null=True, blank=True)  # 전력 (W)
     status      = models.CharField(max_length=20, choices=STATUS_CHOICES, default='normal')
     timestamp   = models.DateTimeField(auto_now_add=True)
 
