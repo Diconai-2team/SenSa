@@ -8,6 +8,8 @@ monitor 앱 뷰
 from django.shortcuts import render
 from django.contrib.auth.decorators import login_required
 
+import time
+
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
@@ -26,6 +28,10 @@ from alerts.services import (
 from devices.models import Device, SensorData
 from .models import MapImage
 from .serializers import MapImageSerializer
+
+# 센서별 마지막 저장 시각 (메모리) — 1분 주기 제어용
+_last_saved: dict[str, float] = {}
+_SAVE_INTERVAL = 60  # 초
 
 
 # ============================================================
@@ -131,27 +137,30 @@ class CheckGeofenceView(APIView):
             else:
                 sensor_status = 'normal'
 
-            # SensorData DB 저장 (매 틱 기록)
-            try:
-                device = Device.objects.get(device_id=s_id)
-                if s_type == 'gas' and gas:
-                    SensorData.objects.create(
-                        device=device,
-                        co=gas.get('co'),   h2s=gas.get('h2s'), co2=gas.get('co2'),
-                        o2=gas.get('o2'),   no2=gas.get('no2'), so2=gas.get('so2'),
-                        o3=gas.get('o3'),   nh3=gas.get('nh3'), voc=gas.get('voc'),
-                        status=sensor_status,
-                    )
-                elif s_type == 'power' and power:
-                    SensorData.objects.create(
-                        device=device,
-                        current=power.get('current'),
-                        voltage=power.get('voltage'),
-                        watt=power.get('watt'),
-                        status=sensor_status,
-                    )
-            except Device.DoesNotExist:
-                pass
+            # SensorData DB 저장 — 1분 주기
+            now = time.time()
+            if now - _last_saved.get(s_id, 0) >= _SAVE_INTERVAL:
+                _last_saved[s_id] = now
+                try:
+                    device = Device.objects.get(device_id=s_id)
+                    if s_type == 'gas' and gas:
+                        SensorData.objects.create(
+                            device=device,
+                            co=gas.get('co'),   h2s=gas.get('h2s'), co2=gas.get('co2'),
+                            o2=gas.get('o2'),   no2=gas.get('no2'), so2=gas.get('so2'),
+                            o3=gas.get('o3'),   nh3=gas.get('nh3'), voc=gas.get('voc'),
+                            status=sensor_status,
+                        )
+                    elif s_type == 'power' and power:
+                        SensorData.objects.create(
+                            device=device,
+                            current=power.get('current'),
+                            voltage=power.get('voltage'),
+                            watt=power.get('watt'),
+                            status=sensor_status,
+                        )
+                except Device.DoesNotExist:
+                    pass
 
             # 응답용 (모든 센서, normal 포함)
             processed_sensors.append({
