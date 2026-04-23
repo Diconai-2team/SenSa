@@ -14,6 +14,7 @@ from rest_framework.response import Response
 
 from .models import Worker, WorkerLocation
 from .serializers import WorkerSerializer, WorkerLocationSerializer
+from realtime.publishers import publish_worker_position
 
 
 class WorkerViewSet(viewsets.ModelViewSet):
@@ -147,3 +148,28 @@ class WorkerLocationViewSet(viewsets.ModelViewSet):
             limit = 100
 
         return qs[:limit]
+    def perform_create(self, serializer):
+        """
+        POST /dashboard/api/worker-location/ 요청이 왔을 때
+        기본 동작: DB 저장
+        추가 동작: 저장 직후 WS로 현재 위치 push
+        
+        ModelViewSet.create()는 내부적으로 perform_create()를 호출함.
+        여기를 오버라이드하면 "저장 + push"를 자연스럽게 묶을 수 있음.
+        """
+        # 1) DB 저장 (기본 동작)
+        instance = serializer.save()
+        
+        # 2) WS push용 딕셔너리 구성
+        #    Worker FK로 연결돼 있으므로 instance.worker.worker_id로 접근
+        payload = {
+            "worker_id": instance.worker.worker_id,
+            "worker_name": instance.worker.name,
+            "x": instance.x,
+            "y": instance.y,
+            "movement_status": instance.movement_status,
+            "timestamp": instance.timestamp.isoformat(),
+        }
+        
+        # 3) 방송
+        publish_worker_position(payload)

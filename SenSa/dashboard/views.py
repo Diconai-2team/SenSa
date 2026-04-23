@@ -3,7 +3,7 @@ monitor 앱 뷰
 
 - map_view: 관제 지도 페이지 (Template)
 - MapImageViewSet: 공장 평면도 이미지 CRUD
-- CheckGeofenceView: 지오펜스 내부 판별 + 알람 생성 (타 앱 연동 오케스트레이터)
+- CheckGeofenceView: 상태 전이 기반 알람 오케스트레이터
 """
 from django.shortcuts import render
 from django.contrib.auth.decorators import login_required
@@ -14,16 +14,13 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.parsers import MultiPartParser, FormParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
-
-from geofence.models import GeoFence
-from alerts.services import (
-    check_worker_in_geofences,
-    create_sensor_alarm,
-    create_combined_alarm,
-)
+from django.utils.decorators import method_decorator
+from django.views.decorators.csrf import csrf_exempt
+from alerts.services import evaluate_worker, evaluate_sensor
 from .models import MapImage
 from .serializers import MapImageSerializer
-
+from realtime.publishers import publish_alarm
+import math
 
 # ============================================================
 # 페이지 뷰
@@ -40,12 +37,7 @@ def map_view(request):
 # ============================================================
 
 class MapImageViewSet(viewsets.ModelViewSet):
-    """
-    공장 평면도 이미지 CRUD
-
-    POST /monitor/api/map/         : 새 지도 업로드
-    GET  /monitor/api/map/current/ : 현재 활성 지도 조회
-    """
+    """공장 평면도 이미지 CRUD"""
     permission_classes = [IsAuthenticated]
     parser_classes = [MultiPartParser, FormParser]
     queryset = MapImage.objects.all()
@@ -57,7 +49,6 @@ class MapImageViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['get'])
     def current(self, request):
-        """현재 활성 지도 조회"""
         current_map = MapImage.objects.filter(is_active=True).first()
         if current_map:
             serializer = self.get_serializer(current_map)
@@ -68,83 +59,80 @@ class MapImageViewSet(viewsets.ModelViewSet):
         )
 
 
-class CheckGeofenceView(APIView):
-    """
-    지오펜스 내부 판별 + 센서 이상 + 복합 위험 알람 생성
+PROXIMITY_RADIUS = 200   # 픽셀. 작업자가 센서에서 이 반경 안에 있으면 영향받음
 
-    POST /monitor/api/check-geofence/
-    요청 body:
-    {
-      "workers": [
-        {"worker_id": "worker_01", "name": "작업자 A", "x": 150, "y": 170}
-      ],
-      "sensors": [
-        {"device_id": "sensor_01", "sensor_type": "gas", "status": "danger", "detail": "CO 250ppm"}
-      ]
-    }
+
+def _compute_nearby_sensor_status(worker_x: float, worker_y: float, 
+                                    sensors: list, radius: float = PROXIMITY_RADIUS) -> str:
     """
+    작업자 좌표 기준 반경 내 센서들의 최악 상태 반환.
+    범위 안에 위험 센서 없으면 normal.
+    """
+    worst = 'normal'
+    for s in sensors:
+        sx = float(s.get('x', 0))
+        sy = float(s.get('y', 0))
+        distance = math.sqrt((sx - worker_x) ** 2 + (sy - worker_y) ** 2)
+        
+        if distance > radius:
+            continue
+        
+        status = s.get('status', 'normal')
+        if status == 'danger':
+            return 'danger'  # 위험은 즉시 반환
+        if status == 'caution' and worst == 'normal':
+            worst = 'caution'
+    return worst
+
+
+@method_decorator(csrf_exempt, name='dispatch')
+class CheckGeofenceView(APIView):
+    """작업자/센서 상태 전이 기반 알람 오케스트레이터"""
 
     def post(self, request):
         workers = request.data.get('workers', [])
         sensors = request.data.get('sensors', [])
+        
+        # 1) 작업자 축 판정 — 각 작업자별로 근접 센서만 평가
         all_alarms = []
-
-        # 1. 각 작업자 위치를 모든 지오펜스와 대조
-        workers_in_fences = []
-
         for worker in workers:
             w_id = worker.get('worker_id', '')
-            w_name = worker.get('name', w_id)
+            if not w_id:
+                continue
+            
             w_x = float(worker.get('x', 0))
             w_y = float(worker.get('y', 0))
-
-            fence_results = check_worker_in_geofences(w_id, w_name, w_x, w_y)
-
-            for fr in fence_results:
-                all_alarms.append({
-                    **fr,
-                    "worker_id": w_id,
-                    "worker_name": w_name,
-                })
-                workers_in_fences.append({
-                    "worker_id": w_id,
-                    "geofence_id": fr["geofence_id"],
-                    "geofence_name": fr["geofence_name"],
-                    "zone_type": fr["zone_type"],
-                })
-
-        # 2. 센서 상태 알람 처리
+            
+            # 이 작업자에게만 해당하는 센서 상태
+            nearby_sensor_status = _compute_nearby_sensor_status(w_x, w_y, sensors)
+            
+            alarms = evaluate_worker(
+                worker_id=w_id,
+                worker_name=worker.get('name', w_id),
+                x=w_x,
+                y=w_y,
+                worst_sensor_status=nearby_sensor_status,   # ← 작업자별 고유값
+            )
+            all_alarms.extend(alarms)
+        
+        # 2) 센서 축 판정 — 기존 그대로
         for sensor in sensors:
-            s_id = sensor.get('device_id', '')
-            s_type = sensor.get('sensor_type', '')
-            s_status = sensor.get('status', 'normal')
-            s_detail = sensor.get('detail', '')
-
-            alarm = create_sensor_alarm(s_id, s_type, s_status, s_detail)
-            if alarm:
-                all_alarms.append(alarm)
-
-        # 3. 복합 위험 판별
-        danger_sensors = [s for s in sensors if s.get('status') in ('danger', 'caution')]
-
-        if workers_in_fences and danger_sensors:
-            for wf in workers_in_fences:
-                for ds in danger_sensors:
-                    try:
-                        fence_obj = GeoFence.objects.get(id=wf['geofence_id'])
-                        combined = create_combined_alarm(
-                            worker_id=wf['worker_id'],
-                            worker_name=wf.get('worker_name', wf['worker_id']),
-                            geofence=fence_obj,
-                            device_id=ds.get('device_id', ''),
-                            sensor_status=ds.get('status', ''),
-                        )
-                        all_alarms.append(combined)
-                    except GeoFence.DoesNotExist:
-                        pass
-
+            d_id = sensor.get('device_id', '')
+            if not d_id:
+                continue
+            alarms = evaluate_sensor(
+                device_id=d_id,
+                sensor_type=sensor.get('sensor_type', ''),
+                observed_status=sensor.get('status', 'normal'),
+                detail=sensor.get('detail', ''),
+            )
+            all_alarms.extend(alarms)
+        
+        # 3) WS 방송
+        for alarm in all_alarms:
+            publish_alarm(alarm)
+        
         return Response({
-            "alarms": all_alarms,
-            "workers_in_fences": workers_in_fences,
-            "alarm_count": len(all_alarms),
+            'alarms': all_alarms,
+            'alarm_count': len(all_alarms),
         })
