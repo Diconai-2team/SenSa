@@ -61,4 +61,5 @@
 .toast-caution  { background: #1c1a0d; border-left-color: var(--color-caution); color: var(--color-caution); }
 .toast-danger   { background: #1c0d0d; border-left-color: var(--color-danger);  color: var(--color-danger); }
 .toast-critical { background: #150d1c; border-left-color: var(--color-critical); color: var(--color-critical); }
+.toast-info     { background: #0d1a1c; border-left-color: var(--color-info);     color: var(--color-info); }
 @keyframes toastIn { from { opacity: 0; transform: translateX(16px); } to { opacity: 1; transform: translateX(0); } }

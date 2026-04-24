@@ -15,6 +15,7 @@
   --color-caution: #f1c40f;
   --color-danger: #e74c3c;
   --color-critical: #9b59b6;
+  --color-info: #3498db;    /* ← 추가 */
   --font-mono: 'Cascadia Code', 'Consolas', monospace;
 }
 
