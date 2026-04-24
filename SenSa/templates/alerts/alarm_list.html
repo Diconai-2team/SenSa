@@ -209,119 +209,122 @@
 
 <!-- 알람 테이블 -->
 <div class="table-wrap">
-  {% if alarms %}
-  <table>
-    <thead>
-      <tr>
-        <th style="width:6px;"></th>
-        <th>레벨</th>
-        <th>발생 시각</th>
-        <th>메시지</th>
-        <th class="hide-mobile">유형</th>
-        <th class="hide-mobile">작업자</th>
-        <th class="hide-mobile">구역</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for alarm in alarms %}
-      <tr>
-        <!-- 읽음 표시 -->
-        <td>
-          <span class="read-dot {% if alarm.is_read %}read{% else %}unread{% endif %}"></span>
-        </td>
+{% if groups %}
+<table>
+  <thead>
+    <tr>
+      <th style="width:6px;"></th>
+      <th>레벨</th>
+      <th>발생 시각</th>
+      <th>메시지</th>
+      <th class="hide-mobile">유형</th>
+      <th class="hide-mobile">영향 작업자</th>
+      <th class="hide-mobile">구역</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for group in groups %}
+    <tr>
+      <!-- 읽음 표시 -->
+      <td>
+        <span class="read-dot {% if group.is_read %}read{% else %}unread{% endif %}"></span>
+      </td>
 
-        <!-- 레벨 뱃지 -->
-        <td>
-          {% if alarm.alarm_level == 'danger' %}
-            <span class="level-badge danger">🔴 위험</span>
-          {% elif alarm.alarm_level == 'critical' %}
-            <span class="level-badge critical">🚨 심각</span>
-          {% elif alarm.alarm_level == 'caution' %}
-            <span class="level-badge caution">⚠️ 주의</span>
-          {% else %}
-            <span class="level-badge info">ℹ️ 정보</span>
+      <!-- 레벨 뱃지 -->
+      <td>
+        {% if group.level == 'danger' %}
+          <span class="level-badge danger">🔴 위험</span>
+        {% elif group.level == 'critical' %}
+          <span class="level-badge critical">🚨 심각</span>
+        {% elif group.level == 'caution' %}
+          <span class="level-badge caution">⚠️ 주의</span>
+        {% else %}
+          <span class="level-badge info">ℹ️ 정보</span>
+        {% endif %}
+      </td>
+
+      <!-- 시각 -->
+      <td style="white-space:nowrap; color: var(--text-dim); font-size:11px;">
+        {{ group.time|date:"Y-m-d" }}<br>
+        <span style="font-size:12px; color: var(--text);">{{ group.time|date:"H:i:s" }}</span>
+      </td>
+
+      <!-- 메시지 -->
+      <td class="msg-cell">
+        <div class="msg-text">
+          {{ group.primary.message }}
+          {% if group.count > 1 %}
+            <span style="color: var(--text-dim); font-size: 10px; margin-left: 6px;">외 {{ group.count|add:"-1" }}건</span>
           {% endif %}
-        </td>
+        </div>
+        {% if group.device_ids %}
+        <div class="msg-meta">센서: {{ group.device_ids|join:", " }}</div>
+        {% endif %}
+      </td>
 
-        <!-- 시각 -->
-        <td style="white-space:nowrap; color: var(--text-dim); font-size:11px;">
-          {{ alarm.created_at|date:"Y-m-d" }}<br>
-          <span style="font-size:12px; color: var(--text);">{{ alarm.created_at|date:"H:i:s" }}</span>
-        </td>
+      <!-- 유형 -->
+      <td class="hide-mobile">
+        <span class="type-text">
+          {% if group.primary.alarm_type == 'geofence_enter' %}위험구역 진입
+          {% elif group.primary.alarm_type == 'sensor_caution' %}센서 주의
+          {% elif group.primary.alarm_type == 'sensor_danger' %}센서 위험
+          {% elif group.primary.alarm_type == 'combined' %}복합 위험
+          {% else %}{{ group.primary.alarm_type }}{% endif %}
+        </span>
+      </td>
 
-        <!-- 메시지 -->
-        <td class="msg-cell">
-          <div class="msg-text">{{ alarm.message }}</div>
-          {% if alarm.device_id %}
-          <div class="msg-meta">센서: {{ alarm.device_id }}{% if alarm.sensor_type %} ({{ alarm.sensor_type }}){% endif %}</div>
-          {% endif %}
-        </td>
+      <!-- 영향 작업자 -->
+      <td class="hide-mobile" style="font-size:11px;">
+        {% if group.worker_names %}
+          <span style="color:var(--text);">{{ group.worker_names|join:", " }}</span>
+        {% else %}
+          <span style="color:var(--border);">—</span>
+        {% endif %}
+      </td>
 
-        <!-- 유형 -->
-        <td class="hide-mobile">
-          <span class="type-text">
-            {% if alarm.alarm_type == 'geofence_enter' %}위험구역 진입
-            {% elif alarm.alarm_type == 'sensor_caution' %}센서 주의
-            {% elif alarm.alarm_type == 'sensor_danger' %}센서 위험
-            {% elif alarm.alarm_type == 'combined' %}복합 위험
-            {% else %}{{ alarm.alarm_type }}{% endif %}
-          </span>
-        </td>
-
-        <!-- 작업자 -->
-        <td class="hide-mobile" style="font-size:11px;">
-          {% if alarm.worker_name %}
-            <span style="color:var(--text);">{{ alarm.worker_name }}</span>
-          {% else %}
-            <span style="color:var(--border);">—</span>
-          {% endif %}
-        </td>
-
-        <!-- 구역 -->
-        <td class="hide-mobile" style="font-size:11px;">
-          {% if alarm.geofence %}
-            <span style="color:var(--text);">{{ alarm.geofence.name }}</span>
-          {% else %}
-            <span style="color:var(--border);">—</span>
-          {% endif %}
-        </td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
-
-  <!-- 페이지네이션 -->
-  {% if alarms.has_other_pages %}
-  <div class="pagination">
-    {% if alarms.has_previous %}
-      <a href="?level={{ level_filter }}&page={{ alarms.previous_page_number }}">‹</a>
-    {% else %}
-      <span class="disabled">‹</span>
-    {% endif %}
-
-    {% for num in alarms.paginator.page_range %}
-      {% if alarms.number == num %}
-        <span class="current">{{ num }}</span>
-      {% elif num > alarms.number|add:'-3' and num < alarms.number|add:'3' %}
-        <a href="?level={{ level_filter }}&page={{ num }}">{{ num }}</a>
-      {% endif %}
+      <!-- 구역 -->
+      <td class="hide-mobile" style="font-size:11px;">
+        {% if group.primary.geofence %}
+          <span style="color:var(--text);">{{ group.primary.geofence.name }}</span>
+        {% else %}
+          <span style="color:var(--border);">—</span>
+        {% endif %}
+      </td>
+    </tr>
     {% endfor %}
+  </tbody>
+</table>  
 
-    {% if alarms.has_next %}
-      <a href="?level={{ level_filter }}&page={{ alarms.next_page_number }}">›</a>
-    {% else %}
-      <span class="disabled">›</span>
-    {% endif %}
-  </div>
+{% if groups.has_other_pages %}
+<div class="pagination">
+  {% if groups.has_previous %}
+    <a href="?level={{ level_filter }}&page={{ groups.previous_page_number }}">‹</a>
+  {% else %}
+    <span class="disabled">‹</span>
   {% endif %}
 
+  {% for num in groups.paginator.page_range %}
+    {% if groups.number == num %}
+      <span class="current">{{ num }}</span>
+    {% elif num > groups.number|add:'-3' and num < groups.number|add:'3' %}
+      <a href="?level={{ level_filter }}&page={{ num }}">{{ num }}</a>
+    {% endif %}
+  {% endfor %}
+
+  {% if groups.has_next %}
+    <a href="?level={{ level_filter }}&page={{ groups.next_page_number }}">›</a>
   {% else %}
-  <div class="empty-state">
-    <div class="icon">🔕</div>
-    <p>{% if level_filter == 'danger' %}위험/심각 알람이 없습니다.{% elif level_filter == 'caution' %}주의 알람이 없습니다.{% else %}알람 기록이 없습니다.{% endif %}</p>
-  </div>
+    <span class="disabled">›</span>
   {% endif %}
 </div>
+{% endif %}
+
+{% else %}
+<div class="empty-state">
+  <div class="icon">🔕</div>
+  <p>{% if level_filter == 'danger' %}위험/심각 알람이 없습니다.{% elif level_filter == 'caution' %}주의 알람이 없습니다.{% else %}알람 기록이 없습니다.{% endif %}</p>
+</div>
+{% endif %}
 
 <script>
 function getCsrfToken() {

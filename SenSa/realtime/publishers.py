@@ -69,11 +69,6 @@ def publish_alarm(alarm_dict: dict) -> None:
 # 외부 노출 함수 — views.py, services.py에서 import해서 씀
 # ═══════════════════════════════════════════════════════════
 
-def publish_alarm(alarm_dict: dict) -> None:
-    """ (기존 코드 그대로) """
-    _send("dashboard.alarms", "alarm.new", alarm_dict)
-
-
 def publish_worker_position(worker_data: dict) -> None:
     """
     작업자 1명의 최신 위치를 dashboard.workers 그룹에 방송.

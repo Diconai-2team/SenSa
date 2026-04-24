@@ -13,6 +13,8 @@ from rest_framework import viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
+from itertools import groupby
+
 from .models import Alarm
 from .serializers import AlarmSerializer
 
@@ -58,6 +60,47 @@ class AlarmViewSet(viewsets.ReadOnlyModelViewSet):
         Alarm.objects.filter(is_read=False).update(is_read=True)
         return Response({"status": "all read"})
 
+def _group_alarms(alarm_list):
+    """
+    같은 초·같은 레벨의 알람을 한 그룹으로 묶음.
+    """
+    def key_fn(a):
+        return (a.created_at.replace(microsecond=0), a.alarm_level)
+    
+    # 같은 (초, 레벨) 키끼리 인접하도록 정렬
+    # 시간 내림차순(최신이 위) + 같은 초 내에선 레벨 기준
+    sorted_list = sorted(alarm_list, key=lambda a: (
+        -a.created_at.replace(microsecond=0).timestamp(),
+        a.alarm_level,
+    ))
+    
+    groups = []
+    for (time, level), items in groupby(sorted_list, key=key_fn):
+        items = list(items)
+        
+        worker_names = []
+        device_ids = []
+        for a in items:
+            if a.worker_name and a.worker_name not in worker_names:
+                worker_names.append(a.worker_name)
+            if a.device_id and a.device_id not in device_ids:
+                device_ids.append(a.device_id)
+        
+        # 센서 알람이 있으면 대표로 선정
+        sensor_alarm = next((a for a in items if a.device_id), None)
+        primary = sensor_alarm or items[0]
+        
+        groups.append({
+            'time': time,
+            'level': level,
+            'count': len(items),
+            'is_read': all(a.is_read for a in items),
+            'primary': primary,
+            'worker_names': worker_names,
+            'device_ids': device_ids,
+        })
+    return groups
+
 
 @login_required(login_url="/accounts/login/")
 def alarm_list_view(request):
@@ -70,9 +113,13 @@ def alarm_list_view(request):
     elif level_filter == "caution":
         qs = qs.filter(alarm_level="caution")
 
-    paginator = Paginator(qs, 20)
+    # 전체 쿼리셋을 Python으로 가져와서 그룹핑 → 그룹 단위 페이지네이션
+    all_alarms = list(qs)  # DB hit 1회
+    all_groups = _group_alarms(all_alarms)
+    
+    paginator = Paginator(all_groups, 20)
     page_num = request.GET.get("page", 1)
-    alarms = paginator.get_page(page_num)
+    groups = paginator.get_page(page_num)
 
     since = timezone.now() - timedelta(hours=24)
     stats = {
@@ -83,7 +130,7 @@ def alarm_list_view(request):
     }
 
     return render(request, "alerts/alarm_list.html", {
-        "alarms":       alarms,
+        "groups":       groups,
         "level_filter": level_filter,
         "stats":        stats,
     })
