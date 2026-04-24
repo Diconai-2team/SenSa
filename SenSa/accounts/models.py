@@ -9,6 +9,10 @@ class User(AbstractUser):
     AbstractUser를 상속하여 Django의 모든 인증 기능을 그대로 사용한다.
     username, password, email, first_name, last_name, is_active,
     is_staff, is_superuser, date_joined, last_login 등이 자동 제공된다.
+
+    [변경 이력]
+      v1 : role / department / phone 필드
+      v2 : position (직급) 필드 추가 — 내 정보 페이지 표시용
     """
     ROLE_CHOICES = [
         ('operator', '운영자'),
@@ -26,6 +30,13 @@ class User(AbstractUser):
         blank=True,
         default='',
         verbose_name='소속 부서',
+    )
+    position = models.CharField(
+        max_length=50,
+        blank=True,
+        default='',
+        verbose_name='직급',
+        help_text='사원 / 대리 / 과장 / 팀장 등',
     )
     phone = models.CharField(
         max_length=20,

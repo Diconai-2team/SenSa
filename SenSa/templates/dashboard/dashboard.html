@@ -9,6 +9,7 @@
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
   <!-- 섹션별 CSS (독립 유지보수) -->
   <link rel="stylesheet" href="{% static 'css/dashboard/base.css' %}">
+  <link rel="stylesheet" href="{% static 'css/common/header.css' %}">
   <link rel="stylesheet" href="{% static 'css/dashboard/section_08_safety.css' %}">
   <link rel="stylesheet" href="{% static 'css/dashboard/section_09_map.css' %}">
   <link rel="stylesheet" href="{% static 'css/dashboard/section_10_events.css' %}">
@@ -20,19 +21,8 @@
 
 <div class="dashboard-layout">
 
-  <!-- ═══════════ ①~⑦ 상단 헤더 (base.css에 스타일 포함) ═══════════ -->
-  <header id="section-header">
-    <div id="section-01-hamburger"><button title="메뉴">☰</button></div>
-    <div id="section-02-title">산재 예방 통합 관제 시스템</div>
-    <div id="section-03-user"><span class="username">{{ request.user.username|default:"관리자" }}</span>님 환영합니다.</div>
-    <div id="section-04-admin-menu">{% if request.user.is_staff %}<a href="/admin/" target="_blank">관리자 메뉴 🔑</a>{% endif %}</div>
-    <div id="section-05-system-time">
-      <div>현재 시스템 시간 : <span class="time-value" id="system-time-now">--</span></div>
-      <div>마지막 갱신 시간 : <span class="time-value" id="system-time-last">--</span></div>
-    </div>
-    <div id="section-06-home"><a href="/" title="홈">🏠</a></div>
-    <div id="section-07-logout"><a href="{% url 'logout' %}">로그아웃</a></div>
-  </header>
+  <!-- ═══════════ ①~⑦ 공통 헤더 ═══════════ -->
+  {% include "partials/_header.html" with active_page="dashboard" %}
 
   <!-- ═══════════ 좌측 패널 (⑧ + ⑪ + 지오펜스) ═══════════ -->
   <aside id="section-left">
@@ -68,6 +58,9 @@
 <!-- ═══════════ 라이브러리 JS ═══════════ -->
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+
+<!-- ═══════════ 공통 JS (헤더/사이드메뉴/시스템시간) ═══════════ -->
+<script src="{% static 'js/common/header.js' %}"></script>
 
 <!-- ═══════════ 섹션별 JS (로드 순서 중요!) ═══════════ -->
 <!-- 1. base.js 먼저 (이벤트 버스 + 시뮬레이션 엔진) -->

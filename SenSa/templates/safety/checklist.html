@@ -1,0 +1,103 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="csrf-token" content="{{ csrf_token }}">
+  <title>작업 전 안전 확인 | SenSa</title>
+  <link rel="stylesheet" href="{% static 'css/safety/checklist.css' %}">
+  <link rel="stylesheet" href="{% static 'css/safety/_sidebar.css' %}">
+  <link rel="stylesheet" href="{% static 'css/common/header.css' %}">
+</head>
+<body>
+
+{# ═══════════ 공통 헤더 ═══════════ #}
+{% include "partials/_header.html" with active_page="safety" %}
+
+<div class="safety-layout">
+
+  {% include "safety/_sidebar.html" with active="checklist" %}
+
+  <main class="safety-page">
+
+    <div class="safety-page-title-row">
+      <h1 class="safety-page-title">작업 전 안전 확인 - 안전 확인 체크리스트</h1>
+      <span class="safety-page-date">{{ today|date:"Y / m / d" }}</span>
+    </div>
+
+    <div class="safety-banner">
+      <span class="safety-banner-icon">⚠️</span>
+      <span class="safety-banner-text">
+        체크리스트를 읽고 반드시 항목에 대한 안전을 확인 후 체크하세요. 모든 항목이 체크되어야 VR 교육으로 넘어갈 수 있습니다.
+      </span>
+    </div>
+
+    <section class="checklist-panel" id="checklist-panel">
+      {% for cat in checklist_categories %}
+        <div class="checklist-category" data-category="{{ cat.category }}">
+          <div class="checklist-category-header">
+            <span class="checklist-category-title">{{ cat.category }}. {{ cat.title }}</span>
+            <span class="checklist-error-hint" data-category-error="{{ cat.category }}">
+              모든 항목을 체크해 주세요.
+            </span>
+          </div>
+
+          <ul class="checklist-items">
+            {% for item in cat.items %}
+              <li class="checklist-item">
+                <label class="checklist-label">
+                  <input
+                    type="checkbox"
+                    class="checklist-checkbox"
+                    data-key="{{ item.key }}"
+                    {% if item.key in previously_checked %}checked{% endif %}
+                  >
+                  <span class="checklist-custom-box"></span>
+                  <span class="checklist-item-text">{{ item.text }}</span>
+                </label>
+              </li>
+            {% endfor %}
+          </ul>
+        </div>
+      {% endfor %}
+    </section>
+
+    <div class="safety-action-bar">
+      <button type="button" class="btn-cancel" id="btn-cancel">취소</button>
+      <button type="button" class="btn-next" id="btn-next" disabled>다음</button>
+    </div>
+
+  </main>
+</div>
+
+{# ═══════════ 완료 모달 ═══════════ #}
+<div class="complete-modal-backdrop" id="complete-modal" hidden>
+  <div class="complete-modal">
+    <div class="complete-modal-icon">
+      <svg width="48" height="48" viewBox="0 0 48 48" fill="none" aria-hidden="true">
+        <circle cx="24" cy="24" r="22" stroke="#2ecc71" stroke-width="3"/>
+        <path d="M14 25 L21 32 L34 17" stroke="#2ecc71" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+      </svg>
+    </div>
+    <div class="complete-modal-subtitle">작업 전 안전 확인</div>
+    <div class="complete-modal-title">모든 안전 점검을 완료하였습니다.</div>
+    <p class="complete-modal-hint">확인을 누르면 VR 교육 화면으로 이동합니다.</p>
+    <button type="button" class="btn-confirm" id="btn-complete-confirm">확인</button>
+  </div>
+</div>
+
+<script>
+  window.SAFETY_CHECKLIST_INIT = {
+    totalCount: {{ total_count }},
+    alreadyCompleted: {% if already_completed %}true{% else %}false{% endif %},
+    submitUrl: "{% url 'safety:checklist-submit' %}",
+    dashboardUrl: "{% url 'dashboard' %}",
+    vrTrainingUrl: "{% url 'vr_training:player' %}"
+  };
+</script>
+<script src="{% static 'js/common/header.js' %}"></script>
+<script src="{% static 'js/safety/checklist.js' %}"></script>
+
+</body>
+</html>

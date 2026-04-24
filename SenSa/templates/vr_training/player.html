@@ -1,0 +1,149 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="csrf-token" content="{{ csrf_token }}">
+  <title>작업 전 안전 확인 - VR 교육 | SenSa</title>
+  <link rel="stylesheet" href="{% static 'css/safety/checklist.css' %}">
+  <link rel="stylesheet" href="{% static 'css/safety/_sidebar.css' %}">
+  <link rel="stylesheet" href="{% static 'css/vr_training/player.css' %}">
+  <link rel="stylesheet" href="{% static 'css/common/header.css' %}">
+</head>
+<body>
+
+{# ═══════════ 공통 헤더 ═══════════ #}
+{% include "partials/_header.html" with active_page="vr" %}
+
+<div class="safety-layout">
+
+  {% include "safety/_sidebar.html" with active="vr" %}
+
+  <main class="safety-page">
+
+    <div class="safety-page-title-row">
+      <h1 class="safety-page-title">작업 전 안전 확인 - VR 교육</h1>
+      <span class="safety-page-date" id="vr-today-date">-- / -- / --</span>
+    </div>
+
+    <div class="safety-banner">
+      <span class="safety-banner-icon">⚠️</span>
+      <span class="safety-banner-text">
+        VR 교육까지 완료되어야 교육 이수가 완료 가능합니다.
+      </span>
+    </div>
+
+    <div class="vr-precheck-banner">
+      <svg class="vr-precheck-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+        <circle cx="12" cy="12" r="10" fill="#2ecc71"/>
+        <path d="M7 12.5 L10.5 16 L17 9" stroke="#0d1117" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+      </svg>
+      <div class="vr-precheck-text">
+        <div class="vr-precheck-title">체크리스트 완료</div>
+        <div class="vr-precheck-sub">모든 안전 확인 체크리스트가 완료되었습니다. 비상 안전 VR 영상을 시청해주세요.</div>
+      </div>
+    </div>
+
+    <section
+      class="vr-player"
+      id="vr-player"
+      data-total-duration="{{ total_duration_sec }}"
+      data-last-position="{{ last_position_sec }}"
+    >
+      <div class="vr-stage" id="vr-stage">
+        <div class="vr-stage-placeholder" id="vr-stage-placeholder">
+          <div class="vr-video-title">{{ video_title }}</div>
+          <div class="vr-video-desc">{{ video_description }}</div>
+        </div>
+
+        <div class="vr-stage-playing" id="vr-stage-playing" hidden>
+          <div class="vr-visual-grid">
+            <span class="vr-visual-bar"></span>
+            <span class="vr-visual-bar"></span>
+            <span class="vr-visual-bar"></span>
+            <span class="vr-visual-bar"></span>
+            <span class="vr-visual-bar"></span>
+            <span class="vr-visual-bar"></span>
+          </div>
+          <div class="vr-playing-caption">
+            <span class="vr-recording-dot"></span>
+            VR 교육 재생 중
+          </div>
+        </div>
+
+        <button type="button" class="vr-play-btn" id="vr-play-btn" aria-label="재생">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+            <path d="M8 5v14l11-7z"/>
+          </svg>
+        </button>
+      </div>
+
+      <div class="vr-controls">
+        <div class="vr-timeline-row">
+          <div class="vr-progress-track" aria-hidden="true">
+            <div class="vr-progress-fill" id="vr-progress-fill"></div>
+          </div>
+          <div class="vr-time-label">
+            <span id="vr-time-current">00:00</span>
+            <span class="vr-time-sep">/</span>
+            <span id="vr-time-total">00:00</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <div class="safety-action-bar vr-action-bar">
+      <button type="button" class="btn-cancel" id="vr-btn-back">이전</button>
+      <button type="button" class="btn-next"   id="vr-btn-complete" disabled>완료</button>
+    </div>
+
+  </main>
+</div>
+
+{# ═══════════ 이전 버튼 확인 팝업 ═══════════ #}
+<div class="vr-modal-backdrop" id="vr-confirm-modal" hidden>
+  <div class="vr-modal">
+    <div class="vr-modal-title">작업 전 안전 확인을 중단하시겠습니까?</div>
+    <p class="vr-modal-desc">
+      현재까지 시청한 지점은 자동 저장됩니다.<br>
+      메뉴 재진입 시 이전 시청 시점부터 이어서 시청할 수 있습니다.
+    </p>
+    <div class="vr-modal-actions">
+      <button type="button" class="btn-cancel" id="vr-confirm-no">계속 시청</button>
+      <button type="button" class="btn-next vr-modal-confirm" id="vr-confirm-yes">중단</button>
+    </div>
+  </div>
+</div>
+
+{# ═══════════ 완료 팝업 ═══════════ #}
+<div class="vr-modal-backdrop complete-modal-backdrop" id="vr-complete-modal" hidden>
+  <div class="complete-modal">
+    <div class="complete-modal-icon">
+      <svg width="48" height="48" viewBox="0 0 48 48" fill="none" aria-hidden="true">
+        <circle cx="24" cy="24" r="22" stroke="#2ecc71" stroke-width="3"/>
+        <path d="M14 25 L21 32 L34 17" stroke="#2ecc71" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+      </svg>
+    </div>
+    <div class="complete-modal-subtitle">작업 전 안전 확인</div>
+    <div class="complete-modal-title">작업 전 안전 확인 완료</div>
+    <p class="complete-modal-hint">모든 교육 과정을 이수하였습니다.</p>
+    <button type="button" class="btn-confirm" id="vr-complete-confirm">확인</button>
+  </div>
+</div>
+
+<script>
+  window.VR_TRAINING_INIT = {
+    totalDuration: {{ total_duration_sec }},
+    lastPosition: {{ last_position_sec }},
+    alreadyCompleted: {% if vr_completed %}true{% else %}false{% endif %},
+    progressUrl: "{% url 'vr_training:progress' %}",
+    completeUrl: "{% url 'vr_training:complete' %}",
+    dashboardUrl: "{% url 'dashboard' %}"
+  };
+</script>
+<script src="{% static 'js/common/header.js' %}"></script>
+<script src="{% static 'js/vr_training/player.js' %}"></script>
+
+</body>
+</html>

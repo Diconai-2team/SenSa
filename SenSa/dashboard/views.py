@@ -1,12 +1,19 @@
 """
-monitor 앱 뷰
+dashboard 앱 뷰
 
 - map_view: 관제 지도 페이지 (Template)
 - MapImageViewSet: 공장 평면도 이미지 CRUD
 - CheckGeofenceView: 상태 전이 기반 알람 오케스트레이터
+
+[변경 이력]
+  Phase E7: 브라우저 시뮬 제거 후 안정화
+  v2: map_view 에 safety_checklist_done_today context 추가
+  v3: map_view 에 vr_training_done_today context 추가
+      → section_08_safety 의 뱃지 동적 렌더링용
 """
 from django.shortcuts import render
 from django.contrib.auth.decorators import login_required
+from django.utils import timezone
 
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
@@ -28,8 +35,41 @@ import math
 
 @login_required(login_url='/accounts/login/')
 def map_view(request):
-    """관제 지도 페이지"""
-    return render(request, 'dashboard/dashboard.html')
+    """
+    관제 지도 페이지.
+
+    context:
+        safety_checklist_done_today (bool)
+            — 로그인 사용자가 오늘 안전 확인 체크리스트를 완료했는지.
+        vr_training_done_today (bool)
+            — 로그인 사용자가 오늘 VR 안전 교육을 완료했는지.
+        → section_08_safety 의 뱃지 표시에 사용.
+    """
+    # 지연 import — 앱 의존성 방향을 한쪽으로 유지 (dashboard → safety/vr_training)
+    today = timezone.localdate()
+
+    # 체크리스트 완료 여부
+    try:
+        from safety.models import SafetyChecklist
+        checklist_done = SafetyChecklist.objects.filter(
+            user=request.user, check_date=today,
+        ).exists()
+    except Exception:
+        checklist_done = False
+
+    # VR 교육 완료 여부
+    try:
+        from vr_training.models import VRTrainingLog
+        vr_done = VRTrainingLog.objects.filter(
+            user=request.user, check_date=today, is_completed=True,
+        ).exists()
+    except Exception:
+        vr_done = False
+
+    return render(request, 'dashboard/dashboard.html', {
+        'safety_checklist_done_today': checklist_done,
+        'vr_training_done_today':      vr_done,
+    })
 
 
 # ============================================================
@@ -62,7 +102,7 @@ class MapImageViewSet(viewsets.ModelViewSet):
 PROXIMITY_RADIUS = 200   # 픽셀. 작업자가 센서에서 이 반경 안에 있으면 영향받음
 
 
-def _compute_nearby_sensor_status(worker_x: float, worker_y: float, 
+def _compute_nearby_sensor_status(worker_x: float, worker_y: float,
                                     sensors: list, radius: float = PROXIMITY_RADIUS) -> str:
     """
     작업자 좌표 기준 반경 내 센서들의 최악 상태 반환.
@@ -73,10 +113,10 @@ def _compute_nearby_sensor_status(worker_x: float, worker_y: float,
         sx = float(s.get('x', 0))
         sy = float(s.get('y', 0))
         distance = math.sqrt((sx - worker_x) ** 2 + (sy - worker_y) ** 2)
-        
+
         if distance > radius:
             continue
-        
+
         status = s.get('status', 'normal')
         if status == 'danger':
             return 'danger'  # 위험은 즉시 반환
@@ -92,20 +132,20 @@ class CheckGeofenceView(APIView):
     def post(self, request):
         workers = request.data.get('workers', [])
         sensors = request.data.get('sensors', [])
-        
+
         # 1) 작업자 축 판정 — 각 작업자별로 근접 센서만 평가
         all_alarms = []
         for worker in workers:
             w_id = worker.get('worker_id', '')
             if not w_id:
                 continue
-            
+
             w_x = float(worker.get('x', 0))
             w_y = float(worker.get('y', 0))
-            
+
             # 이 작업자에게만 해당하는 센서 상태
             nearby_sensor_status = _compute_nearby_sensor_status(w_x, w_y, sensors)
-            
+
             alarms = evaluate_worker(
                 worker_id=w_id,
                 worker_name=worker.get('name', w_id),
@@ -114,7 +154,7 @@ class CheckGeofenceView(APIView):
                 worst_sensor_status=nearby_sensor_status,   # ← 작업자별 고유값
             )
             all_alarms.extend(alarms)
-        
+
         # 2) 센서 축 판정 — 기존 그대로
         for sensor in sensors:
             d_id = sensor.get('device_id', '')
@@ -127,11 +167,11 @@ class CheckGeofenceView(APIView):
                 detail=sensor.get('detail', ''),
             )
             all_alarms.extend(alarms)
-        
+
         # 3) WS 방송
         for alarm in all_alarms:
             publish_alarm(alarm)
-        
+
         return Response({
             'alarms': all_alarms,
             'alarm_count': len(all_alarms),

@@ -16,6 +16,9 @@ urlpatterns = [
     path('dashboard/api/', include('alerts.urls')),
     path('dashboard/api/', include('workers.urls')),     # ← Worker API 추가
 
+    path('safety/', include('safety.urls')),    # ← 추가
+    path('vr-training/', include('vr_training.urls')),    # ← 추가
+    path('workers/', include('workers.page_urls')),         # ← 이 줄 추가
 ]
 
 if settings.DEBUG:

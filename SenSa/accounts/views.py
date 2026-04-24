@@ -1,14 +1,22 @@
 """
 accounts 앱 뷰
 
-- 페이지 뷰: Django Template 기반 로그인/로그아웃/회원가입 (함수 기반)
-- API 뷰: JWT 기반 로그인/로그아웃/회원가입/사용자정보 (클래스 기반 Generic)
+- 페이지 뷰: Django Template 기반 로그인/로그아웃/회원가입/내정보 (함수 기반)
+- API 뷰: JWT 기반 로그인/로그아웃/회원가입/사용자정보/비밀번호변경 (클래스 기반 Generic)
+
+[변경 이력]
+  v1 : 로그인/회원가입/로그아웃/홈/me
+  v2 : profile_page (내 정보 페이지) + PasswordChangeAPIView (비밀번호 변경)
 """
-from django.shortcuts import render, redirect
-from django.contrib.auth import login, logout
+import re
+
+from django.contrib.auth import login, logout, update_session_auth_hash
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
+from django.shortcuts import render, redirect
 from django.urls import reverse
+from django.utils.decorators import method_decorator
+from django.views.decorators.csrf import csrf_exempt
 
 from rest_framework import status
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -26,17 +34,12 @@ from .serializers import LoginSerializer, UserSerializer, SignupSerializer
 
 def root_redirect(request):
     if request.user.is_authenticated:
-        return redirect('dashboard')    # 'home' → 'dashboard'
+        return redirect('dashboard')
     return redirect('login')
 
 
 def login_page(request):
-    """
-    로그인 페이지 렌더링 + 폼 처리
-
-    GET  /accounts/login/         → 로그인 폼 표시
-    POST /accounts/login/         → 로그인 시도
-    """
+    """로그인 페이지 렌더링 + 폼 처리"""
     if request.user.is_authenticated:
         return redirect('home')
 
@@ -78,12 +81,7 @@ def login_page(request):
 
 
 def signup_page(request):
-    """
-    회원가입 페이지 렌더링 + 폼 처리
-
-    GET  /accounts/signup/    → 가입 폼 표시
-    POST /accounts/signup/    → 가입 시도
-    """
+    """회원가입 페이지 렌더링 + 폼 처리"""
     if request.user.is_authenticated:
         return redirect('home')
 
@@ -113,7 +111,6 @@ def signup_page(request):
                 request,
                 f'{user.username}님, 회원가입이 완료되었습니다. 로그인해주세요.'
             )
-            # 방금 가입한 아이디를 쿼리 파라미터로 넘겨서 로그인 폼에 미리 채움
             return redirect(f"{reverse('login')}?username={user.username}")
         else:
             for field, errs in serializer.errors.items():
@@ -147,29 +144,29 @@ def home_page(request):
     return render(request, 'home.html')
 
 
+# ═══════════════════════════════════════════════════════════
+# ⭐ Phase 2 — 내 정보 페이지
+# ═══════════════════════════════════════════════════════════
+
+@login_required(login_url='/accounts/login/')
+def profile_page(request):
+    """
+    내 정보 페이지.
+
+    디자인 시안 기준으로 조회 전용 + 비밀번호 변경 모달 진입점 포함.
+    편집 기능은 이번 범위 제외.
+    """
+    return render(request, 'accounts/profile.html', {
+        'profile_user': request.user,
+    })
+
+
 # ============================================================
 # API 뷰 (JWT + Generic)
 # ============================================================
 
 class SignupAPIView(CreateAPIView):
-    """
-    회원가입 API — POST /api/accounts/signup/
-
-    요청:
-        {
-            "username": "newuser",
-            "password": "strongpass123",
-            "password_confirm": "strongpass123",
-            "email": "new@example.com",
-            "department": "현장팀",
-            "phone": ""
-        }
-    성공 (201):
-        {
-            "detail": "회원가입이 완료되었습니다.",
-            "user": {...}
-        }
-    """
+    """회원가입 API"""
     serializer_class = SignupSerializer
     permission_classes = [AllowAny]
 
@@ -184,18 +181,7 @@ class SignupAPIView(CreateAPIView):
 
 
 class LoginAPIView(APIView):
-    """
-    JWT 로그인 API — POST /api/accounts/login/
-
-    요청: {"username": "admin", "password": "admin1234"}
-    성공 (200):
-        {
-            "access": "eyJ...",
-            "refresh": "eyJ...",
-            "user": {...}
-        }
-    실패 (400): serializer 에러 반환
-    """
+    """JWT 로그인 API"""
     permission_classes = [AllowAny]
 
     def post(self, request):
@@ -211,13 +197,7 @@ class LoginAPIView(APIView):
 
 
 class LogoutAPIView(APIView):
-    """
-    JWT 로그아웃 API — POST /api/accounts/logout/
-    refresh 토큰을 블랙리스트에 등록하여 재사용 방지.
-
-    요청: {"refresh": "<refresh_token>"}
-    응답: {"detail": "로그아웃 되었습니다."}
-    """
+    """JWT 로그아웃 API"""
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
@@ -234,14 +214,106 @@ class LogoutAPIView(APIView):
 
 
 class MeAPIView(RetrieveAPIView):
-    """
-    현재 로그인한 사용자 정보 — GET /api/accounts/me/
-
-    헤더: Authorization: Bearer <access>
-    응답: UserSerializer 형태
-    """
+    """현재 로그인한 사용자 정보"""
     serializer_class = UserSerializer
     permission_classes = [IsAuthenticated]
 
     def get_object(self):
         return self.request.user
+
+
+# ═══════════════════════════════════════════════════════════
+# ⭐ Phase 2 — 비밀번호 변경 API
+# ═══════════════════════════════════════════════════════════
+
+# 비밀번호 규칙 (디자인 시안 Image 3): 8~16자 영문+숫자+특수문자 조합
+_PASSWORD_RE = re.compile(
+    r'^(?=.*[A-Za-z])(?=.*\d)(?=.*[~!@#$%^&*()_\-+={}\[\]|\\:;"\'<>,.?/])[A-Za-z\d~!@#$%^&*()_\-+={}\[\]|\\:;"\'<>,.?/]{8,16}$'
+)
+
+
+def _validate_new_password(pw: str) -> str | None:
+    """
+    신규 비밀번호 규칙 검증.
+    통과하면 None, 실패하면 에러 메시지 문자열 반환.
+    """
+    if not pw:
+        return '새로운 비밀번호를 입력해 주세요.'
+    if not _PASSWORD_RE.match(pw):
+        return '8~16자의 영문, 숫자, 특수문자를 조합하여 입력해 주세요.'
+    return None
+
+
+@method_decorator(csrf_exempt, name='dispatch')
+class PasswordChangeAPIView(APIView):
+    """
+    비밀번호 변경 API — POST /api/accounts/password-change/
+
+    요청 (JSON):
+        {
+            "current_password": "현재_비밀번호",
+            "new_password":     "새_비밀번호",
+            "new_password_confirm": "새_비밀번호"
+        }
+
+    응답 (200 성공):
+        {"status": "ok", "detail": "비밀번호가 변경되었습니다."}
+
+    응답 (400 실패 — 필드별 에러):
+        {
+            "status": "error",
+            "errors": {
+                "current_password": "현재 비밀번호가 일치하지 않습니다. 다시 확인해 주세요.",
+                "new_password": "...",
+                "new_password_confirm": "..."
+            }
+        }
+
+    [보안]
+      - current_password 검증 필수 (본인 재인증)
+      - 변경 성공 시 update_session_auth_hash 로 세션 유지 (재로그인 불필요)
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        user = request.user
+        current_pw = request.data.get('current_password', '')
+        new_pw = request.data.get('new_password', '')
+        new_pw_confirm = request.data.get('new_password_confirm', '')
+
+        errors: dict[str, str] = {}
+
+        # 1) 현재 비밀번호 확인
+        if not current_pw:
+            errors['current_password'] = '현재 사용 중인 비밀번호를 입력해 주세요.'
+        elif not user.check_password(current_pw):
+            errors['current_password'] = '현재 비밀번호가 일치하지 않습니다. 다시 확인해 주세요.'
+
+        # 2) 신규 비밀번호 규칙
+        new_pw_err = _validate_new_password(new_pw)
+        if new_pw_err:
+            errors['new_password'] = new_pw_err
+        elif current_pw and new_pw == current_pw:
+            errors['new_password'] = '현재 사용 중인 비밀번호는 신규 비밀번호로 사용할 수 없습니다.'
+
+        # 3) 확인 필드 일치
+        if not new_pw_confirm:
+            errors['new_password_confirm'] = '비밀번호 확인을 위해 한 번 더 입력해 주세요.'
+        elif new_pw and new_pw != new_pw_confirm:
+            errors['new_password_confirm'] = '입력하신 신규 비밀번호와 일치하지 않습니다.'
+
+        if errors:
+            return Response(
+                {'status': 'error', 'errors': errors},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # 4) 저장 + 세션 유지
+        user.set_password(new_pw)
+        user.save(update_fields=['password'])
+        update_session_auth_hash(request, user)
+
+        return Response({
+            'status': 'ok',
+            'detail': '비밀번호가 변경되었습니다.',
+        })

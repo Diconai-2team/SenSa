@@ -1,0 +1,42 @@
+{# 공통 헤더 (①~⑦ 영역) #}
+{# 사용: include "partials/_header.html" with active_page="dashboard" #}
+{# active_page: "dashboard" | "safety" | "vr" | "profile" 등 — 사이드메뉴 하이라이트용 #}
+{#                                                                          #}
+{# DOM 구조는 dashboard base.css 와 호환을 위해 #section-header 그대로 유지. #}
+{# 햄버거 버튼만 JS 훅을 걸어 사이드메뉴를 토글함.                            #}
+
+<header id="section-header">
+  <div id="section-01-hamburger">
+    <button type="button" id="btn-sidemenu-toggle"
+            title="메뉴" aria-label="메뉴 열기"
+            aria-expanded="false" aria-controls="app-sidemenu">☰</button>
+  </div>
+
+  <div id="section-02-title">산재 예방 통합 관제 시스템</div>
+
+  <div id="section-03-user">
+    <span class="username">{{ request.user.username|default:"게스트" }}</span>님 환영합니다.
+  </div>
+
+  <div id="section-04-admin-menu">
+    {% if request.user.is_staff %}
+      <a href="/admin/" target="_blank" rel="noopener">관리자 메뉴 🔑</a>
+    {% endif %}
+  </div>
+
+  <div id="section-05-system-time">
+    <div>현재 시스템 시간 : <span class="time-value" id="system-time-now">--</span></div>
+    <div>마지막 갱신 시간 : <span class="time-value" id="system-time-last">--</span></div>
+  </div>
+
+  <div id="section-06-home">
+    <a href="{% url 'dashboard' %}" title="대시보드로">🏠</a>
+  </div>
+
+  <div id="section-07-logout">
+    <a href="{% url 'logout' %}">로그아웃</a>
+  </div>
+</header>
+
+{# 사이드메뉴 + 백드롭 #}
+{% include "partials/_sidemenu.html" with active_page=active_page %}

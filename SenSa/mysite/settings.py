@@ -49,6 +49,8 @@ INSTALLED_APPS = [
     'alerts',
     'workers',
     'dashboard',
+    'safety',
+    'vr_training',     # ← 추가
 ]
 
 # ==========================================================

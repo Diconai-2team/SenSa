@@ -1,146 +1,74 @@
 """
-workers/views.py — 작업자 API
+workers/views.py — 작업자 API + 페이지 (Phase 4A)
 
-자동 생성되는 엔드포인트:
-  GET/POST        /dashboard/api/worker/                 작업자 목록/생성
-  GET/PUT/DELETE   /dashboard/api/worker/{id}/            작업자 상세/수정/삭제
-  GET              /dashboard/api/worker/{id}/latest/     최근 위치 1건
-  GET/POST         /dashboard/api/worker-location/        위치 기록 목록/생성
-  GET              /dashboard/api/worker-location/?worker_id=worker_01
+[구성]
+  === 기존 (대시보드용) ===
+  WorkerViewSet          /dashboard/api/worker/
+  WorkerLocationViewSet  /dashboard/api/worker-location/
+
+  === Phase 4A 신규 (작업자 현황 페이지) ===
+  worker_list_page       GET  /workers/
+  WorkerListDataView     GET  /workers/api/list/
+  WorkerNotifyView       POST /workers/api/notify/
 """
-from rest_framework import viewsets, status
-from rest_framework.decorators import action
-from rest_framework.response import Response
+from datetime import timedelta
 
-from .models import Worker, WorkerLocation
+from django.contrib.auth.decorators import login_required
+from django.db import transaction
+from django.shortcuts import render
+from django.utils import timezone
+from django.utils.decorators import method_decorator
+from django.views.decorators.csrf import csrf_exempt
+
+from rest_framework import viewsets, status as http_status
+from rest_framework.decorators import action
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+from rest_framework.views import APIView
+
+from .models import NotificationLog, Worker, WorkerLocation
 from .serializers import WorkerSerializer, WorkerLocationSerializer
 from realtime.publishers import publish_worker_position
 
 
+# ═══════════════════════════════════════════════════════════
+# 기존 DRF ViewSet (변경 없음)
+# ═══════════════════════════════════════════════════════════
+
 class WorkerViewSet(viewsets.ModelViewSet):
-    """
-    작업자 CRUD
-
-    ModelViewSet 하나로 6개 API가 자동 생성됨:
-      list()           GET    /worker/       → 목록
-      create()         POST   /worker/       → 생성
-      retrieve()       GET    /worker/1/     → 상세
-      update()         PUT    /worker/1/     → 전체 수정
-      partial_update() PATCH  /worker/1/     → 부분 수정
-      destroy()        DELETE /worker/1/     → 삭제
-    """
-
-    # ── 기본 조회 범위 ──
-    # is_active=True만 → 소프트 삭제된 작업자는 안 보임
+    """작업자 CRUD"""
     queryset = Worker.objects.filter(is_active=True)
-
-    # ── 어떤 시리얼라이저로 JSON 변환할지 ──
     serializer_class = WorkerSerializer
 
     def destroy(self, request, *args, **kwargs):
-        """
-        소프트 삭제 — is_active=False로 변경
-
-        기본 destroy()는 instance.delete()로 DB에서 완전 삭제함
-        → 이걸 오버라이드해서 is_active=False로만 변경
-
-        self.get_object()
-          → URL의 pk(예: /worker/3/)에 해당하는 Worker를 가져옴
-          → 없으면 자동으로 404 에러 반환
-        """
         instance = self.get_object()
         instance.is_active = False
         instance.save()
-
-        # 204 No Content: "삭제 성공, 응답 본문 없음"
-        # REST API 삭제의 표준 응답 코드
-        return Response(status=status.HTTP_204_NO_CONTENT)
+        return Response(status=http_status.HTTP_204_NO_CONTENT)
 
     @action(detail=True, methods=['get'])
     def latest(self, request, pk=None):
-        """
-        해당 작업자의 최근 위치 1건
-
-        @action 데코레이터:
-          detail=True  → 개별 객체에 대한 액션 (/worker/1/latest/)
-          detail=False → 전체 목록에 대한 액션 (/worker/latest/)
-          methods=['get'] → GET 요청만 허용
-
-        URL: /dashboard/api/worker/{pk}/latest/
-        """
         worker = self.get_object()
-
-        # ordering=['-timestamp']이므로 first() = 가장 최근 기록
         loc = worker.locations.first()
-
         if not loc:
             return Response(
                 {"detail": "위치 기록이 없습니다."},
-                status=status.HTTP_404_NOT_FOUND
+                status=http_status.HTTP_404_NOT_FOUND,
             )
-
-        # 시리얼라이저로 JSON 변환 후 응답
         return Response(WorkerLocationSerializer(loc).data)
 
 
 class WorkerLocationViewSet(viewsets.ModelViewSet):
-    """
-    작업자 위치 기록
-
-    쿼리 파라미터:
-      ?worker_id=worker_01   → 특정 작업자만 필터
-      ?limit=50              → 최근 N건만 (기본 100)
-
-    사용 예:
-      GET /dashboard/api/worker-location/
-      GET /dashboard/api/worker-location/?worker_id=worker_01&limit=20
-      POST /dashboard/api/worker-location/
-        body: {"worker": 1, "x": 150, "y": 170}
-    """
+    """작업자 위치 기록"""
     serializer_class = WorkerLocationSerializer
 
     def get_queryset(self):
-        """
-        queryset을 클래스 변수 대신 메서드로 정의하는 이유:
-        → 요청(request)마다 다른 결과를 반환해야 하기 때문
-        → ?worker_id=... 파라미터에 따라 필터가 달라짐
-
-        만약 queryset = WorkerLocation.objects.all()로 클래스 변수에 두면
-        모든 요청에 대해 동일한 결과가 반환됨 (파라미터 무시)
-        """
-
-        # ── select_related('worker') ──
-        # WorkerLocation을 가져올 때 Worker도 JOIN해서 같이 가져옴
-        #
-        # 없으면: 쿼리 N+1 문제 발생
-        #   1번째 쿼리: SELECT * FROM workerlocation LIMIT 100
-        #   2~101번째:  SELECT * FROM worker WHERE id = ?  (100번!)
-        #
-        # 있으면: 1번의 쿼리로 끝
-        #   SELECT * FROM workerlocation
-        #     JOIN worker ON worker.id = workerlocation.worker_id
-        #     LIMIT 100
         qs = WorkerLocation.objects.select_related('worker').all()
 
-        # ── 특정 작업자 필터 ──
-        # ?worker_id=worker_01 → worker_01의 위치 기록만
-        #
-        # worker__worker_id 에서 __(밑줄 두 개)의 의미:
-        #   FK 관계를 타고 들어가는 것
-        #   workerlocation.worker.worker_id 를 필터
-        #
-        # Django ORM에서 __의 다른 용도:
-        #   filter(x__gte=100)           → x >= 100
-        #   filter(name__contains="A")   → name에 "A" 포함
-        #   filter(timestamp__date=...)  → 날짜 필터
         worker_id = self.request.query_params.get('worker_id')
         if worker_id:
             qs = qs.filter(worker__worker_id=worker_id)
 
-        # ── 건수 제한 ──
-        # ?limit=50 → 최근 50건만
-        # 위치 기록은 매초 쌓이므로 전부 반환하면 안 됨
-        # qs[:100]은 SQL의 LIMIT 100과 동일
         limit = self.request.query_params.get('limit', '100')
         try:
             limit = int(limit)
@@ -148,20 +76,18 @@ class WorkerLocationViewSet(viewsets.ModelViewSet):
             limit = 100
 
         return qs[:limit]
+
     def perform_create(self, serializer):
-        """
-        POST /dashboard/api/worker-location/ 요청이 왔을 때
-        기본 동작: DB 저장
-        추가 동작: 저장 직후 WS로 현재 위치 push
-        
-        ModelViewSet.create()는 내부적으로 perform_create()를 호출함.
-        여기를 오버라이드하면 "저장 + push"를 자연스럽게 묶을 수 있음.
-        """
-        # 1) DB 저장 (기본 동작)
         instance = serializer.save()
-        
-        # 2) WS push용 딕셔너리 구성
-        #    Worker FK로 연결돼 있으므로 instance.worker.worker_id로 접근
+
+        # ─── Phase 4A: heartbeat 갱신 ───
+        # 위치 업데이트가 올 때마다 Worker.last_seen_at 을 함께 갱신해서
+        # '연결 상태' 판정의 단일 출처로 삼는다.
+        Worker.objects.filter(pk=instance.worker_id).update(
+            last_seen_at=instance.timestamp,
+        )
+
+        # WS 방송 (기존)
         payload = {
             "worker_id": instance.worker.worker_id,
             "worker_name": instance.worker.name,
@@ -170,6 +96,265 @@ class WorkerLocationViewSet(viewsets.ModelViewSet):
             "movement_status": instance.movement_status,
             "timestamp": instance.timestamp.isoformat(),
         }
-        
-        # 3) 방송
         publish_worker_position(payload)
+
+
+# ═══════════════════════════════════════════════════════════
+# Phase 4A — 작업자 현황 페이지
+# ═══════════════════════════════════════════════════════════
+
+# 연결 상태 판정 기준 — last_seen_at 이 이 시간 이내면 "연결 정상"
+CONNECTION_TIMEOUT_SEC = 30
+
+
+@login_required(login_url='/accounts/login/')
+def worker_list_page(request):
+    """
+    작업자 현황 목록 페이지.
+
+    초기 렌더는 쉘만 깔아두고, 실제 데이터는
+    JS 가 /workers/api/list/ 를 호출해서 받는다. (Phase 4B 에서 폴링/WS 전환 용이)
+    """
+    return render(request, 'workers/list.html')
+
+
+def _get_worker_state_map() -> dict[str, str]:
+    """
+    state_store 에서 각 작업자의 현재 상태(safe/caution/danger/critical) 를 읽어온다.
+
+    alerts.state_store 가 Redis 기반이므로, 의존성 방향 유지를 위해
+    실패해도 빈 dict 반환 (페이지는 계속 렌더).
+    """
+    try:
+        from alerts.state_store import get_worker_snapshot
+    except Exception:
+        return {}
+
+    result: dict[str, str] = {}
+    for w in Worker.objects.filter(is_active=True).only('worker_id'):
+        try:
+            snap = get_worker_snapshot(w.worker_id)
+            if snap:
+                # get_worker_snapshot 이 반환하는 dict 의 'state' 키 사용
+                result[w.worker_id] = snap.get('state', 'safe')
+            else:
+                result[w.worker_id] = 'safe'
+        except Exception:
+            result[w.worker_id] = 'safe'
+    return result
+
+
+def _get_worker_zone_map() -> dict[str, str]:
+    """
+    각 작업자가 현재 있는 지오펜스 이름(= '작업지명') 매핑.
+
+    WorkerLocation 마지막 좌표로 GeoFence polygon 포함 여부를 계산.
+    없으면 빈 문자열.
+    """
+    try:
+        from geofence.models import GeoFence
+    except Exception:
+        return {}
+
+    # 전체 활성 geofence (polygon = [[x,y], ...])
+    fences = list(
+        GeoFence.objects.filter(is_active=True).values('name', 'polygon')
+    )
+
+    result: dict[str, str] = {}
+    latest_by_worker = {}
+    for loc in WorkerLocation.objects.select_related('worker')[:500]:
+        # 이미 최신 1건 잡힘 (ordering -timestamp)
+        if loc.worker.worker_id in latest_by_worker:
+            continue
+        latest_by_worker[loc.worker.worker_id] = (loc.x, loc.y)
+
+    for wid, (x, y) in latest_by_worker.items():
+        zone_name = ''
+        for fence in fences:
+            poly = fence.get('polygon') or []
+            if len(poly) >= 3 and _point_in_polygon(x, y, poly):
+                zone_name = fence['name']
+                break
+        result[wid] = zone_name
+    return result
+
+
+def _point_in_polygon(x: float, y: float, poly: list) -> bool:
+    """Ray casting — poly 는 [[x1,y1],[x2,y2],...]"""
+    n = len(poly)
+    inside = False
+    j = n - 1
+    for i in range(n):
+        xi, yi = poly[i][0], poly[i][1]
+        xj, yj = poly[j][0], poly[j][1]
+        if ((yi > y) != (yj > y)) and \
+           (x < (xj - xi) * (y - yi) / ((yj - yi) or 1e-9) + xi):
+            inside = not inside
+        j = i
+    return inside
+
+
+class WorkerListDataView(APIView):
+    """
+    작업자 목록 + 요약 데이터 (JSON).
+
+    응답:
+    {
+        "summary": {
+            "total": 100,
+            "checked_in": 50,      // last_seen_at <= 30s 이내
+            "by_status": {"danger": 2, "caution": 2, "safe": 46}
+        },
+        "workers": [
+            {
+                "worker_id": "worker_01",
+                "name": "김재승",
+                "department": "공정관리팀",
+                "position": "대리",
+                "email": "...",
+                "phone": "...",
+                "zone_name": "고온구역 A",
+                "last_seen_at": "2026-04-24T10:00:00+09:00",
+                "connection_ok": true,
+                "status": "safe"
+            }, ...
+        ]
+    }
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        now = timezone.now()
+        cutoff = now - timedelta(seconds=CONNECTION_TIMEOUT_SEC)
+
+        workers_qs = Worker.objects.filter(is_active=True).order_by('worker_id')
+
+        state_map = _get_worker_state_map()
+        zone_map  = _get_worker_zone_map()
+
+        workers_data = []
+        checked_in_count = 0
+        status_counter = {'danger': 0, 'caution': 0, 'safe': 0}
+
+        for w in workers_qs:
+            connection_ok = bool(w.last_seen_at and w.last_seen_at >= cutoff)
+            if connection_ok:
+                checked_in_count += 1
+
+            status = state_map.get(w.worker_id, 'safe')
+            # critical 은 UI 표시상 danger 로 합침 (3-배지 체계)
+            ui_status = 'danger' if status in ('danger', 'critical') else status
+            if ui_status not in status_counter:
+                ui_status = 'safe'
+            status_counter[ui_status] += 1
+
+            workers_data.append({
+                'worker_id':    w.worker_id,
+                'name':         w.name,
+                'department':   w.department,
+                'position':     w.position,
+                'email':        w.email,
+                'phone':        w.phone,
+                'zone_name':    zone_map.get(w.worker_id, ''),
+                'last_seen_at': w.last_seen_at.isoformat() if w.last_seen_at else None,
+                'connection_ok': connection_ok,
+                'status':       ui_status,
+            })
+
+        return Response({
+            'summary': {
+                'total':       workers_qs.count(),
+                'checked_in':  checked_in_count,
+                'by_status':   status_counter,
+            },
+            'workers': workers_data,
+        })
+
+
+@method_decorator(csrf_exempt, name='dispatch')
+class WorkerNotifyView(APIView):
+    """
+    푸시 알림 전송 (Phase 4A 더미).
+
+    요청 (JSON):
+    {
+        "send_type": "single" | "selected" | "all",
+        "recipients": ["worker_01", "worker_02"],  // single/selected 일 때
+        "message": "가스 농도 상승 중..."
+    }
+
+    응답 (201):
+    {
+        "status": "ok",
+        "notification_id": 42,
+        "sent_at": "...",
+        "recipient_count": 2
+    }
+
+    [동작]
+      - DB에 NotificationLog 1건 + recipients M2M 저장
+      - 실제 푸시 전송은 하지 않음 (Phase 4B 범위)
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        send_type = request.data.get('send_type', '').strip()
+        message   = request.data.get('message', '').strip()
+        recipient_ids = request.data.get('recipients', [])
+
+        # ─── 검증 ───
+        if send_type not in ('single', 'selected', 'all'):
+            return Response(
+                {'status': 'error', 'message': 'send_type 은 single/selected/all 중 하나여야 합니다.'},
+                status=http_status.HTTP_400_BAD_REQUEST,
+            )
+        if not message:
+            return Response(
+                {'status': 'error', 'message': '메시지를 입력해주세요.'},
+                status=http_status.HTTP_400_BAD_REQUEST,
+            )
+        if len(message) > 200:
+            return Response(
+                {'status': 'error', 'message': '메시지는 200자 이내여야 합니다.'},
+                status=http_status.HTTP_400_BAD_REQUEST,
+            )
+
+        # ─── 수신자 결정 ───
+        if send_type == 'all':
+            recipients = list(Worker.objects.filter(is_active=True))
+        else:
+            if not isinstance(recipient_ids, list) or not recipient_ids:
+                return Response(
+                    {'status': 'error', 'message': '수신 대상을 지정해주세요.'},
+                    status=http_status.HTTP_400_BAD_REQUEST,
+                )
+            recipients = list(
+                Worker.objects.filter(
+                    worker_id__in=recipient_ids, is_active=True,
+                )
+            )
+            if not recipients:
+                return Response(
+                    {'status': 'error', 'message': '유효한 수신 대상이 없습니다.'},
+                    status=http_status.HTTP_400_BAD_REQUEST,
+                )
+
+        # ─── DB 저장 ───
+        with transaction.atomic():
+            log = NotificationLog.objects.create(
+                sender=request.user,
+                send_type=send_type,
+                message=message,
+            )
+            log.recipients.set(recipients)
+
+        return Response(
+            {
+                'status':          'ok',
+                'notification_id': log.id,
+                'sent_at':         log.sent_at.isoformat(),
+                'recipient_count': len(recipients),
+            },
+            status=http_status.HTTP_201_CREATED,
+        )
