@@ -243,7 +243,7 @@ window.closeModal = function () { document.getElementById('fence-modal').classLi
 // ─── 지오펜스 API ───
 window.saveGeoFence = async function () {
   var name = document.getElementById('fence-name').value.trim(); if (!name) { alert('구역명을 입력하세요.'); return; } if (pendingCoords.length < 3) { alert('다시 그려주세요.'); return; }
-  try { var res = await fetch('/dashboard/api/geofence/', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken() }, body: JSON.stringify({ name: name, zone_type: document.getElementById('fence-type').value, risk_level: document.getElementById('fence-risk').value, description: document.getElementById('fence-desc').value.trim(), polygon: pendingCoords }) });
+  try { var res = await fetch('/dashboard/api/geofence/', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken() }, body: JSON.stringify({ name: name, zone_type: document.getElementById('fence-type').value, description: document.getElementById('fence-desc').value.trim(), polygon: pendingCoords }) });
     if (!res.ok) throw new Error(await res.text()); var d = await res.json(); closeModal(); pendingCoords = []; renderGeoFence(d); addToSidebarList(d); if (pendingPolygon) { pendingPolygon.remove(); pendingPolygon = null; }
   } catch (err) { alert('저장 실패: ' + err.message); }
 };
@@ -252,18 +252,22 @@ async function loadGeoFences() {
   try { var res = await fetch('/dashboard/api/geofence/'); var data = await res.json(), list = data.results || data; if (!list.length) return; document.getElementById('geofence-list').innerHTML = ''; list.forEach(function (f) { renderGeoFence(f); addToSidebarList(f); }); } catch (e) {}
 }
 
+var ZONE_LABELS = { open: '개방구역', monitored: '상시감시', hazardous: '유해구역', restricted: '출입금지' };
+
 function renderGeoFence(fence) {
   var latlngs = fence.polygon.map(function (p) { return [p[1], p[0]]; }), color = ZONE_COLORS[fence.zone_type] || '#aaa';
+  var label = ZONE_LABELS[fence.zone_type] || fence.zone_type;
   var poly = L.polygon(latlngs, { color: color, fillColor: color, fillOpacity: 0.2, weight: 2 });
-  poly.bindPopup('<div class="popup-title">' + fence.name + '</div><div class="popup-row"><span class="label">유형</span><span class="value">' + fence.zone_type + '</span></div><div class="popup-row"><span class="label">위험도</span><span class="value">' + fence.risk_level + '</span></div>');
+  poly.bindPopup('<div class="popup-title">' + fence.name + '</div><div class="popup-row"><span class="label">구역 유형</span><span class="value">' + label + '</span></div>');
   poly.fenceId = fence.id; geofenceLayerGroup.addLayer(poly);
 }
 
 function addToSidebarList(fence) {
   var list = document.getElementById('geofence-list'), empty = list.querySelector('p'); if (empty) empty.remove();
-  var color = ZONE_COLORS[fence.zone_type] || '#aaa', item = document.createElement('div');
+  var color = ZONE_COLORS[fence.zone_type] || '#aaa', label = ZONE_LABELS[fence.zone_type] || fence.zone_type;
+  var item = document.createElement('div');
   item.className = 'geofence-item'; item.dataset.id = fence.id;
-  item.innerHTML = '<div class="geofence-dot" style="background:' + color + '"></div><div class="geofence-info"><div class="name">' + fence.name + '</div><div class="meta">' + fence.zone_type + ' · ' + fence.risk_level + '</div></div><button class="delete-btn" onclick="deleteGeoFence(' + fence.id + ')">✕</button>';
+  item.innerHTML = '<div class="geofence-dot" style="background:' + color + '"></div><div class="geofence-info"><div class="name">' + fence.name + '</div><div class="meta">' + label + '</div></div><button class="delete-btn" onclick="deleteGeoFence(' + fence.id + ')">✕</button>';
   item.addEventListener('click', function (e) { if (e.target.classList.contains('delete-btn')) return; geofenceLayerGroup.eachLayer(function (l) { if (l.fenceId === fence.id) { map.fitBounds(l.getBounds()); l.openPopup(); } }); });
   list.appendChild(item);
 }

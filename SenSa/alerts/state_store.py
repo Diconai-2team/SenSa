@@ -39,7 +39,8 @@ def get_worker_snapshot(worker_id: str) -> dict:
     """
     작업자의 현재 전체 스냅샷 반환.
     기본값:
-      state='safe', last_alarm_at=0.0, pending_state=None, pending_count=0
+      state='safe', last_alarm_at=0.0, pending_state=None, pending_count=0,
+      sustained_ticks=0
     """
     r = _client()
     key = KEY_FORMAT.format(worker_id=worker_id)
@@ -49,27 +50,37 @@ def get_worker_snapshot(worker_id: str) -> dict:
         'last_alarm_at': float(data.get('last_alarm_at', 0) or 0),
         'pending_state': data.get('pending_state') or None,
         'pending_count': int(data.get('pending_count', 0) or 0),
+        'sustained_ticks': int(data.get('sustained_ticks', 0) or 0),
     }
 
 
 def commit_state(worker_id: str, state: str, mark_alarmed: bool = False) -> None:
     """
-    공식 상태 확정 + pending 초기화.
+    공식 상태 확정 + pending 초기화 + sustained_ticks 리셋.
     mark_alarmed=True 면 last_alarm_at 도 now 로 갱신.
     """
     if state not in ("safe", "caution", "danger"):
         raise ValueError(f"invalid state: {state}")
-    
+
     r = _client()
     key = KEY_FORMAT.format(worker_id=worker_id)
     mapping = {
         'state': state,
         'pending_state': '',
         'pending_count': '0',
+        'sustained_ticks': '0',
     }
     if mark_alarmed:
         mapping['last_alarm_at'] = str(time.time())
     r.hset(key, mapping=mapping)
+    r.expire(key, TTL_SEC)
+
+
+def set_sustained_ticks(worker_id: str, count: int) -> None:
+    """비정상 상태 지속 틱 카운터 업데이트."""
+    r = _client()
+    key = KEY_FORMAT.format(worker_id=worker_id)
+    r.hset(key, 'sustained_ticks', str(count))
     r.expire(key, TTL_SEC)
 
 
@@ -96,6 +107,31 @@ def clear_pending(worker_id: str) -> None:
         'pending_count': '0',
     })
     r.expire(key, TTL_SEC)
+
+# ═══════════════════════════════════════════════════════════
+# 작업자 지오펜스 멤버십 — 진입/이탈 감지용
+# ═══════════════════════════════════════════════════════════
+
+FENCES_KEY_FORMAT = "sensa:worker:{worker_id}:fences"
+
+
+def get_worker_fences(worker_id: str) -> set:
+    """작업자가 이전 틱에 속해 있던 geofence id 집합 (str)."""
+    r = _client()
+    key = FENCES_KEY_FORMAT.format(worker_id=worker_id)
+    members = r.smembers(key)
+    return set(members)
+
+
+def set_worker_fences(worker_id: str, fence_ids: set) -> None:
+    """현재 틱 geofence id 집합을 저장."""
+    r = _client()
+    key = FENCES_KEY_FORMAT.format(worker_id=worker_id)
+    r.delete(key)
+    if fence_ids:
+        r.sadd(key, *fence_ids)
+    r.expire(key, TTL_SEC)
+
 
 # ═══════════════════════════════════════════════════════════
 # 센서용 상태 저장소 (구조는 작업자와 동일)

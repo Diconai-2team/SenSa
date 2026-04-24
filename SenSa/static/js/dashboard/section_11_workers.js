@@ -80,10 +80,10 @@
       if (!f.polygon || f.polygon.length < 3) continue;
 
       if (pointInPolygon(w.x, w.y, f.polygon)) {
-        var level = f.zone_type === 'danger' ? 'danger'
+        var level = f.zone_type === 'hazardous' ? 'danger'
                   : f.zone_type === 'restricted' ? 'danger'
-                  : f.zone_type === 'caution' ? 'caution'
-                  : 'caution';
+                  : f.zone_type === 'monitored' ? 'caution'
+                  : 'normal';
 
         if (level === 'danger') {
           return { status: 'danger', zone: f.name };

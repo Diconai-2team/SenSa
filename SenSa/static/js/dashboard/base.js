@@ -137,7 +137,7 @@ async function loadWorkersFromAPI() {
 loadWorkersFromAPI();
 
 // ─── 색상/아이콘 상수 ───
-window.ZONE_COLORS   = { danger: '#e74c3c', caution: '#f1c40f', restricted: '#9b59b6' };
+window.ZONE_COLORS   = { open: '#95a5a6', monitored: '#3498db', hazardous: '#f39c12', restricted: '#e74c3c' };
 window.SENSOR_COLORS  = { gas: '#e74c3c', power: '#f39c12', temperature: '#3498db', motion: '#2ecc71' };
 window.SENSOR_ICONS   = { gas: '💨', power: '⚡', temperature: '🌡️', motion: '🔊' };
 
