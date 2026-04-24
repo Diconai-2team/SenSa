@@ -234,9 +234,29 @@ def _classify_sensor_state(worst_sensor_status: str) -> str:
     return {'danger': 'danger', 'caution': 'caution'}.get(worst_sensor_status, 'safe')
 
 
-def _build_message(worker_name: str, prev: str, curr: str, sensor_status: str) -> str:
+def _build_message(worker_name: str, prev: str, curr: str,
+                    sensor_status: str,
+                    influencing_sensors: list | None = None) -> str:
     """작업자 상태 전이별 메시지 (센서 기반)."""
-    s = f" (센서 {sensor_status})" if sensor_status != 'normal' else ''
+    influencing_sensors = influencing_sensors or []
+    
+    # 센서 정보 suffix 구성
+    # 예1: " (sensor_02 caution)"
+    # 예2: " (sensor_01, sensor_03 caution)" — 같은 상태 여러 개
+    # 예3: " (sensor_01 danger, sensor_03 caution)" — 상태 섞임
+    if sensor_status != 'normal' and influencing_sensors:
+        statuses = {st for _, st in influencing_sensors}
+        if len(statuses) == 1:
+            ids = ', '.join(sid for sid, _ in influencing_sensors)
+            s = f" ({ids} {sensor_status})"
+        else:
+            parts = [f"{sid} {st}" for sid, st in influencing_sensors]
+            s = f" ({', '.join(parts)})"
+    elif sensor_status != 'normal':
+        s = f" (센서 {sensor_status})"  # fallback
+    else:
+        s = ''
+    
     if prev == 'safe' and curr == 'caution':
         return f"{worker_name} 주의 상태 진입{s}"
     if prev == 'safe' and curr == 'danger':
@@ -291,7 +311,8 @@ _ALERT_ZONE_TYPES = {'hazardous', 'restricted'}
 
 def evaluate_worker(worker_id: str, worker_name: str,
                      x: float, y: float,
-                     worst_sensor_status: str = 'normal') -> list[dict]:
+                     worst_sensor_status: str = 'normal',
+                     influencing_sensors: list | None = None) -> list[dict]:
     """
     작업자 1명의 상태 전이 판정 (센서 기반 전용).
     지오펜스 진입/이탈은 check_geofence_transitions 에서 별도 처리.
@@ -299,6 +320,8 @@ def evaluate_worker(worker_id: str, worker_name: str,
     악화: 즉시 전이 / 회복: RECOVERY_CONFIRM_TICKS 연속 후 전이
     지속: SUSTAINED_ALARM_TICKS 틱 비정상 유지 시 재알림
     """
+    influencing_sensors = influencing_sensors or []   # ← 추가 정보 (예: ['co', 'o2']) — 메시지에 활용 가능하도록 확장 여지
+
     observed_state = _classify_sensor_state(worst_sensor_status)
     snap = get_worker_snapshot(worker_id)
     official_state = snap['state']
@@ -353,7 +376,10 @@ def evaluate_worker(worker_id: str, worker_name: str,
 
     if should_alarm:
         alarm_type, alarm_level = _transition_to_type_and_level(official_state, target_state)
-        message = _build_message(worker_name, official_state, target_state, worst_sensor_status)
+        message = _build_message(
+            worker_name, official_state, target_state,
+            worst_sensor_status, influencing_sensors
+        )
 
         alarm = Alarm.objects.create(
             alarm_type=alarm_type,

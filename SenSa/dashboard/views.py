@@ -63,12 +63,18 @@ SENSOR_RADIUS = 200   # px — 센서 감지 반경 (센서 기준)
 
 
 def _get_sensor_influence(worker_x: float, worker_y: float,
-                           sensors: list, radius: float = SENSOR_RADIUS) -> str:
+                           sensors: list, radius: float = SENSOR_RADIUS):
     """
     센서 반경 내에 작업자가 있는지 확인 (센서 기준 탐지).
     normal 센서는 스킵 — 위험한 센서만 거리 계산.
+    
+    반환: (worst_status, influencing_sensors)
+      - worst_status: 'normal' | 'caution' | 'danger'
+      - influencing_sensors: [(device_id, status), ...] 반경 내 비정상 센서 목록
     """
     worst = 'normal'
+    influencing = []
+    
     for s in sensors:
         sensor_status = s.get('status', 'normal')
         if sensor_status == 'normal':
@@ -76,10 +82,13 @@ def _get_sensor_influence(worker_x: float, worker_y: float,
         sx = float(s.get('x', 0))
         sy = float(s.get('y', 0))
         if math.sqrt((sx - worker_x) ** 2 + (sy - worker_y) ** 2) <= radius:
+            influencing.append((s.get('device_id', ''), sensor_status))
             if sensor_status == 'danger':
-                return 'danger'
-            worst = 'caution'
-    return worst
+                worst = 'danger'
+            elif worst != 'danger':
+                worst = 'caution'
+    
+    return worst, influencing
 
 
 @method_decorator(csrf_exempt, name='dispatch')
@@ -101,7 +110,7 @@ class CheckGeofenceView(APIView):
             w_y = float(worker.get('y', 0))
             
             # 이 작업자 위치에 영향을 주는 센서 상태 (센서 기준 탐지)
-            sensor_influence = _get_sensor_influence(w_x, w_y, sensors)
+            sensor_influence, influencing_sensors = _get_sensor_influence(w_x, w_y, sensors)
 
             # 센서 기반 상태 전이 알람
             alarms = evaluate_worker(
@@ -110,6 +119,7 @@ class CheckGeofenceView(APIView):
                 x=w_x,
                 y=w_y,
                 worst_sensor_status=sensor_influence,
+                influencing_sensors=influencing_sensors,
             )
             all_alarms.extend(alarms)
 
