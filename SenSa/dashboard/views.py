@@ -16,7 +16,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_exempt
-from alerts.services import evaluate_worker, evaluate_sensor
+from alerts.services import evaluate_worker, evaluate_sensor, check_geofence_transitions
 from .models import MapImage
 from .serializers import MapImageSerializer
 from realtime.publishers import publish_alarm
@@ -59,28 +59,25 @@ class MapImageViewSet(viewsets.ModelViewSet):
         )
 
 
-PROXIMITY_RADIUS = 200   # 픽셀. 작업자가 센서에서 이 반경 안에 있으면 영향받음
+SENSOR_RADIUS = 200   # px — 센서 감지 반경 (센서 기준)
 
 
-def _compute_nearby_sensor_status(worker_x: float, worker_y: float, 
-                                    sensors: list, radius: float = PROXIMITY_RADIUS) -> str:
+def _get_sensor_influence(worker_x: float, worker_y: float,
+                           sensors: list, radius: float = SENSOR_RADIUS) -> str:
     """
-    작업자 좌표 기준 반경 내 센서들의 최악 상태 반환.
-    범위 안에 위험 센서 없으면 normal.
+    센서 반경 내에 작업자가 있는지 확인 (센서 기준 탐지).
+    normal 센서는 스킵 — 위험한 센서만 거리 계산.
     """
     worst = 'normal'
     for s in sensors:
+        sensor_status = s.get('status', 'normal')
+        if sensor_status == 'normal':
+            continue
         sx = float(s.get('x', 0))
         sy = float(s.get('y', 0))
-        distance = math.sqrt((sx - worker_x) ** 2 + (sy - worker_y) ** 2)
-        
-        if distance > radius:
-            continue
-        
-        status = s.get('status', 'normal')
-        if status == 'danger':
-            return 'danger'  # 위험은 즉시 반환
-        if status == 'caution' and worst == 'normal':
+        if math.sqrt((sx - worker_x) ** 2 + (sy - worker_y) ** 2) <= radius:
+            if sensor_status == 'danger':
+                return 'danger'
             worst = 'caution'
     return worst
 
@@ -103,17 +100,27 @@ class CheckGeofenceView(APIView):
             w_x = float(worker.get('x', 0))
             w_y = float(worker.get('y', 0))
             
-            # 이 작업자에게만 해당하는 센서 상태
-            nearby_sensor_status = _compute_nearby_sensor_status(w_x, w_y, sensors)
-            
+            # 이 작업자 위치에 영향을 주는 센서 상태 (센서 기준 탐지)
+            sensor_influence = _get_sensor_influence(w_x, w_y, sensors)
+
+            # 센서 기반 상태 전이 알람
             alarms = evaluate_worker(
                 worker_id=w_id,
                 worker_name=worker.get('name', w_id),
                 x=w_x,
                 y=w_y,
-                worst_sensor_status=nearby_sensor_status,   # ← 작업자별 고유값
+                worst_sensor_status=sensor_influence,
             )
             all_alarms.extend(alarms)
+
+            # 지오펜스 진입/이탈 알람 (별개)
+            fence_alarms = check_geofence_transitions(
+                worker_id=w_id,
+                worker_name=worker.get('name', w_id),
+                x=w_x,
+                y=w_y,
+            )
+            all_alarms.extend(fence_alarms)
         
         # 2) 센서 축 판정 — 기존 그대로
         for sensor in sensors:

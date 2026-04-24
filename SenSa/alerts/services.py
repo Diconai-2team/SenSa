@@ -1,25 +1,19 @@
 """
 alerts/services.py — 상태 전이 기반 알람 서비스
 
-4가지 규칙:
-  1. 특이점 발생 시 즉시 알람 (전이가 감지되면 디바운스 우회)
-  2. 같은 사건 중복 억제 (상태 유지 중에는 재생성 안 함)
-  3. 미해결 상태 60초 지속 시 재알림 (지속 경고)
-  4. 국면 전환 알람 (악화/회복 모두)
+【작업자 축】evaluate_worker — 센서 기반 상태 전이
+  악화: 즉시 전이 / 회복: RECOVERY_CONFIRM_TICKS 연속 후 전이
+  지속 알람: SUSTAINED_ALARM_TICKS 틱 비정상 유지 시 재알림
+  작업자 상태: 'safe' < 'caution' < 'danger'  (지오펜스 무관)
 
-상태 정의 (엄격도 순):
-  'safe' < 'caution' < 'danger' < 'critical'
-  critical = restricted(출입금지) 구역 안                ← Gas 병합 추가
+【지오펜스 축】check_geofence_transitions — 구역 진입/이탈 이벤트
+  hazardous·restricted 구역만 1회성 알람 (지속 알람 없음)
 
-판정 함수 (재사용 가능, 순수/준-순수):
-  classify_gas(gas)           — 9종 가스 worst 상태
-  classify_power(power, dev)  — 동적 24시간 중앙값 기반 전력 판정
-  _find_sensor_geofence(dev)  — 센서 device_id → 소속 지오펜스
+【센서 축】evaluate_sensor — 센서 상태 전이 (60초 지속 알람)
 
-[병합 이력]
-  Gas 병합  : _find_sensor_geofence, restricted→critical, classify_gas
-              임계치는 IDLH 기준(관대) — section_12_13_gas.js 의 TH 와 동기화
-  Power 병합: classify_power(24h 중앙값), _get_24h_avg_watt
+판정 함수:
+  classify_gas(gas)          — 9종 가스 worst 상태
+  classify_power(power, dev) — 동적 24시간 중앙값 기반 전력 판정
 """
 import statistics
 import time
@@ -33,17 +27,16 @@ from geofence.services import point_in_polygon
 from .models import Alarm
 from .state_store import (
     get_worker_snapshot, commit_state, set_pending, clear_pending,
+    set_sustained_ticks, get_worker_fences, set_worker_fences,
     get_sensor_snapshot, commit_sensor_state,
     set_sensor_pending, clear_sensor_pending,
 )
 
-# 지속 상태 재알림 주기 (초)
-RE_ALARM_INTERVAL_SEC = getattr(settings, 'ALARM_RE_ALARM_INTERVAL_SEC', 60)
 RECOVERY_CONFIRM_TICKS = getattr(settings, 'ALARM_RECOVERY_CONFIRM_TICKS', 3)
+SUSTAINED_ALARM_TICKS  = getattr(settings, 'ALARM_SUSTAINED_TICKS', 5)
+# 센서 지속 알람은 시간 기반 유지
+RE_ALARM_INTERVAL_SEC  = getattr(settings, 'ALARM_RE_ALARM_INTERVAL_SEC', 60)
 
-# ── 중복 알람 방지 캐시 (메모리, 30초 쿨다운) ──────────────────────
-_alarm_cache: dict[str, float] = {}
-_COOLDOWN = 30  # 초
 
 # ═══════════════════════════════════════════════════════════
 # 가스 판정 — 9종 (Gas 전담 팀원 공식 기준)
@@ -236,94 +229,35 @@ def _find_sensor_geofence(device_id: str):
 # 작업자 상태 분류 / 메시지 / 전이 매핑
 # ═══════════════════════════════════════════════════════════
 
-def _classify_state(geofences: list, worst_sensor_status: str) -> str:
-    """
-    현재 상태 판정.
-    반환: 'safe' | 'caution' | 'danger' | 'critical'
-
-    critical 승격 조건: 작업자가 restricted(출입금지) 구역 안에 있을 때.
-    """
-    zone_types = {g.zone_type for g in geofences}
-
-    if 'restricted' in zone_types:
-        return 'critical'
-
-    if 'danger' in zone_types or worst_sensor_status == 'danger':
-        return 'danger'
-
-    if 'caution' in zone_types or worst_sensor_status == 'caution':
-        return 'caution'
-
-    return 'safe'
+def _classify_sensor_state(worst_sensor_status: str) -> str:
+    """센서 worst 상태 → 작업자 상태. 'normal' → 'safe'."""
+    return {'danger': 'danger', 'caution': 'caution'}.get(worst_sensor_status, 'safe')
 
 
-def _pick_primary_geofence(geofences: list, target_state: str):
-    """알람 메시지에 표시할 '대표' 지오펜스 선택."""
-    for g in geofences:
-        zone_type = g.zone_type
-        if target_state == 'critical' and zone_type == 'restricted':
-            return g
-        if target_state == 'danger' and zone_type in ('danger', 'restricted'):
-            return g
-        if target_state == 'caution' and zone_type == 'caution':
-            return g
-    return geofences[0] if geofences else None
-
-
-def _build_message(worker_name: str, prev: str, curr: str,
-                    geofence, sensor_status: str) -> str:
-    """전이별 메시지 조립."""
-    zone_name = geofence.name if geofence else ''
-
-    # ─── critical (restricted 구역) ───
-    if curr == 'critical' and prev != 'critical':
-        return f"{worker_name} 출입금지구역 진입" + (f" ({zone_name})" if zone_name else "")
-    if prev == 'critical' and curr == 'critical':
-        return f"{worker_name} 출입금지구역 체류 중" + (f" ({zone_name})" if zone_name else "")
-    if prev == 'critical' and curr == 'danger':
-        return f"{worker_name} 출입금지구역 이탈 — 위험 수준으로 낮아짐"
-    if prev == 'critical' and curr in ('caution', 'safe'):
-        return f"{worker_name} 출입금지구역 이탈 완료"
-
-    # ─── 악화 ───
+def _build_message(worker_name: str, prev: str, curr: str, sensor_status: str) -> str:
+    """작업자 상태 전이별 메시지 (센서 기반)."""
+    s = f" (센서 {sensor_status})" if sensor_status != 'normal' else ''
     if prev == 'safe' and curr == 'caution':
-        return f"{worker_name} 주의구역 진입" + (f" ({zone_name})" if zone_name else " (센서 주의)")
+        return f"{worker_name} 주의 상태 진입{s}"
     if prev == 'safe' and curr == 'danger':
-        return f"{worker_name} 위험구역 진입" + (f" ({zone_name})" if zone_name else " (센서 위험)")
+        return f"{worker_name} 위험 상태 진입{s}"
     if prev == 'caution' and curr == 'danger':
-        return f"{worker_name} 상태 악화 — 주의→위험" + (f" ({zone_name})" if zone_name else "")
-
-    # ─── 회복 ───
+        return f"{worker_name} 상태 악화 — 주의→위험{s}"
     if prev == 'danger' and curr == 'caution':
         return f"{worker_name} 위험 벗어남 — 주의 수준으로 회복"
     if prev == 'danger' and curr == 'safe':
-        return f"{worker_name} 안전지역 복귀 — 위험 상황 종료"
+        return f"{worker_name} 안전 복귀 — 위험 상황 종료"
     if prev == 'caution' and curr == 'safe':
-        return f"{worker_name} 안전지역 복귀 — 주의 상황 종료"
-
-    # ─── 지속 ───
+        return f"{worker_name} 안전 복귀 — 주의 상황 종료"
     if curr == 'danger':
-        return f"{worker_name} 위험 상황 지속 중" + (f" ({zone_name})" if zone_name else "")
+        return f"{worker_name} 위험 상황 지속 중{s}"
     if curr == 'caution':
-        return f"{worker_name} 주의 상황 지속 중" + (f" ({zone_name})" if zone_name else "")
-
+        return f"{worker_name} 주의 상황 지속 중{s}"
     return f"{worker_name} 상태 변화"
 
 
 def _transition_to_type_and_level(prev: str, curr: str) -> tuple[str, str]:
-    """전이 유형 → (alarm_type, alarm_level) 매핑."""
-    # critical 진입
-    if curr == 'critical' and prev != 'critical':
-        return 'state_danger_enter', 'critical'
-    # critical 에서 회복
-    if prev == 'critical' and curr == 'danger':
-        return 'state_recover_partial', 'info'
-    if prev == 'critical' and curr in ('caution', 'safe'):
-        return 'state_recover_safe', 'info'
-    if prev == 'critical' and curr == 'critical':
-        return 'state_ongoing', 'critical'
-
-    # 기존 전이
+    """전이 유형 → (alarm_type, alarm_level)."""
     if prev == 'safe' and curr == 'caution':
         return 'state_caution_enter', 'caution'
     if prev == 'safe' and curr == 'danger':
@@ -334,7 +268,6 @@ def _transition_to_type_and_level(prev: str, curr: str) -> tuple[str, str]:
         return 'state_recover_partial', 'info'
     if prev in ('danger', 'caution') and curr == 'safe':
         return 'state_recover_safe', 'info'
-    # 지속
     if curr == 'danger':
         return 'state_ongoing', 'danger'
     if curr == 'caution':
@@ -343,9 +276,13 @@ def _transition_to_type_and_level(prev: str, curr: str) -> tuple[str, str]:
 
 
 def _is_escalation(prev: str, curr: str) -> bool:
-    """상태 악화 여부. safe < caution < danger < critical"""
-    ladder = {'safe': 0, 'caution': 1, 'danger': 2, 'critical': 3}
+    """상태 악화 여부. safe < caution < danger"""
+    ladder = {'safe': 0, 'caution': 1, 'danger': 2}
     return ladder.get(curr, 0) > ladder.get(prev, 0)
+
+
+# ─── 지오펜스 진입/이탈 알람 대상 zone_type ───
+_ALERT_ZONE_TYPES = {'hazardous', 'restricted'}
 
 
 # ═══════════════════════════════════════════════════════════
@@ -356,28 +293,21 @@ def evaluate_worker(worker_id: str, worker_name: str,
                      x: float, y: float,
                      worst_sensor_status: str = 'normal') -> list[dict]:
     """
-    작업자 1명의 상태 전이 판정 + 필요 시 알람 생성.
+    작업자 1명의 상태 전이 판정 (센서 기반 전용).
+    지오펜스 진입/이탈은 check_geofence_transitions 에서 별도 처리.
 
-    Hysteresis:
-      - 악화: 즉시 전이
-      - 회복: N틱(기본 3) 연속 관측 후 전이 (노이즈 필터)
+    악화: 즉시 전이 / 회복: RECOVERY_CONFIRM_TICKS 연속 후 전이
+    지속: SUSTAINED_ALARM_TICKS 틱 비정상 유지 시 재알림
     """
-    geofences = _find_containing_geofences(x, y)
-    observed_state = _classify_state(geofences, worst_sensor_status)
+    observed_state = _classify_sensor_state(worst_sensor_status)
     snap = get_worker_snapshot(worker_id)
     official_state = snap['state']
-    last_alarm_at = snap['last_alarm_at']
+    sustained_ticks = snap['sustained_ticks']
 
-    now = time.time()
-
-    # 디버그 로그
-    since_last = now - last_alarm_at if last_alarm_at > 0 else -1
     print(f"[DEBUG] {worker_id} ({x:.1f},{y:.1f}) "
           f"official={official_state} observed={observed_state} "
           f"pending={snap['pending_state']}({snap['pending_count']}) "
-          f"since_last={since_last:.1f}s "
-          f"fences={[g.name for g in geofences]} "
-          f"sensor={worst_sensor_status}")
+          f"sustained={sustained_ticks} sensor={worst_sensor_status}")
 
     # ─── 전이 확정 여부 ───
     confirmed_new_state = None
@@ -397,30 +327,33 @@ def evaluate_worker(worker_id: str, worker_name: str,
         else:
             set_pending(worker_id, observed_state, 1)
 
-    # ─── 알람 발행 여부 ───
+    # ─── 알람 발행 여부 + sustained 카운터 ───
     should_alarm = False
     reason = None
     target_state = official_state
+    new_sustained = sustained_ticks
 
     if confirmed_new_state is not None:
         should_alarm = True
         reason = 'transition'
         target_state = confirmed_new_state
-    elif official_state != 'safe' and (now - last_alarm_at) >= RE_ALARM_INTERVAL_SEC:
-        should_alarm = True
-        reason = 'ongoing'
-        target_state = official_state
+        new_sustained = 0
+    elif official_state != 'safe':
+        new_sustained = sustained_ticks + 1
+        if new_sustained >= SUSTAINED_ALARM_TICKS:
+            should_alarm = True
+            reason = 'ongoing'
+            target_state = official_state
+            new_sustained = 0
+    else:
+        new_sustained = 0
 
     # ─── 알람 생성 + 상태 커밋 ───
     created = []
 
     if should_alarm:
         alarm_type, alarm_level = _transition_to_type_and_level(official_state, target_state)
-        primary_fence = _pick_primary_geofence(geofences, target_state)
-        message = _build_message(
-            worker_name, official_state, target_state,
-            primary_fence, worst_sensor_status,
-        )
+        message = _build_message(worker_name, official_state, target_state, worst_sensor_status)
 
         alarm = Alarm.objects.create(
             alarm_type=alarm_type,
@@ -429,7 +362,6 @@ def evaluate_worker(worker_id: str, worker_name: str,
             worker_name=worker_name,
             worker_x=x,
             worker_y=y,
-            geofence=primary_fence if target_state != 'safe' else None,
             message=message,
         )
 
@@ -439,8 +371,6 @@ def evaluate_worker(worker_id: str, worker_name: str,
             'alarm_level': alarm_level,
             'worker_id': worker_id,
             'worker_name': worker_name,
-            'geofence_id': primary_fence.id if primary_fence and target_state != 'safe' else None,
-            'geofence_name': primary_fence.name if primary_fence and target_state != 'safe' else '',
             'message': message,
             'reason': reason,
             'state_from': official_state,
@@ -454,7 +384,81 @@ def evaluate_worker(worker_id: str, worker_name: str,
         else:
             commit_state(worker_id, official_state, mark_alarmed=True)
 
+    set_sustained_ticks(worker_id, new_sustained)
     return created
+
+
+def check_geofence_transitions(worker_id: str, worker_name: str,
+                                x: float, y: float) -> list[dict]:
+    """
+    작업자의 지오펜스 진입/이탈 감지.
+    hazardous·restricted 구역만 1회성 알람 생성.
+    """
+    current_fences = _find_containing_geofences(x, y)
+    current_ids = {str(g.id) for g in current_fences}
+    prev_ids = get_worker_fences(worker_id)
+
+    entered_ids = current_ids - prev_ids
+    exited_ids  = prev_ids - current_ids
+
+    set_worker_fences(worker_id, current_ids)
+
+    alarms = []
+
+    # 진입
+    for fence in current_fences:
+        if str(fence.id) not in entered_ids or fence.zone_type not in _ALERT_ZONE_TYPES:
+            continue
+        level = 'critical' if fence.zone_type == 'restricted' else 'danger'
+        suffix = ' (출입금지구역)' if fence.zone_type == 'restricted' else ' (유해구역)'
+        msg = f"{worker_name} [{fence.name}] 진입{suffix}"
+        alarm = Alarm.objects.create(
+            alarm_type='zone_enter',
+            alarm_level=level,
+            worker_id=worker_id,
+            worker_name=worker_name,
+            worker_x=x,
+            worker_y=y,
+            geofence=fence,
+            message=msg,
+        )
+        alarms.append({
+            'alarm_id': alarm.id,
+            'alarm_type': 'zone_enter',
+            'alarm_level': level,
+            'worker_id': worker_id,
+            'worker_name': worker_name,
+            'geofence_id': fence.id,
+            'geofence_name': fence.name,
+            'message': msg,
+        })
+
+    # 이탈
+    if exited_ids:
+        for fence in GeoFence.objects.filter(id__in=exited_ids, zone_type__in=_ALERT_ZONE_TYPES):
+            msg = f"{worker_name} [{fence.name}] 이탈"
+            alarm = Alarm.objects.create(
+                alarm_type='zone_exit',
+                alarm_level='info',
+                worker_id=worker_id,
+                worker_name=worker_name,
+                worker_x=x,
+                worker_y=y,
+                geofence=fence,
+                message=msg,
+            )
+            alarms.append({
+                'alarm_id': alarm.id,
+                'alarm_type': 'zone_exit',
+                'alarm_level': 'info',
+                'worker_id': worker_id,
+                'worker_name': worker_name,
+                'geofence_id': fence.id,
+                'geofence_name': fence.name,
+                'message': msg,
+            })
+
+    return alarms
 
 
 # ═══════════════════════════════════════════════════════════

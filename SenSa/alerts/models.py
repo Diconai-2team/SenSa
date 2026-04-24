@@ -2,10 +2,21 @@ from django.db import models
 
 
 ALARM_TYPE_CHOICES = [
-    ('geofence_enter', '위험구역 진입'),
-    ('sensor_caution', '센서 주의'),
-    ('sensor_danger',  '센서 위험'),
-    ('combined',       '복합 위험'),
+    # 지오펜스 이벤트 (1회성)
+    ('zone_enter',           '구역 진입'),
+    ('zone_exit',            '구역 이탈'),
+    # 작업자 상태 전이
+    ('state_caution_enter',  '주의 진입'),
+    ('state_danger_enter',   '위험 진입'),
+    ('state_escalate',       '상태 악화'),
+    ('state_recover_partial','부분 회복'),
+    ('state_recover_safe',   '안전 복귀'),
+    ('state_ongoing',        '상태 지속'),
+    # 센서 상태 전이
+    ('sensor_caution',       '센서 주의'),
+    ('sensor_danger',        '센서 위험'),
+    ('sensor_recover_partial','센서 부분 회복'),
+    ('sensor_recover_normal', '센서 정상 복귀'),
 ]
 
 ALARM_LEVEL_CHOICES = [

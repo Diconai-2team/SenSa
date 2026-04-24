@@ -137,7 +137,7 @@ async function loadWorkersFromAPI() {
 loadWorkersFromAPI();
 
 // ─── 색상/아이콘 상수 ───
-window.ZONE_COLORS   = { danger: '#e74c3c', caution: '#f1c40f', restricted: '#9b59b6' };
+window.ZONE_COLORS   = { open: '#95a5a6', monitored: '#3498db', hazardous: '#f39c12', restricted: '#e74c3c' };
 window.SENSOR_COLORS  = { gas: '#e74c3c', power: '#f39c12', temperature: '#3498db', motion: '#2ecc71' };
 window.SENSOR_ICONS   = { gas: '💨', power: '⚡', temperature: '🌡️', motion: '🔊' };
 
@@ -212,33 +212,41 @@ function gauss(c, s, mn, mx) {
 // ════════════════════════════════════════
 function genGas(tick, mode) {
   var g = {
-    co:  gauss(12,   3,    0,   500),
-    h2s: gauss(5,    2,    0,   20),
-    co2: gauss(600,  80,   300, 10000),
-    o2:  gauss(20.9, 0.2,  15,  25),
-    no2: gauss(1.5,  0.5,  0,   10),
-    so2: gauss(1.0,  0.3,  0,   10),
-    o3:  gauss(0.03, 0.01, 0,   0.5),
-    nh3: gauss(10,   3,    0,   100),
-    voc: gauss(0.3,  0.1,  0,   5),
+    co:  gauss(12,    3,     0, 500),
+    h2s: gauss(2,     1,     0, 100),     // 정상 중심값 2ppm (w:10 대비 안전)
+    co2: gauss(600,   80,    300, 10000),
+    o2:  gauss(20.9,  0.2,   10, 25),
+    no2: gauss(0.04,  0.01,  0, 5),
+    so2: gauss(0.2,   0.05,  0, 10),
+    o3:  gauss(0.02,  0.005, 0, 0.5),
+    nh3: gauss(8,     2,     0, 100),
+    voc: gauss(0.15,  0.03,  0, 5),
   };
+
   if (mode === 'mixed') {
-    if (tick % 30 === 0 && tick) g.co  = 30 + Math.random() * 50;
-    if (tick % 60 === 0 && tick) g.h2s = 11 + Math.random() * 5;
-    if (tick % 45 === 0 && tick) g.o2  = 17 + Math.random() * 2;
+    if (tick % 30 === 0 && tick) g.co = 30 + Math.random() * 50;
+    if (tick % 60 === 0 && tick) g.h2s = 12 + Math.random() * 15;   // 12~27ppm → w:10 주의 구간
+    if (tick % 45 === 0 && tick) g.o2 = 16 + Math.random() * 2;     // 16~18% → 주의 구간
+    if (Math.random() < 0.05) g.voc = 0.6 + Math.random() * 1.0;
+    if (tick % 90 === 0 && tick) g.nh3 = 30 + Math.random() * 25;
   } else if (mode === 'danger') {
     g.co  = 200 + Math.random() * 150;
-    g.h2s = 15  + Math.random() * 10;
+    g.h2s = 50 + Math.random() * 30;     // 50~80ppm → d:50 위험 구간
     g.co2 = 5000 + Math.random() * 3000;
-    g.o2  = 15  + Math.random() * 2;
-    g.no2 = 5   + Math.random() * 3;
-    g.nh3 = 35  + Math.random() * 10;
+    g.o2  = 12 + Math.random() * 4;      // 12~16% → <16 위험 구간
+    g.no2 = 1.0 + Math.random() * 2;
+    g.voc = 2.0 + Math.random() * 2;
   }
+
   return {
-    co:  +g.co.toFixed(2),  h2s: +g.h2s.toFixed(2),
-    co2: +g.co2.toFixed(1), o2:  +g.o2.toFixed(1),
-    no2: +g.no2.toFixed(3), so2: +g.so2.toFixed(2),
-    o3:  +g.o3.toFixed(3),  nh3: +g.nh3.toFixed(1),
+    co:  +g.co.toFixed(2),
+    h2s: +g.h2s.toFixed(2),
+    co2: +g.co2.toFixed(1),
+    o2:  +g.o2.toFixed(1),
+    no2: +g.no2.toFixed(3),
+    so2: +g.so2.toFixed(2),
+    o3:  +g.o3.toFixed(3),
+    nh3: +g.nh3.toFixed(1),
     voc: +g.voc.toFixed(2),
   };
 }
@@ -303,6 +311,7 @@ async function postSensorData(device, gas, power) {
 
 // ─── 지오펜스 API 호출 ───
 async function checkGeofence(sensorList) {
+  if (WORKERS.length === 0) return;
   try {
     // POST는 그대로 — 서버가 알람 생성 + DB 저장 + WS push를 수행
     // 응답 body는 이제 무시 (알람은 WS 로 받음 - Phase C4)
@@ -360,6 +369,7 @@ function runSimTick() {
       // ★ 전력 3종 DB 저장 — 24h 중앙값 동적 판정의 데이터 공급원
       postSensorData(device, null, power);
     }
+    SenSa.emit('sensorUpdate', { device: device, data: data });
     list.push(data);
   });
 

@@ -12,7 +12,6 @@ seed_data.py — 더미 데이터 생성 커맨드
       좌표와 GeoFence.polygon 의 point_in_polygon 판정
     - zone_type 우선순위 (danger > restricted > caution) 로 다중 포함 시 해결
 
-※ GeoFence는 이미 admin에서 생성된 것을 사용 (시드 안 함)
 ※ 여러 번 실행해도 중복 생성되지 않음 (update_or_create 사용)
 """
 from django.core.management.base import BaseCommand
