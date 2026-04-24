@@ -10,6 +10,10 @@
   border-left-color: var(--color-caution); background: #1e1a00;
   animation: none;
 }
+#alert-banner.level-info {
+  border-left-color: #3498db; background: #0d1520;
+  animation: none;
+}
 #alert-banner-content { flex: 1; color: var(--text); line-height: 1.5; }
 #alert-banner-close {
   flex-shrink: 0; background: none; border: none;

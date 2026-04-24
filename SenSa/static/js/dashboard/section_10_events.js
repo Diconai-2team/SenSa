@@ -20,7 +20,10 @@ function showBanner(alarm) {
   var content = document.getElementById('alert-banner-content');
   if (!banner || !content) return;
 
-  banner.className = (alarm.alarm_level === 'caution') ? 'level-caution' : '';
+  banner.className = alarm.alarm_level === 'caution'  ? 'level-caution'
+                  : alarm.alarm_level === 'info'     ? 'level-info'
+                  : alarm.alarm_level === 'critical' ? 'level-critical'
+                  : '';
   content.innerHTML =
     '<strong>' + (EMOJI[alarm.alarm_level] || '⚠️') + ' ' +
     (alarm.alarm_level === 'critical' ? '심각' :
