@@ -1,29 +1,39 @@
 /**
  * base.js — SenSa 공통 모듈
  *
- * [변경] WORKERS를 하드코딩 → Worker API(/dashboard/api/worker/)에서 동적 로드
- * [변경] Phase C4 — WebSocket 연결 추가 (alarm.new 수신)
- * [변경] 팀원 머지 — DB 에 Worker 가 없을 때 DEMO_WORKERS 폴백
- * [변경] Gas 병합 —
- *         1) GAS_TH 값을 section_12_13_gas.js 의 TH 와 일치시킴 (임계치 단일 출처)
- *         2) postSensorData() 추가 — 9종 가스를 Django 에 POST 해서 DB 시계열 축적
- *            (Phase E7 에서 FastAPI 가 역할 인계 시 제거 예정)
- * [변경] Power 병합 —
- *         3) postSensorData() 시그니처 확장: (device, gas, power)
- *            → power 센서의 current/voltage/watt 도 DB 시계열 축적
- *            → 서버 alerts.services.classify_power 의 24h 중앙값 동적 판정이
- *              이 POST 경로로 쌓인 데이터를 읽음.
+ * [이력]
+ *   Phase A    : WORKERS/SENSOR_DEVICES 정의, 로컬 시뮬 + HTTP POST
+ *   Phase C4   : WebSocket 연결 추가 (alarm.new 수신)
+ *   Phase D    : 작업자 API 동적 로드 + workersLoaded 이벤트
+ *   Gas 병합   : 9종 가스 임계치(GAS_TH), classifyGas, genGas
+ *   Power 병합 : classifyPower, genPower
+ *   Phase E5   : FastAPI scheduler 기동 → 브라우저와 중복 POST 상태
+ *   Phase E7   : 브라우저 시뮬 로직 제거 (본 커밋)
+ *                → 데이터 생성·POST 는 FastAPI 전담
+ *                → base.js 는 "수신 + UI 이벤트 dispatch" 만
  *
- * 이벤트 목록:
+ * 이벤트 목록 (SenSa.on 으로 다른 section_*.js 가 구독):
  *   sensa:gasData       { device_id, gas, status }
  *   sensa:powerData     { device_id, power, status }
  *   sensa:sensorUpdate  { device, data }
  *   sensa:workerMove    { workers }
  *   sensa:workersLoaded { workers }
  *   sensa:alarm         { alarm_level, message, ... }
+ *
+ * [E7 아키텍처]
+ *
+ *   FastAPI scheduler ─ POST ─► Django ─► DB 저장 + 판정
+ *                                   │
+ *                                   └─► WS broadcast ─► 브라우저(이 파일)
+ *                                                            │
+ *                                                            └─► SenSa.emit
+ *                                                                 │
+ *                                                                 └─► section_*.js
  */
 
-// ─── 이벤트 버스 ───
+// ═══════════════════════════════════════════════════════════
+// 이벤트 버스
+// ═══════════════════════════════════════════════════════════
 window.SenSa = {
   emit: function (name, data) {
     document.dispatchEvent(new CustomEvent('sensa:' + name, { detail: data }));
@@ -33,11 +43,182 @@ window.SenSa = {
   },
 };
 
-// ════════════════════════════════════════
-// WebSocket 연결 — 실시간 수신 채널
-// ════════════════════════════════════════
-// Phase C: alarm.new 수신
-// Phase D: worker.position, sensor.update 수신 예정
+// ─── CSRF 유틸 ───
+function getCsrfToken() {
+  var c = document.cookie.split(';').find(function (c) { return c.trim().startsWith('csrftoken='); });
+  return c ? c.split('=')[1] : '';
+}
+window.getCsrfToken = getCsrfToken;
+
+
+// ═══════════════════════════════════════════════════════════
+// 센서 장비 정의 (지도 마커 초기화용)
+// ═══════════════════════════════════════════════════════════
+//
+// DB 의 Device 테이블, FastAPI scheduler 의 load_devices, 그리고 이 배열
+// 세 곳이 일치해야 함. 기준은 DB. 여기는 UI 배치 좌표까지 포함한 복제.
+window.SENSOR_DEVICES = [
+  { device_id: 'sensor_01', device_name: '가스센서 A', sensor_type: 'gas',   location: { x: 200, y: 150 } },
+  { device_id: 'sensor_02', device_name: '가스센서 B', sensor_type: 'gas',   location: { x: 500, y: 180 } },
+  { device_id: 'sensor_03', device_name: '가스센서 C', sensor_type: 'gas',   location: { x: 350, y: 390 } },
+  { device_id: 'power_01',  device_name: '스마트파워 A', sensor_type: 'power', location: { x: 620, y: 100 } },
+  { device_id: 'power_02',  device_name: '스마트파워 B', sensor_type: 'power', location: { x: 130, y: 390 } },
+];
+
+
+// ═══════════════════════════════════════════════════════════
+// WORKERS — API 에서 동적 로드
+// ═══════════════════════════════════════════════════════════
+//
+// 초기 좌표(x, y) 는 지도 마커 배치용 임시값. WS worker.position 이 들어오기
+// 시작하면 즉시 실제 좌표로 갱신됨 (handleWorkerPosition 이 WORKERS 배열 동기화).
+// E7 부터 dx/dy (이동 속도) 는 브라우저에서 쓰이지 않아 제거.
+window.WORKERS = [];
+
+async function loadWorkersFromAPI() {
+  try {
+    var res = await fetch('/dashboard/api/worker/', { credentials: 'include' });
+    if (!res.ok) {
+      console.error('Worker API 호출 실패:', res.status);
+      return;
+    }
+    var data = await res.json();
+    var list = data.results || data;
+
+    window.WORKERS = list.map(function (worker, index) {
+      return {
+        worker_id:  worker.worker_id,
+        name:       worker.name,
+        department: worker.department || '',
+        // 임시 초기 배치 — WS 첫 수신 전까지만 의미
+        x: 200 + (index % 3) * 200 + Math.random() * 50,
+        y: 200 + Math.floor(index / 3) * 150 + Math.random() * 50,
+      };
+    });
+
+    console.log('Worker ' + window.WORKERS.length + '명 로드 완료:',
+      window.WORKERS.map(function (w) { return w.name; }).join(', '));
+
+    SenSa.emit('workersLoaded', { workers: window.WORKERS });
+  } catch (e) {
+    console.error('Worker 로드 에러:', e);
+  }
+}
+
+loadWorkersFromAPI();
+
+
+// ═══════════════════════════════════════════════════════════
+// 색상/아이콘 상수
+// ═══════════════════════════════════════════════════════════
+window.ZONE_COLORS   = { danger: '#e74c3c', caution: '#f1c40f', restricted: '#9b59b6' };
+window.SENSOR_COLORS = { gas: '#e74c3c', power: '#f39c12', temperature: '#3498db', motion: '#2ecc71' };
+window.SENSOR_ICONS  = { gas: '💨', power: '⚡', temperature: '🌡️', motion: '🔊' };
+
+
+// ═══════════════════════════════════════════════════════════
+// 9종 가스 임계치 + 판정 헬퍼
+// ═══════════════════════════════════════════════════════════
+//
+// E7 이후 브라우저는 판정을 하지 않지만, 이 값은 아래 용도로 유지:
+//   - section_12_13_gas.js 가 자체 TH 와 비교 (뱃지 색 계산)
+//   - 다른 모듈이 classifyGas/classifyPower 를 호출할 가능성
+// 임계치 3곳 동기화 원칙 유지 (section_12_13_gas.js / base.js / alerts.services.py).
+var GAS_TH = {
+  co:  { w: 25,   d: 200  },   // ACGIH TWA / NIOSH Ceiling
+  h2s: { w: 10,   d: 50   },   // KOSHA 적정공기 / IDLH
+  co2: { w: 1000, d: 5000 },   // 실내공기질 / TWA
+  no2: { w: 3,    d: 5    },   // 고용노동부 TWA / STEL
+  so2: { w: 2,    d: 5    },   // 고용노동부 TWA / STEL
+  o3:  { w: 0.05, d: 0.1  },   // ACGIH TLV
+  nh3: { w: 25,   d: 50   },   // ACGIH TWA
+  voc: { w: 0.5,  d: 2.0  },   // TVOC 실내기준
+};
+
+function classifyGas(g) {
+  var worst = 'normal';
+  if (g.o2 !== undefined) {
+    if (g.o2 < 16 || g.o2 >= 23.5) return 'danger';
+    if (g.o2 < 18 || g.o2 > 21.5) worst = 'caution';
+  }
+  for (var k in GAS_TH) {
+    if (g[k] === undefined) continue;
+    if (g[k] >= GAS_TH[k].d) return 'danger';
+    if (g[k] >= GAS_TH[k].w && worst === 'normal') worst = 'caution';
+  }
+  return worst;
+}
+
+function classifyPower(p) {
+  if (p.current >= 30 || p.watt >= 8000) return 'danger';
+  if (p.current >= 20 || p.voltage < 200 || p.voltage > 240) return 'caution';
+  return 'normal';
+}
+window.classifyGas = classifyGas;
+window.classifyPower = classifyPower;
+
+
+// ═══════════════════════════════════════════════════════════
+// updateMapBounds — section_09_map.js 의 호환 껍데기
+// ═══════════════════════════════════════════════════════════
+//
+// Phase E7 이전에는 브라우저가 작업자 이동을 직접 계산했고, 이 함수가
+// 이미지 경계 (IMG_W, IMG_H) 를 알려주는 역할이었음.
+// 지금은 이동을 FastAPI 가 하므로 값이 쓰이지 않지만, section_09_map.js 가
+// 기동 시 호출하기 때문에 함수 자체는 남겨둠 (빈 no-op).
+window.updateMapBounds = function (W, H) { /* no-op: E7 에서 시뮬 제거 */ };
+
+
+// ═══════════════════════════════════════════════════════════
+// 시나리오 전환
+// ═══════════════════════════════════════════════════════════
+//
+// 기존 window.simMode 는 브라우저 내부 루프가 읽던 값. E7 에서 루프 제거.
+// setScenario 는 이제 FastAPI 의 /api/scenario 엔드포인트 호출 + 버튼 UI 상태만.
+// 버튼이 대시보드에 있다면 여기서 자동 동작, 없다면 콘솔에서 setScenario('danger') 직접 호출.
+//
+// FastAPI URL 은 기본 포트 8001 가정. 운영 환경에서 다르면 이 상수만 수정.
+var FASTAPI_PORT = 8001;
+window.simMode = 'mixed';   // 버튼 하이라이트용 상태
+
+window.setScenario = function (mode) {
+  // 1) 버튼 UI 토글
+  window.simMode = mode;
+  document.querySelectorAll('.scenario-btn').forEach(function (b) { b.classList.remove('active'); });
+  var el = document.querySelector('.scenario-btn.' + mode);
+  if (el) el.classList.add('active');
+
+  // 2) FastAPI 로 시나리오 전환 요청
+  //    scheduler 가 매 틱 app.state.scenario 를 읽으므로 다음 틱부터 반영.
+  //    FastAPI 가 꺼져 있거나 CORS 미허용이면 조용히 실패 (UI 버튼만 바뀜).
+  var fastapiUrl = 'http://' + window.location.hostname + ':' + FASTAPI_PORT +
+                   '/api/scenario?mode=' + encodeURIComponent(mode);
+  fetch(fastapiUrl, { method: 'POST' })
+    .then(function (res) {
+      if (res.ok) {
+        console.log('[scenario] FastAPI 전환 성공:', mode);
+      } else {
+        console.warn('[scenario] FastAPI 응답 비정상:', res.status);
+      }
+    })
+    .catch(function (e) {
+      console.warn('[scenario] FastAPI 연결 실패 (FastAPI 기동 여부 / CORS 확인):', e.message);
+    });
+};
+
+
+// ═══════════════════════════════════════════════════════════
+// WebSocket 연결 + 수신 디스패치 (E7 핵심)
+// ═══════════════════════════════════════════════════════════
+//
+// 수신하는 메시지 3종:
+//   alarm.new        — 기존 (Phase C4)
+//   worker.position  — 신규 수신 (E7)
+//   sensor.update    — 신규 수신 (E7)
+//
+// 각 WS 메시지를 기존 SenSa 이벤트 형식으로 변환하여 dispatch.
+// section_09_map.js, section_11_workers.js, section_12_13_gas.js 등
+// 구독자 모듈은 코드 변경 없음.
 window.sensaWS = null;
 
 function connectWebSocket() {
@@ -60,13 +241,27 @@ function connectWebSocket() {
       return;
     }
 
-    // 메시지 타입별 디스패치
-    if (msg.type === 'alarm.new') {
-      SenSa.emit('alarm', msg.payload);
-    } else if (msg.type === 'connection.established') {
-      console.log('[WS] auth ok, groups:', msg.payload || msg.groups);
+    switch (msg.type) {
+      case 'alarm.new':
+        handleAlarmNew(msg.payload);
+        break;
+
+      case 'worker.position':
+        handleWorkerPosition(msg.payload);
+        break;
+
+      case 'sensor.update':
+        handleSensorUpdate(msg.payload);
+        break;
+
+      case 'connection.established':
+        console.log('[WS] auth ok, groups:', msg.payload || msg.groups);
+        break;
+
+      default:
+        // 알 수 없는 타입은 조용히 무시
+        break;
     }
-    // 그 외 타입은 조용히 무시 (Phase D 에서 추가)
   };
 
   ws.onclose = function (e) {
@@ -79,311 +274,116 @@ function connectWebSocket() {
   };
 }
 
+// ─── WS 메시지 → SenSa 이벤트 변환 ───────────────────────────
+
+/**
+ * alarm.new payload → sensa:alarm
+ *
+ * payload 구조:
+ *   { alarm_id, alarm_type, alarm_level, worker_id, worker_name,
+ *     geofence_id, geofence_name, device_id, sensor_type, message, ... }
+ *
+ * 기존 Phase C4 에서 구현된 로직과 동일.
+ */
+function handleAlarmNew(payload) {
+  SenSa.emit('alarm', payload);
+}
+
+/**
+ * worker.position payload → sensa:workerMove
+ *
+ * payload 구조 (workers/views.py WorkerLocationViewSet.perform_create):
+ *   { worker_id, worker_name, x, y, movement_status, timestamp }
+ *
+ * 변환 내용:
+ *   1. 'worker_name' → 'name' 키 이름 변환 (기존 SenSa 이벤트 규약)
+ *   2. 1명짜리 배열 {workers: [w]} 로 래핑
+ *      → section_09_map.js 의 SenSa.on('workerMove') 핸들러가
+ *        d.workers.forEach 로 처리하도록 되어 있어 배열 형태 필수.
+ *        1명이든 N명이든 동일 경로로 처리됨.
+ *   3. WORKERS 전역 배열의 해당 엔트리 좌표 동기화
+ *      → section_11_workers.js 등 WORKERS 를 직접 읽는 모듈에 반영
+ */
+function handleWorkerPosition(payload) {
+  var w = {
+    worker_id: payload.worker_id,
+    name:      payload.worker_name,
+    x:         payload.x,
+    y:         payload.y,
+  };
+
+  // WORKERS 전역 배열 동기화
+  var entry = window.WORKERS.find(function (it) { return it.worker_id === w.worker_id; });
+  if (entry) {
+    entry.x = w.x;
+    entry.y = w.y;
+  } else {
+    // 드물게 API 로드 전에 WS 가 먼저 도착할 경우의 보정
+    window.WORKERS.push({
+      worker_id: w.worker_id,
+      name:      w.name,
+      department: '',
+      x: w.x, y: w.y,
+    });
+  }
+
+  SenSa.emit('workerMove', { workers: [w] });
+}
+
+/**
+ * sensor.update payload → sensa:sensorUpdate + sensa:gasData | sensa:powerData
+ *
+ * payload 구조 (devices/views.py SensorDataView.post):
+ *   { device_id, sensor_type, status, values: {...}, timestamp }
+ *
+ * 변환 내용:
+ *   - gas   → sensa:gasData   { device_id, gas: values, status }
+ *   - power → sensa:powerData { device_id, power: values, status }
+ *   - 공통   → sensa:sensorUpdate { device: SENSOR_DEVICES 매칭, data: {...} }
+ *             (section_09_map.js 의 센서 마커 아이콘 갱신용)
+ *
+ * data 오브젝트는 기존 runSimTick 이 만들던 형식 그대로 복원.
+ */
+function handleSensorUpdate(payload) {
+  var deviceId   = payload.device_id;
+  var sensorType = payload.sensor_type;
+  var status     = payload.status;
+  var values     = payload.values || {};
+
+  var device = window.SENSOR_DEVICES.find(function (d) { return d.device_id === deviceId; });
+  if (!device) {
+    // DB 에는 있는데 UI 배열엔 없는 센서 → 그릴 수 없음
+    return;
+  }
+
+  // 타입별 세부 이벤트
+  if (sensorType === 'gas') {
+    SenSa.emit('gasData', { device_id: deviceId, gas: values, status: status });
+  } else if (sensorType === 'power') {
+    SenSa.emit('powerData', { device_id: deviceId, power: values, status: status });
+  }
+
+  // 공통 sensorUpdate 이벤트 (지도 마커용)
+  var data = { status: status, device_id: deviceId, sensor_type: sensorType };
+  if (sensorType === 'gas')   data.gas   = values;
+  if (sensorType === 'power') data.power = values;
+
+  SenSa.emit('sensorUpdate', { device: device, data: data });
+}
+
+// 페이지 로드 직후 연결
 connectWebSocket();
 
 
-// ─── CSRF 유틸 ───
-function getCsrfToken() {
-  var c = document.cookie.split(';').find(function (c) { return c.trim().startsWith('csrftoken='); });
-  return c ? c.split('=')[1] : '';
-}
-window.getCsrfToken = getCsrfToken;
-
-// ─── 센서 장비 정의 ───
-window.SENSOR_DEVICES = [
-  { device_id: 'sensor_01', device_name: '가스센서 A', sensor_type: 'gas',   location: { x: 200, y: 150 } },
-  { device_id: 'sensor_02', device_name: '가스센서 B', sensor_type: 'gas',   location: { x: 500, y: 180 } },
-  { device_id: 'sensor_03', device_name: '가스센서 C', sensor_type: 'gas',   location: { x: 350, y: 390 } },
-  { device_id: 'power_01',  device_name: '스마트파워 A', sensor_type: 'power', location: { x: 620, y: 100 } },
-  { device_id: 'power_02',  device_name: '스마트파워 B', sensor_type: 'power', location: { x: 130, y: 390 } },
-];
-
-// ════════════════════════════════════════
-// WORKERS — 빈 배열로 시작, API에서 동적 로드
-// ════════════════════════════════════════
-window.WORKERS = [];
-
-async function loadWorkersFromAPI() {
-  try {
-    var res = await fetch('/dashboard/api/worker/', { credentials: 'include' });
-    if (!res.ok) {
-      console.error('Worker API 호출 실패:', res.status);
-      return;
-    }
-    var data = await res.json();
-    var list = data.results || data;
-
-    window.WORKERS = list.map(function (worker, index) {
-      return {
-        worker_id:  worker.worker_id,
-        name:       worker.name,
-        department: worker.department || '',
-        x: 200 + (index % 3) * 200 + Math.random() * 50,
-        y: 200 + Math.floor(index / 3) * 150 + Math.random() * 50,
-        dx: (Math.random() - 0.5) * 4,
-        dy: (Math.random() - 0.5) * 4,
-      };
-    });
-
-    console.log('Worker ' + window.WORKERS.length + '명 로드 완료:',
-      window.WORKERS.map(function(w) { return w.name; }).join(', '));
-
-    SenSa.emit('workersLoaded', { workers: window.WORKERS });
-  } catch (e) {
-    console.error('Worker 로드 에러:', e);
-  }
-}
-
-loadWorkersFromAPI();
-
-// ─── 색상/아이콘 상수 ───
-window.ZONE_COLORS   = { danger: '#e74c3c', caution: '#f1c40f', restricted: '#9b59b6' };
-window.SENSOR_COLORS  = { gas: '#e74c3c', power: '#f39c12', temperature: '#3498db', motion: '#2ecc71' };
-window.SENSOR_ICONS   = { gas: '💨', power: '⚡', temperature: '🌡️', motion: '🔊' };
-
-// ════════════════════════════════════════
-// 임계치 — 9종 가스 (Gas 전담 팀원 공식 기준)
-// ════════════════════════════════════════
-// 출처: section_12_13_gas.js 의 TH
-// UI 뱃지(section_12_13_gas.js) + 서버 알람(alerts/services.GAS_THRESHOLDS) +
-// 이 파일이 모두 같은 값을 써야 상태 표시 ↔ 알람이 일치함.
+// ═══════════════════════════════════════════════════════════
+// [E7 삭제] 이전 코드
+// ═══════════════════════════════════════════════════════════
 //
-// 철학: danger = IDLH 수준 (즉시 대피 필요), caution = STEL 수준 (단기 노출 허용)
-var GAS_TH = {
-  co:  { w: 25,   d: 200  },   // ACGIH TWA / NIOSH Ceiling
-  h2s: { w: 10,   d: 50   },   // KOSHA 적정공기 / IDLH
-  co2: { w: 1000, d: 5000 },   // 실내공기질 / TWA
-  no2: { w: 3,    d: 5    },   // 고용노동부 TWA / STEL
-  so2: { w: 2,    d: 5    },   // 고용노동부 TWA / STEL
-  o3:  { w: 0.05, d: 0.1  },   // ACGIH TLV (light / heavy work)
-  nh3: { w: 25,   d: 50   },   // ACGIH TWA / 고노출 기준
-  voc: { w: 0.5,  d: 2.0  },   // TVOC 실내기준
-};
-
-// ════════════════════════════════════════
-// classifyGas — O2 구간형 + 나머지 8종 단방향
-// ════════════════════════════════════════
-// 근거: 산업안전보건기준에 관한 규칙 제618조
-//   적정공기: O2 18% 이상 ~ 23.5% 미만
-//   산소결핍: O2 18% 미만
-//   O2 16% 이하: 두통·구토·호흡증가 등 자각증상 (KOSHA)
-//   O2 10% 이하: 의식상실·경련·사망 위험 (KOSHA)
-function classifyGas(g) {
-  var worst = 'normal';
-
-  // O2: 양쪽 임계 (저산소 = 질식, 고산소 = 화재 위험)
-  //   위험: 16% 미만(자각증상+의식상실 구간) 또는 23.5% 이상(산소과잉, 화재·폭발)
-  //   주의: 16~18%(산소결핍 접근) 또는 21.5~23.5%(과잉 접근)
-  //   정상: 18~21.5%(정상 대기 20.9% 중심)
-  if (g.o2 !== undefined) {
-    if (g.o2 < 16 || g.o2 >= 23.5) return 'danger';
-    if (g.o2 < 18 || g.o2 > 21.5) worst = 'caution';
-  }
-
-  // 나머지 8종: 단방향 (높을수록 위험)
-  for (var k in GAS_TH) {
-    if (g[k] === undefined) continue;
-    if (g[k] >= GAS_TH[k].d) return 'danger';
-    if (g[k] >= GAS_TH[k].w && worst === 'normal') worst = 'caution';
-  }
-  return worst;
-}
-
-
-// classifyPower — 클라 사이드 간이 판정
-// 서버 alerts.services.classify_power 가 24h 중앙값 기반 동적 판정을 하므로
-// 클라는 UI 표시용 간이 판정만 수행. 최종 권위는 서버 응답 / WS sensor.update.
-function classifyPower(p) {
-  if (p.current >= 30 || p.watt >= 8000) return 'danger';
-  if (p.current >= 20 || p.voltage < 200 || p.voltage > 240) return 'caution';
-  return 'normal';
-}
-window.classifyGas = classifyGas;
-window.classifyPower = classifyPower;
-
-// ─── 데이터 생성 ───
-function gauss(c, s, mn, mx) {
-  var z = Math.sqrt(-2 * Math.log(1 - Math.random())) * Math.cos(2 * Math.PI * Math.random());
-  return Math.min(mx, Math.max(mn, c + z * s));
-}
-
-// ════════════════════════════════════════
-// genGas — 9종 가스 시뮬레이션 데이터 생성
-// ════════════════════════════════════════
-function genGas(tick, mode) {
-  var g = {
-    co:  gauss(12,    3,     0, 500),
-    h2s: gauss(2,     1,     0, 100),     // 정상 중심값 2ppm (w:10 대비 안전)
-    co2: gauss(600,   80,    300, 10000),
-    o2:  gauss(20.9,  0.2,   10, 25),
-    no2: gauss(0.04,  0.01,  0, 5),
-    so2: gauss(0.2,   0.05,  0, 10),
-    o3:  gauss(0.02,  0.005, 0, 0.5),
-    nh3: gauss(8,     2,     0, 100),
-    voc: gauss(0.15,  0.03,  0, 5),
-  };
-
-  if (mode === 'mixed') {
-    if (tick % 30 === 0 && tick) g.co = 30 + Math.random() * 50;
-    if (tick % 60 === 0 && tick) g.h2s = 12 + Math.random() * 15;   // 12~27ppm → w:10 주의 구간
-    if (tick % 45 === 0 && tick) g.o2 = 16 + Math.random() * 2;     // 16~18% → 주의 구간
-    if (Math.random() < 0.05) g.voc = 0.6 + Math.random() * 1.0;
-    if (tick % 90 === 0 && tick) g.nh3 = 30 + Math.random() * 25;
-  } else if (mode === 'danger') {
-    g.co  = 200 + Math.random() * 150;
-    g.h2s = 50 + Math.random() * 30;     // 50~80ppm → d:50 위험 구간
-    g.co2 = 5000 + Math.random() * 3000;
-    g.o2  = 12 + Math.random() * 4;      // 12~16% → <16 위험 구간
-    g.no2 = 1.0 + Math.random() * 2;
-    g.voc = 2.0 + Math.random() * 2;
-  }
-
-  return {
-    co:  +g.co.toFixed(2),
-    h2s: +g.h2s.toFixed(2),
-    co2: +g.co2.toFixed(1),
-    o2:  +g.o2.toFixed(1),
-    no2: +g.no2.toFixed(3),
-    so2: +g.so2.toFixed(2),
-    o3:  +g.o3.toFixed(3),
-    nh3: +g.nh3.toFixed(1),
-    voc: +g.voc.toFixed(2),
-  };
-}
-
-function genPower(tick, mode) {
-  var cur = gauss(12, 2, 0, 50), vol = gauss(220, 3, 190, 250);
-  if (mode === 'danger') { cur = 30 + Math.random() * 15; vol = 195 + Math.random() * 10; }
-  else if (mode === 'mixed' && tick % 50 === 0 && tick) cur = 22 + Math.random() * 8;
-  return { current: +cur.toFixed(2), voltage: +vol.toFixed(2), watt: +(cur * vol).toFixed(1) };
-}
-
-// ─── 작업자 이동 ───
-var IMG_W = 1360, IMG_H = 960, MG = 40;
-function moveWorker(w) {
-  w.dx += (Math.random() - 0.5) * 0.6; w.dy += (Math.random() - 0.5) * 0.6;
-  w.dx = Math.max(-4, Math.min(4, w.dx)); w.dy = Math.max(-4, Math.min(4, w.dy));
-  w.x += w.dx; w.y += w.dy;
-  if (w.x < MG || w.x > IMG_W - MG) { w.dx = -w.dx; w.x = Math.max(MG, Math.min(IMG_W - MG, w.x)); }
-  if (w.y < MG || w.y > IMG_H - MG) { w.dy = -w.dy; w.y = Math.max(MG, Math.min(IMG_H - MG, w.y)); }
-}
-window.updateMapBounds = function (W, H) { IMG_W = W; IMG_H = H; };
-
-// ════════════════════════════════════════
-// postSensorData — 센서 데이터를 Django 로 POST (DB 시계열 축적)
-// ════════════════════════════════════════
-// 서버(devices/views.py SensorDataView.post)가:
-//   1) 센서 타입별 필드 저장 (gas 9종 / power 3종)
-//   2) 서버 기준으로 status 판정 (alerts.services.classify_*)
-//   3) publish_sensor_update 로 WS 브로드캐스트
-// 수행.
+// 다음 기능들은 FastAPI scheduler 가 전담하므로 제거됨:
+//   - gauss, genGas, genPower, moveWorker
+//   - postSensorData, checkGeofence
+//   - runSimTick, setInterval(runSimTick, 1000)
+//   - IMG_W, IMG_H, MG, simTick
 //
-// 특히 power 의 경우, 24시간 중앙값 기반 동적 판정이 돌려면
-// DB 시계열이 쌓여 있어야 함. 이 함수가 그 데이터 공급원.
-//
-// Phase E7 에서 FastAPI scheduler 가 역할 인계 예정 — 그때 이 함수는 제거.
-async function postSensorData(device, gas, power) {
-  var body = { device_id: device.device_id, sensor_type: device.sensor_type };
-
-  if (device.sensor_type === 'gas' && gas) {
-    body.co  = gas.co;  body.h2s = gas.h2s; body.co2 = gas.co2; body.o2  = gas.o2;
-    body.no2 = gas.no2; body.so2 = gas.so2; body.o3  = gas.o3;
-    body.nh3 = gas.nh3; body.voc = gas.voc;
-  } else if (device.sensor_type === 'power' && power) {
-    body.current = power.current;
-    body.voltage = power.voltage;
-    body.watt    = power.watt;
-  } else {
-    return;  // 알려지지 않은 타입은 전송 스킵
-  }
-
-  try {
-    await fetch('/dashboard/api/sensor-data/', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken() },
-      body: JSON.stringify(body),
-    });
-    // 서버 응답 status 는 WS sensor.update 로 다시 돌아옴 — 여기서는 사용 안 함
-  } catch (e) {
-    // 네트워크 순단은 조용히 무시 — 다음 틱에 재시도
-  }
-}
-
-// ─── 지오펜스 API 호출 ───
-async function checkGeofence(sensorList) {
-  if (WORKERS.length === 0) return;
-  try {
-    // POST는 그대로 — 서버가 알람 생성 + DB 저장 + WS push를 수행
-    // 응답 body는 이제 무시 (알람은 WS 로 받음 - Phase C4)
-    await fetch('/dashboard/api/check-geofence/', {
-      method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrfToken() },
-      body: JSON.stringify({
-        workers: WORKERS.map(function (w) {
-          return {
-            worker_id: w.worker_id, name: w.name, x: Math.round(w.x), y: Math.round(w.y) }; }),
-        sensors: sensorList.map(function (s) {
-          // SENSOR_DEVICES 에서 좌표 찾기
-          var device = SENSOR_DEVICES.find(function(d) { return d.device_id === s.device_id; });
-          return {
-            device_id: s.device_id,
-            sensor_type: s.sensor_type,
-            status: s.status,
-            detail: s.detail || '',
-            x: device ? device.location.x : 0,
-            y: device ? device.location.y : 0,
-          };
-        }),
-      }),
-    });
-  } catch (e) {}
-}
-
-// ─── 시뮬레이션 루프 ───
-var simTick = 0;
-window.simMode = 'mixed';
-
-window.setScenario = function (mode) {
-  window.simMode = mode;
-  document.querySelectorAll('.scenario-btn').forEach(function (b) { b.classList.remove('active'); });
-  var el = document.querySelector('.scenario-btn.' + mode);
-  if (el) el.classList.add('active');
-};
-
-function runSimTick() {
-  var list = [];
-  SENSOR_DEVICES.forEach(function (device) {
-    var data;
-    if (device.sensor_type === 'gas') {
-      var gas = genGas(simTick, window.simMode), status = classifyGas(gas);
-      data = { gas: gas, status: status, device_id: device.device_id, sensor_type: 'gas', detail: 'CO:' + gas.co };
-      SenSa.emit('gasData', { device_id: device.device_id, gas: gas, status: status });
-
-      // ★ 9종 가스 DB 저장 — Django 가 status 재판정 + WS 브로드캐스트
-      postSensorData(device, gas, null);
-
-    } else if (device.sensor_type === 'power') {
-      var power = genPower(simTick, window.simMode), status = classifyPower(power);
-      data = { power: power, status: status, device_id: device.device_id, sensor_type: 'power', detail: '전류:' + power.current + 'A' };
-      SenSa.emit('powerData', { device_id: device.device_id, power: power, status: status });
-
-      // ★ 전력 3종 DB 저장 — 24h 중앙값 동적 판정의 데이터 공급원
-      postSensorData(device, null, power);
-    }
-    SenSa.emit('sensorUpdate', { device: device, data: data });
-    list.push(data);
-  });
-
-  if (WORKERS.length > 0) {
-    WORKERS.forEach(function (w) { moveWorker(w); });
-    SenSa.emit('workerMove', { workers: WORKERS });
-  }
-
-  checkGeofence(list);
-  simTick++;
-  var el = document.getElementById('sim-tick');
-  if (el) el.textContent = simTick;
-}
-
-setInterval(runSimTick, 1000);
-
-// ─── ⑤ 시스템 시간 → header.js로 이동 완료 ───
+// 시뮬 로직은 fastapi_generator/generators.py 참조.
+// Django POST 는 fastapi_generator/scheduler.py 의 _tick_once 참조.
