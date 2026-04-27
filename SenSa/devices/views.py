@@ -4,10 +4,14 @@ devices/views.py — 센서 장비 CRUD + 센서 데이터 수신/저장
 [변경 이력]
   Phase D : 4종 가스 저장 + publish_sensor_update
   Gas 병합: 9종 가스 확장 + 통일 임계치
-  Power 병합 (본 커밋):
+  Power 병합:
     - POST /sensor-data/ 가 gas / power 양쪽 수용
     - power 타입이면 current/voltage/watt 저장 + alerts.services.classify_power 위임
     - 동적 전력 판정(24h 중앙값)이 실제로 돌려면 이 저장 경로가 필수
+  Step 1A (가스 패널 페이지네이션화):
+    - DeviceViewSet 에 sensor_type 쿼리 필터 추가
+      → /dashboard/api/device/?sensor_type=gas 로 가스 센서만 받아갈 수 있음
+      → 대시보드 가스/전력 패널이 자기 종류 센서 목록만 페이지네이션 구성용으로 사용
 
 [설계 원칙]
   - status 판정은 이 뷰가 단일 출처 → alerts.services 의 classify_* 재사용
@@ -33,9 +37,24 @@ from alerts.services import classify_gas, classify_power
 # ═══════════════════════════════════════════════════════════
 
 class DeviceViewSet(viewsets.ModelViewSet):
-    """센서 장비 CRUD API"""
+    """
+    센서 장비 CRUD API.
+
+    [필터]
+      ?sensor_type=gas|power|temperature|motion
+        한 종류의 센서 목록만 받아갈 때 사용.
+        대시보드 가스/전력 패널이 페이지네이션 구성용으로 호출.
+    """
     queryset = Device.objects.filter(is_active=True)
     serializer_class = DeviceSerializer
+
+    def get_queryset(self):
+        """sensor_type 쿼리 파라미터로 필터링 지원 (Step 1A)."""
+        qs = super().get_queryset()
+        sensor_type = self.request.query_params.get('sensor_type')
+        if sensor_type:
+            qs = qs.filter(sensor_type=sensor_type)
+        return qs
 
 
 # ═══════════════════════════════════════════════════════════

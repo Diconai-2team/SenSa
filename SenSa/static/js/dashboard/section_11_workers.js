@@ -1,14 +1,28 @@
 /**
  * section_11_workers.js — ⑪ 작업자 현황 (실시간 지오펜스 연동)
  *
+ * [변경 이력]
+ *   v1 (원형):
+ *     workersLoaded 시 차트 그리고, workerMove 시 받은 workers 배열로 전체 재렌더.
+ *     하지만 workerMove 는 개별 작업자 1명을 {workers: [w]} 형태로 발사
+ *     (base.js L330 의 SenSa.emit('workerMove', { workers: [w] })).
+ *     매 초마다 1명짜리 배열로 updateChart 가 호출되어 화면 전체가 1명만 표시되는 버그.
+ *
+ *   v2 (본 변경):
+ *     workersMaster 배열로 마스터 목록 유지.
+ *     workerMove 도착 시 해당 작업자의 x, y, movement_status 만 갱신.
+ *     updateChart 는 항상 마스터 목록 전체로 호출 → 모든 작업자가 항상 표시됨.
+ *
+ *     마스터에 없는 worker_id 의 movement 가 도착하면 새 작업자로 간주하고 push.
+ *     (FastAPI 재시작 등으로 신규 작업자가 합류한 케이스 대비)
+ *
  * 기능:
  *   - Worker API 로드 → 도넛 차트 + 목록 초기화
- *   - 매 초 workerMove 수신 → 클라이언트 point-in-polygon 으로 지오펜스 판별
- *   - 도넛 차트 & 개별 목록 실시간 갱신
+ *   - 매 초 workerMove 수신 → 해당 작업자 좌표 갱신 → 전체 목록 기준 차트/목록 재렌더
  *
  * 구독 이벤트:
- *   sensa:workersLoaded → 초기 목록 생성
- *   sensa:workerMove    → 매 초 위치 갱신 → 지오펜스 체크 → 차트 갱신
+ *   sensa:workersLoaded { workers } → 초기 목록 생성 + 마스터 목록 보존
+ *   sensa:workerMove    { workers: [w] } → 단일 작업자 부분 갱신
  */
 (function () {
 
@@ -43,7 +57,6 @@
       var data = await res.json();
       fences = data.results || data;
       console.log('[section_11] 지오펜스 로드:', fences.length, '개');
-      console.log('[section_11] 첫 번째 펜스:', JSON.stringify(fences[0]));
     } catch (e) {
       console.warn('[section_11] 지오펜스 로드 실패:', e);
     }
@@ -69,7 +82,6 @@
   // ─── 작업자별 지오펜스 상태 판별 ───
   function classifyWorkerZone(w) {
     if (fences.length === 0) {
-      console.warn('[section_11] fences 비어있음!');
       return { status: 'normal', zone: '' };
     }
     var worst = 'normal';
@@ -97,7 +109,13 @@
     return { status: worst, zone: zoneName };
   }
 
-  // ─── 작업자 상태 캐시 ───
+  // ═════════════════════════════════════════════════════════
+  // 작업자 마스터 목록 + 상태 캐시 (v2)
+  //   - workersLoaded 시 초기화
+  //   - workerMove 시 해당 작업자의 좌표/상태만 갱신
+  //   - updateChart 는 항상 마스터 목록 전체로 호출
+  // ═════════════════════════════════════════════════════════
+  var workersMaster = [];
   var workerStatuses = {};
   var ZONE_LABELS = { normal: '안전', caution: '주의구역', danger: '위험구역' };
 
@@ -151,14 +169,41 @@
 
   // ─── 이벤트 구독 ───
 
-  // 초기 로드: 전원 정상으로 표시
+  // 초기 로드: 마스터 목록 보존 + 전원 정상으로 표시
   SenSa.on('workersLoaded', function (d) {
-    updateChart(d.workers);
+    workersMaster = (d.workers || []).slice();
+    console.log('[section_11] 마스터 목록 초기화:', workersMaster.length, '명');
+    updateChart(workersMaster);
   });
 
-  // 매 초 위치 갱신: 지오펜스 체크 후 차트 갱신
+  // 매 초 위치 갱신: 마스터 목록의 해당 작업자만 좌표 갱신 후 전체 다시 그림
   SenSa.on('workerMove', function (d) {
-    updateChart(d.workers);
+    if (!d || !d.workers || d.workers.length === 0) return;
+
+    // workerMove 는 개별 작업자 1명을 [w] 형태로 보냄 (base.js L330)
+    var moved = d.workers[0];
+    var found = false;
+
+    for (var i = 0; i < workersMaster.length; i++) {
+      if (workersMaster[i].worker_id === moved.worker_id) {
+        workersMaster[i].x = moved.x;
+        workersMaster[i].y = moved.y;
+        if (moved.movement_status !== undefined) {
+          workersMaster[i].movement_status = moved.movement_status;
+        }
+        found = true;
+        break;
+      }
+    }
+
+    // 마스터에 없는 작업자가 도착 → 신규 합류로 간주하여 push
+    // (FastAPI 재시작 등으로 새 작업자 인식 케이스)
+    if (!found) {
+      workersMaster.push(moved);
+      console.log('[section_11] 신규 작업자 합류:', moved.worker_id);
+    }
+
+    updateChart(workersMaster);
   });
 
 })();

@@ -1,6 +1,10 @@
 <!-- section_11_workers.html — ⑪ 작업자 현황 (실시간 지오펜스 연동) -->
 <div id="section-11-workers" class="panel-section">
-  <div class="panel-title">작업자 현황<a class="detail-link">+ 상세 보기</a></div>
+  <div class="panel-title">
+    작업자 현황
+    {# Phase 4A: detail-link 를 실제 작업자 현황 페이지로 연결 #}
+    <a class="detail-link" href="{% url 'workers:list' %}">+ 상세 보기</a>
+  </div>
 
   <!-- 도넛 차트 + 범례 -->
   <div class="worker-chart-area">

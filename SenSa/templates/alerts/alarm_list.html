@@ -52,6 +52,7 @@
     .stat-card .value { font-size: 24px; font-weight: 700; }
     .stat-card.danger  .value { color: var(--color-danger); }
     .stat-card.caution .value { color: var(--color-caution); }
+    .stat-card.info    .value { color: var(--color-info); }
     .stat-card.total   .value { color: var(--text); }
     .stat-card.h24     .value { color: var(--color-info); }
 
@@ -74,6 +75,7 @@
     .filter-tab.all    .badge { background: #21262d; color: var(--text-dim); }
     .filter-tab.danger .badge { background: #3d1515; color: var(--color-danger); }
     .filter-tab.caution .badge { background: #3d3000; color: var(--color-caution); }
+    .filter-tab.info   .badge { background: #0d2035; color: var(--color-info); }
 
     /* ── 테이블 ── */
     .table-wrap { padding: 16px 24px; }
@@ -182,6 +184,10 @@
     <div class="label">⚠️ 주의</div>
     <div class="value">{{ stats.caution }}</div>
   </div>
+  <div class="stat-card info">
+    <div class="label">ℹ️ 정보</div>
+    <div class="value">{{ stats.info }}</div>
+  </div>
   <div class="stat-card h24">
     <div class="label">⏱ 최근 24시간</div>
     <div class="value">{{ stats.last_24h }}</div>
@@ -204,6 +210,11 @@
      class="filter-tab caution {% if level_filter == 'caution' %}active{% endif %}">
     ⚠️ 주의
     <span class="badge">{{ stats.caution }}</span>
+  </a>
+  <a href="?level=info"
+     class="filter-tab info {% if level_filter == 'info' %}active{% endif %}">
+    ℹ️ 정보
+    <span class="badge">{{ stats.info }}</span>
   </a>
 </div>
 

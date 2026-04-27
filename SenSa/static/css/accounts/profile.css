@@ -1,0 +1,346 @@
+/*
+ * profile.css — 내 정보 페이지 + 비밀번호 변경 모달
+ *
+ * 디자인 시안 (Image 1-5) 기준.
+ * dashboard/safety 페이지와 동일한 다크 토큰 체계 사용.
+ */
+
+:root {
+  --bg:          #0d1117;
+  --bg-card:     #161b22;
+  --bg-hover:    #1c2230;
+  --border:      #21262d;
+  --text:        #c9d1d9;
+  --text-dim:    #6e7681;
+  --text-strong: #f0f6fc;
+  --color-danger:   #e74c3c;
+  --color-caution:  #f1c40f;
+  --color-normal:   #2ecc71;
+  --color-primary:  #3b82f6;
+  --color-primary-hover: #2563eb;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  min-height: 100vh;
+}
+
+/* 헤더 스타일은 common/header.css 가 단일 출처로 관리 (v2) */
+
+/* ═══════════ 페이지 레이아웃 ═══════════ */
+
+.profile-page {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 24px 32px 60px;
+}
+
+.profile-page-title-row {
+  padding-bottom: 14px;
+  margin-bottom: 20px;
+}
+.profile-page-title {
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--text-strong);
+}
+
+/* ═══════════ 내 정보 카드 ═══════════ */
+
+.profile-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  max-width: 640px;
+  overflow: hidden;
+}
+
+.profile-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 18px 24px;
+  border-bottom: 1px solid var(--border);
+}
+.profile-card-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-strong);
+}
+
+.btn-password-change {
+  padding: 8px 16px;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--text);
+  background: #2d333b;
+  border: 1px solid #3a424b;
+  border-radius: 5px;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s;
+}
+.btn-password-change:hover {
+  background: #3a424b;
+  border-color: #4a5160;
+}
+
+.profile-card-body {
+  padding: 22px 24px 26px;
+}
+
+/* ─── 2열 그리드 (라벨-값-라벨-값) ─── */
+.profile-info-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  column-gap: 40px;
+  row-gap: 14px;
+}
+
+.profile-info-row {
+  display: grid;
+  grid-template-columns: 64px 1fr;
+  align-items: center;
+  gap: 14px;
+}
+
+.profile-info-label {
+  font-size: 12.5px;
+  color: var(--text-dim);
+  font-weight: 500;
+}
+.profile-info-value {
+  font-size: 13px;
+  color: var(--text-strong);
+  word-break: break-word;
+}
+
+/* ═══════════ 비밀번호 변경 모달 ═══════════ */
+
+.pw-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.65);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  animation: pwFadeIn 0.18s ease-out;
+}
+.pw-modal-backdrop[hidden] { display: none; }
+
+@keyframes pwFadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.pw-modal {
+  background: #1f252d;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 24px 28px 22px;
+  width: 420px;
+  max-width: calc(100vw - 32px);
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.6);
+  animation: pwSlideIn 0.22s ease-out;
+}
+
+@keyframes pwSlideIn {
+  from { opacity: 0; transform: translateY(-8px) scale(0.96); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.pw-modal-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-strong);
+  margin-bottom: 18px;
+}
+
+/* ─── 필드 ─── */
+.pw-field {
+  margin-bottom: 16px;
+}
+.pw-field:last-of-type {
+  margin-bottom: 22px;
+}
+
+.pw-label {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-strong);
+  margin-bottom: 4px;
+}
+
+.pw-hint {
+  font-size: 11.5px;
+  color: var(--text-dim);
+  line-height: 1.5;
+  margin-bottom: 7px;
+}
+
+/* 에러 상태 — JS 가 .has-error 클래스 추가 + hint 텍스트 교체 */
+.pw-field.has-error .pw-hint {
+  color: var(--color-danger);
+}
+.pw-field.has-error .pw-input {
+  border-color: var(--color-danger);
+}
+
+.pw-input-wrap {
+  position: relative;
+}
+
+.pw-input {
+  width: 100%;
+  padding: 9px 32px 9px 12px;
+  font-size: 13px;
+  color: var(--text-strong);
+  background: #0d1117;
+  border: 1px solid #2d333b;
+  border-radius: 5px;
+  outline: none;
+  transition: border-color 0.12s;
+}
+.pw-input:focus {
+  border-color: var(--color-primary);
+}
+
+/* X 버튼 — 클릭하면 input 값 비움 */
+.pw-input-clear {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: transparent;
+  border: none;
+  color: var(--text-dim);
+  font-size: 11px;
+  cursor: pointer;
+  padding: 4px 6px;
+  border-radius: 3px;
+  transition: color 0.12s, background 0.12s;
+}
+.pw-input-clear:hover {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+/* ─── 액션 버튼 ─── */
+.pw-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.btn-cancel,
+.btn-submit {
+  padding: 8px 22px;
+  font-size: 13px;
+  font-weight: 500;
+  border-radius: 5px;
+  cursor: pointer;
+  transition: all 0.12s ease-in-out;
+  border: 1px solid transparent;
+}
+
+.btn-cancel {
+  background: #ffffff;
+  color: #1f252d;
+}
+.btn-cancel:hover {
+  background: #e5e7eb;
+}
+
+.btn-submit {
+  background: var(--color-primary);
+  color: #fff;
+}
+.btn-submit:hover {
+  background: var(--color-primary-hover);
+}
+.btn-submit:disabled {
+  background: #2d333b;
+  color: var(--text-dim);
+  cursor: not-allowed;
+}
+
+/* ═══════════ 변경 완료 모달 ═══════════ */
+
+.pw-done-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.65);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 110;
+  animation: pwFadeIn 0.18s ease-out;
+}
+.pw-done-backdrop[hidden] { display: none; }
+
+.pw-done-modal {
+  background: #1f252d;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 32px 44px 24px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  min-width: 320px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.6);
+  animation: pwSlideIn 0.22s ease-out;
+}
+.pw-done-icon {
+  width: 56px;
+  height: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.pw-done-subtitle {
+  font-size: 11px;
+  color: var(--text-dim);
+  letter-spacing: 0.3px;
+}
+.pw-done-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-strong);
+  margin-bottom: 10px;
+}
+
+.btn-confirm {
+  padding: 7px 32px;
+  font-size: 13px;
+  font-weight: 600;
+  background: var(--color-primary);
+  color: #fff;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+  transition: background 0.12s ease-in-out;
+}
+.btn-confirm:hover {
+  background: var(--color-primary-hover);
+}
+
+/* ═══════════ 반응형 ═══════════ */
+
+@media (max-width: 720px) {
+  .profile-page { padding: 16px 16px 40px; }
+  .profile-info-grid {
+    grid-template-columns: 1fr;
+    column-gap: 0;
+  }
+  .profile-card-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+}

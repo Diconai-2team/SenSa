@@ -1,0 +1,243 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="csrf-token" content="{{ csrf_token }}">
+  <title>작업자 현황 | SenSa</title>
+  <link rel="stylesheet" href="{% static 'css/common/header.css' %}">
+  <link rel="stylesheet" href="{% static 'css/workers/list.css' %}">
+</head>
+<body>
+
+{# ═══════════ 공통 헤더 ═══════════ #}
+{% include "partials/_header.html" with active_page="workers" %}
+
+<main class="workers-page">
+
+  <div class="workers-page-title-row">
+    <h1 class="workers-page-title">작업자 현황</h1>
+  </div>
+
+  {# ─── 2-column: 좌측 목록 + 우측 상세 ─── #}
+  <div class="workers-layout">
+
+    {# ═══════ 좌측 — 목록 섹션 ═══════ #}
+    <section class="workers-list-section">
+
+      {# 요약 + 필터 #}
+      <div class="workers-toolbar">
+        <div class="workers-summary">
+          <span class="workers-summary-label">실시간 작업자 목록</span>
+          <span class="workers-summary-stat" id="workers-summary-stat">
+            전체 작업자 <strong id="workers-total">-</strong>명 /
+            현재 출입 작업자 <strong id="workers-checked-in">-</strong>명
+          </span>
+        </div>
+
+        <div class="workers-filters">
+          <button type="button" class="workers-filter-chip danger is-active"
+                  data-filter="danger">
+            <span class="chip-dot"></span>위험
+            <span class="chip-count" id="count-danger">0</span>
+          </button>
+          <button type="button" class="workers-filter-chip caution is-active"
+                  data-filter="caution">
+            <span class="chip-dot"></span>주의
+            <span class="chip-count" id="count-caution">0</span>
+          </button>
+          <button type="button" class="workers-filter-chip safe is-active"
+                  data-filter="safe">
+            <span class="chip-dot"></span>정상
+            <span class="chip-count" id="count-safe">0</span>
+          </button>
+        </div>
+      </div>
+
+      {# 테이블 #}
+      <div class="workers-table-wrap">
+        <table class="workers-table">
+          <thead>
+            <tr>
+              <th class="col-select">
+                <input type="checkbox" id="check-all" aria-label="전체 선택">
+              </th>
+              <th class="col-id">작업자명</th>
+              <th class="col-dept">소속</th>
+              <th class="col-zone">작업지명</th>
+              <th class="col-seen">마지막 연결 시간</th>
+              <th class="col-conn">연결 상태</th>
+              <th class="col-status">현재 상태</th>
+            </tr>
+          </thead>
+          <tbody id="workers-tbody">
+            <tr class="workers-empty">
+              <td colspan="7">로딩 중...</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="workers-actions">
+        <button type="button" class="btn-notify-selected" id="btn-notify-selected" disabled>
+          선택 알림 전송 <span id="selected-count">0</span>
+        </button>
+        <button type="button" class="btn-notify-all" id="btn-notify-all">
+          전체 알림 전송
+        </button>
+      </div>
+
+    </section>
+
+    {# ═══════ 우측 — 상세 패널 (행 선택 시) ═══════ #}
+    <aside class="workers-detail-panel" id="workers-detail-panel">
+
+      <div class="detail-empty" id="detail-empty">
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <circle cx="12" cy="8" r="4" stroke="#4a5160" stroke-width="1.5"/>
+          <path d="M4 20c0-4 4-6 8-6s8 2 8 6" stroke="#4a5160" stroke-width="1.5"
+                stroke-linecap="round"/>
+        </svg>
+        <p>작업자를 선택하면<br>상세 정보가 여기에 표시됩니다.</p>
+      </div>
+
+      <div class="detail-content" id="detail-content" hidden>
+
+        {# ① 위치 모니터링 #}
+        <div class="detail-card">
+          <div class="detail-card-header">
+            <h3 class="detail-card-title">
+              작업자 위치 모니터링 - <span id="detail-worker-name">-</span>
+            </h3>
+          </div>
+          <div class="detail-card-body">
+            <div class="detail-map-placeholder" id="detail-map-placeholder">
+              <svg width="36" height="36" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path d="M12 22s-8-7.5-8-13a8 8 0 1116 0c0 5.5-8 13-8 13z"
+                      stroke="#6e7681" stroke-width="1.5" stroke-linecap="round"
+                      stroke-linejoin="round"/>
+                <circle cx="12" cy="9" r="3" stroke="#6e7681" stroke-width="1.5"/>
+              </svg>
+              <p class="detail-map-hint">
+                현재 위치:
+                <strong id="detail-zone-name">-</strong>
+              </p>
+              <a href="{% url 'dashboard' %}" class="detail-map-link">
+                대시보드 지도에서 보기 →
+              </a>
+            </div>
+          </div>
+        </div>
+
+        {# ② 프로필 #}
+        <div class="detail-card">
+          <div class="detail-card-header">
+            <h3 class="detail-card-title">
+              작업자 프로필 - <span id="detail-worker-name-2">-</span>
+            </h3>
+          </div>
+          <div class="detail-card-body">
+            <dl class="detail-profile">
+              <div class="detail-profile-row">
+                <dt>이름</dt><dd id="detail-name">-</dd>
+              </div>
+              <div class="detail-profile-row">
+                <dt>ID</dt><dd id="detail-id">-</dd>
+              </div>
+              <div class="detail-profile-row">
+                <dt>소속</dt><dd id="detail-dept">-</dd>
+              </div>
+              <div class="detail-profile-row">
+                <dt>직급</dt><dd id="detail-position">-</dd>
+              </div>
+              <div class="detail-profile-row">
+                <dt>이메일</dt><dd id="detail-email">-</dd>
+              </div>
+              <div class="detail-profile-row">
+                <dt>연락처</dt><dd id="detail-phone">-</dd>
+              </div>
+            </dl>
+          </div>
+        </div>
+
+        {# ③ 안전 준비도 + 개별 알림 버튼 #}
+        <div class="detail-card">
+          <div class="detail-card-header">
+            <h3 class="detail-card-title">
+              작업자 위험 현황 - <span id="detail-worker-name-3">-</span>
+            </h3>
+          </div>
+          <div class="detail-card-body">
+            <div class="detail-readiness">
+              <div class="readiness-item">
+                <div class="readiness-icon" data-icon="ppe">🦺</div>
+                <div class="readiness-label">PPE 착용</div>
+              </div>
+              <div class="readiness-item">
+                <div class="readiness-icon" data-icon="checklist">✅</div>
+                <div class="readiness-label">안전 확인<br>체크리스트</div>
+              </div>
+              <div class="readiness-item">
+                <div class="readiness-icon" data-icon="vr">🥽</div>
+                <div class="readiness-label">VR 교육</div>
+              </div>
+            </div>
+            <button type="button" class="btn-notify-single" id="btn-notify-single">
+              알림 전송
+            </button>
+          </div>
+        </div>
+
+      </div>
+    </aside>
+
+  </div>
+</main>
+
+{# ═══════════ 푸시 알림 모달 ═══════════ #}
+<div class="notify-modal-backdrop" id="notify-modal" hidden>
+  <div class="notify-modal">
+    <h3 class="notify-modal-title">푸시 알림 발송</h3>
+
+    <div class="notify-target-box">
+      <span class="notify-target-label">대상 작업자 :</span>
+      <span class="notify-target-value" id="notify-target-display">-</span>
+    </div>
+
+    <div class="notify-message-field">
+      <label for="notify-message" class="notify-message-label">
+        메시지 내용을 입력하세요. (최대 100자)
+      </label>
+      <textarea id="notify-message" class="notify-message-input"
+                maxlength="100" rows="4"
+                placeholder="예: 가스 농도 상승 중, 즉시 대피하세요."></textarea>
+      <div class="notify-counter">
+        <span id="notify-char-count">0</span> / 100자
+      </div>
+    </div>
+
+    <div class="notify-modal-actions">
+      <button type="button" class="btn-cancel" id="btn-notify-cancel">취소</button>
+      <button type="button" class="btn-send"   id="btn-notify-send">발송</button>
+    </div>
+  </div>
+</div>
+
+{# ═══════════ 발송 완료 토스트 ═══════════ #}
+<div class="notify-toast" id="notify-toast" hidden>
+  <span class="notify-toast-icon">✓</span>
+  <span class="notify-toast-text" id="notify-toast-text">알림이 발송되었습니다.</span>
+</div>
+
+<script>
+  window.WORKERS_INIT = {
+    dataUrl:   "{% url 'workers:api-list-data' %}",
+    notifyUrl: "{% url 'workers:api-notify' %}"
+  };
+</script>
+<script src="{% static 'js/common/header.js' %}"></script>
+<script src="{% static 'js/workers/list.js' %}"></script>
+
+</body>
+</html>

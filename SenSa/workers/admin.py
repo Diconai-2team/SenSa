@@ -1,49 +1,57 @@
 """
-workers/admin.py — Django Admin에 작업자 모델 등록
+workers/admin.py — Django Admin 등록
 
-/admin/workers/worker/          → 작업자 목록
-/admin/workers/workerlocation/  → 위치 이력
+/admin/workers/worker/            → 작업자 목록
+/admin/workers/workerlocation/    → 위치 이력
+/admin/workers/notificationlog/   → 알림 전송 이력 (Phase 4A)
 """
 from django.contrib import admin
-from .models import Worker, WorkerLocation
-# .models → 같은 앱(workers) 안의 models.py
+from .models import NotificationLog, Worker, WorkerLocation
 
 
 @admin.register(Worker)
-# ↑ Worker 모델을 아래 WorkerAdmin 설정으로 Admin에 등록
-# admin.site.register(Worker, WorkerAdmin) 과 동일한 의미
 class WorkerAdmin(admin.ModelAdmin):
+    list_display = ['worker_id', 'name', 'department', 'position',
+                    'phone', 'last_seen_at', 'is_active', 'created_at']
+    list_filter = ['is_active', 'department', 'position']
+    search_fields = ['worker_id', 'name', 'email', 'phone']
+    readonly_fields = ['created_at', 'last_seen_at']
 
-    # ── 목록 페이지에서 보여줄 컬럼들 ──
-    # /admin/workers/worker/ 에 표(table) 형태로 표시
-    list_display = ['worker_id', 'name', 'department', 'is_active', 'created_at']
-
-    # ── 우측 필터 사이드바 ──
-    # "활성 여부", "부서"로 필터링 가능
-    list_filter = ['is_active', 'department']
-
-    # ── 상단 검색창 ──
-    # worker_id나 name에서 검색
-    search_fields = ['worker_id', 'name']
-
-    # ── 수정 화면에서 편집 불가 필드 ──
-    # created_at은 자동 생성이므로 수정하면 안 됨
-    readonly_fields = ['created_at']
+    fieldsets = (
+        ('기본 정보', {
+            'fields': ('worker_id', 'name', 'department', 'position', 'is_active'),
+        }),
+        ('연락처', {
+            'fields': ('email', 'phone'),
+        }),
+        ('시스템', {
+            'fields': ('last_seen_at', 'created_at'),
+            'classes': ('collapse',),
+        }),
+    )
 
 
 @admin.register(WorkerLocation)
 class WorkerLocationAdmin(admin.ModelAdmin):
-
     list_display = ['worker', 'x', 'y', 'movement_status', 'timestamp']
-
-    # worker별, 이동상태별 필터
     list_filter = ['movement_status', 'worker']
-
     readonly_fields = ['timestamp']
-
-    # ── raw_id_fields ──
-    # FK 필드를 드롭다운 대신 "ID 직접입력 + 검색 팝업"으로 변경
-    # WorkerLocation이 수만 건이 되면 드롭다운이 느려지기 때문
-    # 일반 ForeignKey: 드롭다운에 Worker 전체 목록 로드
-    # raw_id_fields:   숫자 입력칸 + 돋보기 아이콘(검색 팝업)
     raw_id_fields = ['worker']
+
+
+@admin.register(NotificationLog)
+class NotificationLogAdmin(admin.ModelAdmin):
+    list_display = ['id', 'sender', 'send_type', 'recipient_count',
+                    'message_preview', 'sent_at']
+    list_filter = ['send_type', 'sent_at']
+    search_fields = ['message']
+    readonly_fields = ['sent_at']
+    filter_horizontal = ['recipients']
+
+    @admin.display(description='수신자 수')
+    def recipient_count(self, obj):
+        return obj.recipients.count()
+
+    @admin.display(description='메시지')
+    def message_preview(self, obj):
+        return (obj.message[:40] + '…') if len(obj.message) > 40 else obj.message

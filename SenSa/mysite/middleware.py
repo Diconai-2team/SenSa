@@ -1,18 +1,18 @@
 """
-mysite/middleware.py — 내부 서비스 인증 미들웨어
+mysite/middleware.py — 미들웨어 모음
 
-FastAPI 같은 신뢰된 내부 서비스가 X-Internal-API-Key 헤더로
-Django REST API를 호출할 때, 세션/JWT 없이 요청을 통과시킨다.
-P
-동작:
-  1. 요청이 INTERNAL_API_ALLOWED_PATHS 로 시작하는 경로인지 확인
-  2. X-Internal-API-Key 헤더가 settings.INTERNAL_API_KEY 와 일치하는지 확인
-  3. 둘 다 만족 → request.user 를 내부 서비스 계정으로 설정
-  4. 아니면 기존 인증 흐름 그대로 통과
+[수록 미들웨어]
+  1. InternalAPIKeyMiddleware
+       FastAPI 같은 신뢰된 내부 서비스가 X-Internal-API-Key 헤더로
+       Django REST API를 호출할 때, 세션/JWT 없이 요청을 통과시킨다.
+
+  2. DevStaticNoCacheMiddleware  ⭐ Step 1A 후속
+       DEBUG=True 환경에서 /static/ 및 /media/ 응답에 no-cache 헤더를 강제 적용.
+       브라우저 캐시로 인한 정적 파일 옛 버전 로드 문제 영구 해결.
 
 주의:
-  - INTERNAL_API_KEY 가 비어있으면(.env 미설정) 미들웨어는 아무것도 하지 않음
-  - 이 미들웨어는 AuthenticationMiddleware 뒤에 위치해야 request.user 를 덮어쓸 수 있음
+  - InternalAPIKeyMiddleware 는 AuthenticationMiddleware 뒤에 위치해야 request.user 를 덮어쓸 수 있음
+  - DevStaticNoCacheMiddleware 는 응답 단계에서 헤더만 추가하므로 위치 영향 적음
 """
 from django.conf import settings
 from django.contrib.auth import get_user_model
@@ -55,5 +55,50 @@ class InternalAPIKeyMiddleware(MiddlewareMixin):
         # 4. DRF의 CSRF 검사 건너뛰기 — 내부 API 키 요청은 세션 기반이 아님
         # 이 플래그는 django.views.decorators.csrf.csrf_exempt 와 동일한 효과
         request._dont_enforce_csrf_checks = True
-        
+
         return None
+
+
+class DevStaticNoCacheMiddleware(MiddlewareMixin):
+    """
+    개발 환경에서 정적/미디어 파일 응답에 no-cache 헤더를 강제 적용한다.
+
+    [도입 배경 — Step 1A 후속]
+      Step 1A(가스 패널 페이지네이션) 적용 후, 브라우저가 옛 JS 파일을
+      디스크 캐시(304)에서 재사용하여 새 UI 가 동작하지 않는 문제 발생.
+      디스크에는 새 파일이지만 브라우저는 if-modified-since 검증을 거쳐
+      옛 파일을 재사용. Ctrl+Shift+R 수동 회피로 일회성 해결했으나,
+      정적 파일 변경 시마다 재발할 수 있어 코드 수준 영구 해결.
+
+    [동작 원리]
+      DEBUG=True 환경에서만 활성화.
+      STATIC_URL / MEDIA_URL 로 시작하는 모든 응답에
+      Cache-Control: no-cache, no-store, must-revalidate, max-age=0
+      Pragma: no-cache
+      Expires: 0
+      세 헤더를 강제 적용하여 브라우저가 매번 서버에 새로 요청.
+
+    [운영환경 안전성]
+      DEBUG=False 시 자동 비활성화. 운영환경의 정적 파일 캐시 정책은
+      Nginx, CDN, 또는 ManifestStaticFilesStorage(파일 해시 기반) 등
+      별도 계층이 담당하도록 설계.
+
+    [성능 영향]
+      개발 환경에서만 동작하므로 운영 트래픽 영향 0.
+      개발 시에는 매 요청마다 정적 파일 재전송이 발생하나,
+      로컬 환경(localhost) 에선 사실상 무시 가능한 비용.
+    """
+
+    def process_response(self, request, response):
+        if not settings.DEBUG:
+            return response
+
+        path = request.path
+        static_url = getattr(settings, 'STATIC_URL', '/static/') or '/static/'
+        media_url  = getattr(settings, 'MEDIA_URL',  '/media/')  or '/media/'
+
+        if path.startswith(static_url) or path.startswith(media_url):
+            response['Cache-Control'] = 'no-cache, no-store, must-revalidate, max-age=0'
+            response['Pragma'] = 'no-cache'
+            response['Expires'] = '0'
+        return response

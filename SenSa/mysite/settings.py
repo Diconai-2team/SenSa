@@ -49,6 +49,8 @@ INSTALLED_APPS = [
     'alerts',
     'workers',
     'dashboard',
+    'safety',
+    'vr_training',     # ← 추가
 ]
 
 # ==========================================================
@@ -64,6 +66,7 @@ MIDDLEWARE = [
     'mysite.middleware.InternalAPIKeyMiddleware',    # ← 추가 (Auth 뒤)
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    'mysite.middleware.DevStaticNoCacheMiddleware',   # ⭐ Step 1A 후속 — DEBUG 시 정적 파일 캐시 무효화
 ]
 
 ROOT_URLCONF = 'mysite.urls'
@@ -207,6 +210,9 @@ INTERNAL_API_ALLOWED_PATHS = [
     '/dashboard/api/sensor-data/',
     '/dashboard/api/worker-location/',
     '/dashboard/api/check-geofence/',
+    '/dashboard/api/device/',       # ← 추가: FastAPI 기동 시 장비 목록 GET
+    '/dashboard/api/worker/',       # ← 추가: 작업자 목록 GET + /worker/<pk>/latest/
+    '/dashboard/api/geofence/',     # ← 추가: (현재 scheduler 에서 호출 안 하지만 django_loader 에 load_geofences 있음)
 ]
 
 ALARM_RE_ALARM_INTERVAL_SEC = 60   # 상태 지속 시 재알림 주기

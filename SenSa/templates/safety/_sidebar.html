@@ -1,0 +1,53 @@
+{# 공통 사이드바 — 체크리스트 / VR 교육 페이지에서 공유 #}
+{# 사용: include "safety/_sidebar.html" with active="checklist" 또는 active="vr" #}
+{# 컨텍스트: checklist_done (bool), vr_completed (bool), active (str) #}
+
+<nav class="safety-sidebar" aria-label="안전 확인 메뉴">
+  <div class="safety-sidebar-header">
+    <span class="safety-sidebar-title">작업 전 안전 확인</span>
+  </div>
+
+  <ul class="safety-sidebar-menu">
+    {# ─── 체크리스트 메뉴 ─── #}
+    <li class="safety-sidebar-item
+               {% if active == 'checklist' %}is-active{% endif %}">
+      <a href="{% url 'safety:checklist' %}" class="safety-sidebar-link">
+        <span class="safety-sidebar-icon
+                     {% if checklist_done %}done{% endif %}">
+          {% if checklist_done %}✓{% else %}1{% endif %}
+        </span>
+        <span class="safety-sidebar-label">안전 확인 체크리스트</span>
+      </a>
+    </li>
+
+    {# ─── VR 교육 메뉴 ─── #}
+    {% if checklist_done %}
+      {# 체크리스트 완료 → 활성 링크 #}
+      <li class="safety-sidebar-item
+                 {% if active == 'vr' %}is-active{% endif %}">
+        <a href="{% url 'vr_training:player' %}" class="safety-sidebar-link">
+          <span class="safety-sidebar-icon
+                       {% if vr_completed %}done{% endif %}">
+            {% if vr_completed %}✓{% else %}2{% endif %}
+          </span>
+          <span class="safety-sidebar-label">VR 교육</span>
+        </a>
+      </li>
+    {% else %}
+      {# 체크리스트 미완료 → 잠긴 상태 (클릭 불가) #}
+      <li class="safety-sidebar-item is-locked"
+          title="체크리스트를 먼저 완료해주세요.">
+        <span class="safety-sidebar-link" aria-disabled="true">
+          <span class="safety-sidebar-icon locked">🔒</span>
+          <span class="safety-sidebar-label">VR 교육</span>
+        </span>
+      </li>
+    {% endif %}
+  </ul>
+
+  <div class="safety-sidebar-footer">
+    <a href="{% url 'dashboard' %}" class="safety-sidebar-back">
+      ← 대시보드로 돌아가기
+    </a>
+  </div>
+</nav>

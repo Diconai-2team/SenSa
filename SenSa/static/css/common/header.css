@@ -1,0 +1,377 @@
+/*
+ * common/header.css — 공통 헤더 + 슬라이드 사이드메뉴
+ *
+ * [변경 이력]
+ *   v1: 초기 — z-index 충돌, 사이드메뉴만 정의
+ *   v2: z-index 300+ 로 수정 (대시보드 헤더 위로)
+ *   v3 ⭐ : #section-header 자체 + 모든 자식 요소(#section-01~07) 스타일을
+ *          이 파일로 "단일 출처화".
+ *          이전에는 checklist.css / profile.css / workers/list.css /
+ *          dashboard/base.css 4곳에 중복 정의돼 있어서 수정이 어려웠음.
+ *
+ * [공존 원칙]
+ *   - 이 파일 = 헤더의 시각 스타일의 단일 출처 (색, 레이아웃, 자식 요소)
+ *   - dashboard/base.css = 대시보드 특유의 Grid 셀 배치(grid-area: header) 만 담당
+ *   - 각 페이지 CSS = #section-header 관련 규칙을 일절 두지 않음
+ *
+ * [토큰 처리]
+ *   페이지마다 :root 변수 이름이 살짝 다름.
+ *     - dashboard/base.css : --bg-card, --text 등 (대시보드 고유)
+ *     - 다른 페이지        : 같은 이름이지만 값은 약간 다른 팔레트
+ *   var(--토큰, 하드폴백) 형식으로 적어서 어느 환경에서든 깨지지 않도록 함.
+ */
+
+
+/* ═══════════════════════════════════════════════════════════
+   섹션 1 — 헤더 컨테이너 (#section-header)
+═══════════════════════════════════════════════════════════ */
+
+#section-header {
+  display: grid;
+  grid-template-columns: 44px 1fr auto auto auto 44px 80px;
+  align-items: center;
+  gap: 14px;
+  height: 56px;
+  padding: 0 16px;
+
+  background: var(--bg-card, #161b22);
+  color: var(--text, #c9d1d9);
+  border-bottom: 1px solid var(--border, #21262d);
+
+  /*
+   * 일반 페이지에서는 position: sticky 로 상단 고정.
+   * 대시보드는 .dashboard-layout 그리드가 헤더를 이미 상단에 배치하고
+   * position 은 불필요하지만, sticky 는 Grid 배치와 충돌하지 않으므로
+   * 그대로 둠. (Grid 셀 안에서 sticky 는 무시됨)
+   */
+  position: sticky;
+  top: 0;
+  z-index: 20;
+}
+
+
+/* ═══════════════════════════════════════════════════════════
+   섹션 2 — 자식 1~7번 블록 공통 스타일
+═══════════════════════════════════════════════════════════ */
+
+#section-header button,
+#section-header a {
+  background: transparent;
+  border: none;
+  color: var(--text, #c9d1d9);
+  font-size: 14px;
+  cursor: pointer;
+  text-decoration: none;
+}
+
+/* ─── ① 햄버거 (단, 실제 동작 버튼 스타일은 섹션 3) ─── */
+#section-01-hamburger button {
+  font-size: 20px;
+}
+
+/* ─── ② 타이틀 ─── */
+#section-02-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-strong, var(--text-bright, #f0f6fc));
+  white-space: nowrap;
+}
+
+/* ─── ③ 사용자 환영 ─── */
+#section-03-user {
+  font-size: 12px;
+  color: var(--text-muted, var(--text-dim, #6e7681));
+  white-space: nowrap;
+}
+#section-03-user .username {
+  font-weight: 600;
+  color: var(--text-strong, var(--text-bright, #f0f6fc));
+}
+
+/* ─── ④ 관리자 메뉴 버튼 ─── */
+#section-04-admin-menu a {
+  display: inline-block;
+  padding: 5px 12px;
+  font-size: 11px;
+  font-weight: 600;
+  background: var(--accent, #3b82f6);
+  color: #fff;
+  border-radius: 4px;
+}
+#section-04-admin-menu a:hover {
+  opacity: 0.9;
+}
+
+/* ─── ⑤ 시스템 시간 ─── */
+#section-05-system-time {
+  font-size: 11px;
+  color: var(--text-dim, #6e7681);
+  line-height: 1.5;
+  white-space: nowrap;
+  text-align: right;
+}
+#section-05-system-time .time-value {
+  color: var(--text-muted, var(--text, #c9d1d9));
+  font-family: var(--font-mono, 'Cascadia Code', 'Consolas', monospace);
+}
+
+/* ─── ⑥ 홈 아이콘 ─── */
+#section-06-home a {
+  font-size: 20px;
+  color: var(--text-dim, #6e7681);
+}
+#section-06-home a:hover {
+  color: var(--text, #c9d1d9);
+}
+
+/* ─── ⑦ 로그아웃 ─── */
+#section-07-logout a {
+  display: inline-block;
+  padding: 6px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  background: var(--color-primary, #3b82f6);
+  color: #fff;
+  border-radius: 4px;
+  text-align: center;
+}
+#section-07-logout a:hover {
+  background: var(--color-primary-hover, #2563eb);
+}
+
+
+/* ═══════════════════════════════════════════════════════════
+   섹션 3 — 햄버거 토글 버튼 (인터랙션 강조)
+═══════════════════════════════════════════════════════════ */
+
+#btn-sidemenu-toggle {
+  background: transparent;
+  border: none;
+  color: var(--text, #c9d1d9);
+  font-size: 20px;
+  cursor: pointer;
+  padding: 6px 10px;
+  border-radius: 4px;
+  transition: background 0.12s ease-in-out;
+}
+#btn-sidemenu-toggle:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+#btn-sidemenu-toggle[aria-expanded="true"] {
+  background: rgba(59, 130, 246, 0.2);
+}
+
+
+/* ═══════════════════════════════════════════════════════════
+   섹션 4 — 사이드메뉴 백드롭
+═══════════════════════════════════════════════════════════ */
+
+.app-sidemenu-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  z-index: 300;
+  animation: sidemenuBackdropIn 0.2s ease-out;
+}
+.app-sidemenu-backdrop[hidden] { display: none; }
+
+@keyframes sidemenuBackdropIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+
+/* ═══════════════════════════════════════════════════════════
+   섹션 5 — 사이드메뉴 본체
+═══════════════════════════════════════════════════════════ */
+
+.app-sidemenu {
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: 280px;
+  background: #161b22;
+  border-right: 1px solid #21262d;
+  z-index: 310;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 4px 0 24px rgba(0, 0, 0, 0.5);
+  animation: sidemenuSlideIn 0.22s ease-out;
+  overflow-y: auto;
+}
+.app-sidemenu[hidden] { display: none; }
+
+@keyframes sidemenuSlideIn {
+  from { transform: translateX(-100%); opacity: 0; }
+  to   { transform: translateX(0);     opacity: 1; }
+}
+
+.app-sidemenu-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 20px 14px;
+  border-bottom: 1px solid #21262d;
+}
+.app-sidemenu-brand {
+  font-size: 14px;
+  font-weight: 700;
+  color: #f0f6fc;
+  letter-spacing: 0.3px;
+}
+.app-sidemenu-close {
+  background: transparent;
+  border: none;
+  color: #6e7681;
+  font-size: 18px;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 4px;
+  transition: background 0.12s, color 0.12s;
+}
+.app-sidemenu-close:hover {
+  background: #1c2230;
+  color: #c9d1d9;
+}
+
+.app-sidemenu-user {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 20px;
+  border-bottom: 1px solid #21262d;
+}
+.app-sidemenu-user-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #3b82f6 0%, #60a5fa 100%);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+.app-sidemenu-user-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: #f0f6fc;
+  line-height: 1.3;
+}
+.app-sidemenu-user-role {
+  font-size: 11px;
+  color: #6e7681;
+  margin-top: 2px;
+}
+
+.app-sidemenu-nav {
+  flex: 1;
+  padding: 14px 0;
+}
+.app-sidemenu-section-title {
+  font-size: 10.5px;
+  font-weight: 700;
+  color: #6e7681;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  padding: 10px 20px 6px;
+}
+.app-sidemenu-list {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 8px 0;
+}
+.app-sidemenu-item {
+  display: block;
+}
+
+.app-sidemenu-link {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 20px;
+  color: #c9d1d9;
+  text-decoration: none;
+  font-size: 13px;
+  transition: background 0.12s, color 0.12s;
+  cursor: pointer;
+  border-left: 2px solid transparent;
+}
+.app-sidemenu-item:not(.is-disabled) .app-sidemenu-link:hover {
+  background: #1c2230;
+  color: #f0f6fc;
+}
+
+.app-sidemenu-item.is-active .app-sidemenu-link {
+  background: rgba(59, 130, 246, 0.14);
+  color: #f0f6fc;
+  border-left-color: #3b82f6;
+  font-weight: 600;
+}
+
+.app-sidemenu-item.is-disabled .app-sidemenu-link {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.app-sidemenu-icon {
+  flex-shrink: 0;
+  width: 20px;
+  text-align: center;
+  font-size: 15px;
+}
+.app-sidemenu-label { flex: 1; }
+.app-sidemenu-hint {
+  font-size: 10px;
+  color: #6e7681;
+  padding: 2px 6px;
+  border: 1px solid #2d333b;
+  border-radius: 3px;
+  background: #0d1117;
+}
+
+.app-sidemenu-footer {
+  padding: 12px 14px 16px;
+  border-top: 1px solid #21262d;
+}
+.app-sidemenu-logout {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  color: #c9d1d9;
+  text-decoration: none;
+  font-size: 13px;
+  border-radius: 6px;
+  transition: background 0.12s, color 0.12s;
+}
+.app-sidemenu-logout:hover {
+  background: rgba(231, 76, 60, 0.14);
+  color: #e74c3c;
+}
+
+
+/* ═══════════════════════════════════════════════════════════
+   섹션 6 — 반응형
+═══════════════════════════════════════════════════════════ */
+
+@media (max-width: 768px) {
+  #section-header {
+    grid-template-columns: 36px 1fr 44px 70px;
+  }
+  #section-03-user,
+  #section-04-admin-menu,
+  #section-05-system-time {
+    display: none;
+  }
+}
+
+@media (max-width: 480px) {
+  .app-sidemenu {
+    width: 88vw;
+    max-width: 320px;
+  }
+}
