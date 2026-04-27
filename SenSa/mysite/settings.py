@@ -66,6 +66,7 @@ MIDDLEWARE = [
     'mysite.middleware.InternalAPIKeyMiddleware',    # ← 추가 (Auth 뒤)
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    'mysite.middleware.DevStaticNoCacheMiddleware',   # ⭐ Step 1A 후속 — DEBUG 시 정적 파일 캐시 무효화
 ]
 
 ROOT_URLCONF = 'mysite.urls'

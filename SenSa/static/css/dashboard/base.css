@@ -6,6 +6,9 @@
      v2 ⭐: 헤더 시각 스타일은 common/header.css 로 이관.
             여기는 "대시보드 Grid 셀 배치"만 담당.
             grid-template-rows: 52px → 56px (공통 헤더 높이와 일치)
+     팀원 병합 v1: --color-info 토큰 추가 (info 레벨 알람용)
+     Step 1A: .sensor-pager 관련 스타일 추가 (가스/전력 패널 페이지네이션 공용).
+              .sensor-tab 계열은 후방 호환을 위해 일단 보존 — 사용처는 모두 제거됨.
    ============================================================ */
 
 :root {
@@ -22,6 +25,7 @@
   --color-caution: #f1c40f;
   --color-danger: #e74c3c;
   --color-critical: #9b59b6;
+  --color-info: #3498db;    /* 팀원 병합 v1 — info 레벨 알람용 (회복/복귀 메시지) */
   --font-mono: 'Cascadia Code', 'Consolas', monospace;
 }
 
@@ -57,9 +61,30 @@ body { font-family: 'Segoe UI', -apple-system, sans-serif; background: var(--bg-
 .bottom-panel:last-child { border-right: none; }
 .bottom-panel-title { font-size: 11px; font-weight: 700; color: var(--text); margin-bottom: 8px; display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; }
 .bottom-panel-title .sensor-badge { padding: 2px 8px; border-radius: 4px; font-size: 9px; font-weight: 600; background: #4a7fff22; color: var(--accent); border: 1px solid #4a7fff44; }
+
+/* === Step 1A: 센서 페이지네이션 (가스/전력 패널 공용) === */
+.sensor-pager { display: flex; align-items: center; gap: 4px; }
+.sensor-pager-name { color: var(--accent); font-weight: 600; }
+.sensor-pager-btn {
+  padding: 0 6px; height: 18px; border-radius: 4px;
+  font-size: 14px; font-weight: 700; line-height: 1;
+  background: transparent; color: var(--text-muted, #8b949e);
+  border: 1px solid var(--border, #2a2d3a); cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center;
+}
+.sensor-pager-btn:hover:not(:disabled) { background: #4a7fff22; color: var(--accent); border-color: #4a7fff44; }
+.sensor-pager-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+.sensor-pager-index {
+  font-size: 9px; font-weight: 600; padding: 0 4px;
+  min-width: 28px; text-align: center;
+  color: var(--text-muted, #8b949e); font-family: var(--font-mono);
+}
+
+/* (deprecated) 구 sensor-tab 계열 — 사용처는 페이지네이션으로 교체됨. 후방 호환용 보존. */
 .sensor-tab-group { display: flex; gap: 4px; }
 .sensor-tab { padding: 2px 8px; border-radius: 4px; font-size: 9px; font-weight: 600; background: transparent; color: var(--text-muted, #5a6080); border: 1px solid #2a2d3a; cursor: pointer; }
 .sensor-tab.active { background: #4a7fff22; color: var(--accent); border-color: #4a7fff44; }
+
 .chart-area { flex: 1; min-height: 0; }
 .chart-area canvas { width: 100% !important; height: 100% !important; }
 
@@ -69,12 +94,19 @@ body { font-family: 'Segoe UI', -apple-system, sans-serif; background: var(--bg-
 .status-caution { background: #f1c40f18; color: var(--color-caution); }
 .status-danger  { background: #e74c3c18; color: var(--color-danger); }
 
-/* 데이터 테이블 공통 */
-.data-table { width: 100%; border-collapse: collapse; flex: 1; }
-.data-table th { text-align: left; padding: 5px 8px; font-size: 9px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-dim); border-bottom: 1px solid var(--border); }
-.data-table td { padding: 4px 8px; font-size: 11px; border-bottom: 1px solid #1e2230; font-family: var(--font-mono); }
+/* 데이터 테이블 공통
+   [Step 1B 후속] 실시간 수치 갱신 시 컬럼 폭이 들썩이는 문제 해결:
+     1) table-layout: fixed — 컬럼이 내용에 맞게 자동 신축하지 않음.
+        실제 컬럼 비율은 각 테이블의 <colgroup> 에서 정의 (가스/전력 별도).
+     2) tabular-nums — 숫자 셀의 폰트가 등폭(monospace) 숫자 사용.
+        '1' 과 '8' 의 폭이 같아져 자릿수 변경 시도 컬럼 흔들림 0.
+*/
+.data-table { width: 100%; border-collapse: collapse; flex: 1; table-layout: fixed; }
+.data-table th { text-align: left; padding: 5px 8px; font-size: 9px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-dim); border-bottom: 1px solid var(--border); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.data-table td { padding: 4px 8px; font-size: 11px; border-bottom: 1px solid #1e2230; font-family: var(--font-mono); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .data-table .gas-name { color: #a0a8c0; font-family: 'Segoe UI', sans-serif; }
-.data-table .gas-value { color: var(--text); }
+.data-table .gas-value { color: var(--text); font-variant-numeric: tabular-nums; }
+.data-table .gas-unit { font-variant-numeric: tabular-nums; }
 
 /* 모달 */
 #fence-modal { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 9999; align-items: center; justify-content: center; }

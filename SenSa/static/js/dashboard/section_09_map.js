@@ -2,12 +2,15 @@
  * section_09_map.js — ⑨ 탭 + Leaflet 지도 + 지오펜스 + 마커 + 업로드
  *
  * [변경] 작업자 마커를 workersLoaded 이벤트 수신 후 동적 생성
+ * [P2+]  센서 마커도 sensorListChanged 이벤트 기반으로 추가/제거/이동 반영.
+ *        새 센서가 DB 에 추가되면 5초 내 지도에 마커가 그려짐.
  *
  * 구독 이벤트:
- *   sensa:sensorUpdate  → 센서 마커 갱신
- *   sensa:workerMove    → 작업자 마커 이동
- *   sensa:workersLoaded → 작업자 마커 최초 생성  ← [신규]
- *   sensa:alarm         → 토스트 표시
+ *   sensa:sensorUpdate       → 센서 마커 갱신 (아이콘 색상 등)
+ *   sensa:sensorListChanged  → 센서 마커 추가/제거/이동       ← [P2+]
+ *   sensa:workerMove         → 작업자 마커 이동
+ *   sensa:workersLoaded      → 작업자 마커 최초 생성
+ *   sensa:alarm              → 토스트 표시
  */
 
 // ─── 탭 전환 ───
@@ -54,24 +57,59 @@ function makeSensorIcon(device, status) {
   return L.divIcon({ className: '', html: '<div style="background:' + color + '22;border:2px solid ' + border + ';border-radius:50%;width:30px;height:30px;display:flex;align-items:center;justify-content:center;font-size:14px;' + glow + '">' + icon + '</div>', iconSize: [30, 30], iconAnchor: [15, 15] });
 }
 
-function initSensorMarkers() {
-  SENSOR_DEVICES.forEach(function (d) {
-    var m = L.marker([d.location.y, d.location.x], { icon: makeSensorIcon(d, 'normal') });
-    m.device = d; m.currentData = null;
-    m.on('click', function () {
-      if (!m.currentData) return;
-      var data = m.currentData, sc = 'status-' + data.status, rows = '';
-      if (data.gas) rows = Object.entries(data.gas).map(function (e) { return '<div class="popup-row"><span class="label">' + e[0].toUpperCase() + '</span><span class="value">' + e[1] + (e[0] === 'o2' ? ' %' : ' ppm') + '</span></div>'; }).join('');
-      else if (data.power) rows = '<div class="popup-row"><span class="label">전류</span><span class="value">' + data.power.current + ' A</span></div><div class="popup-row"><span class="label">전압</span><span class="value">' + data.power.voltage + ' V</span></div><div class="popup-row"><span class="label">전력</span><span class="value">' + data.power.watt + ' W</span></div>';
-      m.bindPopup('<div class="popup-title">' + SENSOR_ICONS[d.sensor_type] + ' ' + d.device_name + '</div><div class="popup-row"><span class="label">상태</span><span class="value"><span class="status-badge ' + sc + '">' + data.status + '</span></span></div>' + rows, { maxWidth: 220 }).openPopup();
-    });
-    sensorLayerGroup.addLayer(m); sensorMarkerCache[d.device_id] = m;
+// [P2+] 단일 센서 마커 생성 — initSensorMarkers 와 sensorListChanged 핸들러 양쪽에서 재사용
+function addSensorMarker(d) {
+  if (sensorMarkerCache[d.device_id]) return;   // 이미 있음 — 중복 방지
+  var m = L.marker([d.location.y, d.location.x], { icon: makeSensorIcon(d, 'normal') });
+  m.device = d; m.currentData = null;
+  m.on('click', function () {
+    if (!m.currentData) return;
+    var data = m.currentData, sc = 'status-' + data.status, rows = '';
+    if (data.gas) rows = Object.entries(data.gas).map(function (e) { return '<div class="popup-row"><span class="label">' + e[0].toUpperCase() + '</span><span class="value">' + e[1] + (e[0] === 'o2' ? ' %' : ' ppm') + '</span></div>'; }).join('');
+    else if (data.power) rows = '<div class="popup-row"><span class="label">전류</span><span class="value">' + data.power.current + ' A</span></div><div class="popup-row"><span class="label">전압</span><span class="value">' + data.power.voltage + ' V</span></div><div class="popup-row"><span class="label">전력</span><span class="value">' + data.power.watt + ' W</span></div>';
+    m.bindPopup('<div class="popup-title">' + SENSOR_ICONS[d.sensor_type] + ' ' + d.device_name + '</div><div class="popup-row"><span class="label">상태</span><span class="value"><span class="status-badge ' + sc + '">' + data.status + '</span></span></div>' + rows, { maxWidth: 220 }).openPopup();
   });
+  if (sensorLayerGroup) sensorLayerGroup.addLayer(m);
+  sensorMarkerCache[d.device_id] = m;
+}
+
+// [P2+] 단일 센서 마커 제거
+function removeSensorMarker(deviceId) {
+  var m = sensorMarkerCache[deviceId];
+  if (!m) return;
+  if (sensorLayerGroup) sensorLayerGroup.removeLayer(m);
+  delete sensorMarkerCache[deviceId];
+}
+
+// [P2+] 센서 좌표만 변경됐을 때 (요구사항 2 의 위치 변경 대비)
+function moveSensorMarker(d) {
+  var m = sensorMarkerCache[d.device_id];
+  if (!m) return;
+  m.setLatLng([d.location.y, d.location.x]);
+  m.device = d;   // 메타 갱신 (device_name 등 변경 대비)
+}
+
+function initSensorMarkers() {
+  // SENSOR_DEVICES 의 모든 센서에 대해 마커 추가
+  // (페이지 로드 시점에 base.js 의 1차 로드가 끝났다는 보장은 없으므로,
+  //  비어있어도 OK — 곧 sensorListChanged 가 발사되어 채워짐)
+  SENSOR_DEVICES.forEach(addSensorMarker);
 }
 
 SenSa.on('sensorUpdate', function (d) {
   var m = sensorMarkerCache[d.device.device_id]; if (!m) return;
   m.setIcon(makeSensorIcon(d.device, d.data.status)); m.currentData = d.data;
+});
+
+// [P2+] 센서 목록 변동 → 마커 추가/제거/이동
+SenSa.on('sensorListChanged', function (d) {
+  // 지도가 아직 초기화 전이면 (이미지 업로드 대기 중) sensorLayerGroup 이 null
+  // 이 경우 SENSOR_DEVICES 만 갱신된 상태로 두고, initMap 호출 시 initSensorMarkers 가 채움
+  if (!sensorLayerGroup) return;
+
+  (d.added   || []).forEach(addSensorMarker);
+  (d.removed || []).forEach(function (r) { removeSensorMarker(r.device_id); });
+  (d.moved   || []).forEach(moveSensorMarker);
 });
 
 // ─── 작업자 마커 ───

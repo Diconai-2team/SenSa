@@ -20,14 +20,45 @@ FastAPI 기동 시 lifespan 에서 백그라운드 태스크로 돌며 Django RE
   3. power 센서도 전송 (Django SensorDataView 가 이제 수용)
   4. sensors 각 요소에 x, y 추가 (근접 센서 판정 PROXIMITY_RADIUS 용)
   5. gather(return_exceptions=True) 로 부분 실패 격리
+
+[P2+ 개정 — 5초 주기 동적 재로드]
+  6. RELOAD_INTERVAL (5초) 마다 devices/workers 재로드.
+     기존: 기동 시 1회만 로드 → 새 센서/작업자가 재시작 전까지 미반영
+     현행: RELOAD_INTERVAL 틱마다 Django 에서 재로드하여 신규 추가 자동 인식.
+     - devices: 통째 교체 (시뮬 상태 없음, x/y 는 DB 가 SoT)
+     - workers: 신규만 추가, 기존은 in-memory 좌표 유지, 제거된 작업자는 빠짐
+       (재로드 때마다 좌표 리셋되면 시뮬이 매번 점프하므로 보존이 필수)
+
+[R1 개정 — 센서별 독립 시뮬 상태]
+  7. 각 device 의 sim_state(평균회귀 prev + 이벤트 카운터) 보존.
+     - _tick_once: device.setdefault('sim_state', {}) 로 dict 보유,
+       generate_gas / generate_power 양쪽에 prev_state= 전달 → in-place 갱신.
+       (v3 에서 power 도 동일 처방 적용)
+     - _reload_devices_and_workers: 기존 센서의 sim_state 보존하며 메타만 갱신.
+       (P2+ 의 통째 교체 로직을 diff 머지 방식으로 변경)
+
+[Layer 3 — 알람 detail 라벨 동적화]
+  8. 알람 메시지 detail 라벨에 **실제로 임계 넘긴 가스/항목** 표시.
+     - v1: f"CO:{gas['co']}" 하드코딩 → CO 가 정상이어도 메시지에 [CO:8.79] 박힘
+     - 현행: identify_worst_gas / identify_worst_power 로 worst 항목 식별
+       → [H2S:18.2], [O2:17.3], [전류:22.5A] 등 진짜 원인이 박힘
+     - 모든 항목이 정상 영역이면 fallback (정상 복귀 메시지 의미 유지)
 """
 import asyncio
 import httpx
 
 from config import TICK_INTERVAL, DEFAULT_SCENARIO
 from django_loader import load_devices, load_workers
-from generators import generate_gas, generate_power, move_worker
+from generators import (
+    generate_gas, generate_power, move_worker,
+    identify_worst_gas, identify_worst_power,   # Layer 3 — 알람 detail 라벨용
+)
 from poster import post_sensor_data, post_worker_location, post_check_geofence
+
+
+# P2+ 동적 재로드 주기 (초)
+# 5초: 사용자 체감상 "거의 즉시" 반영, DB 부하 무시 가능
+RELOAD_INTERVAL_SEC = 5
 
 
 # ═══════════════════════════════════════════════════════════
@@ -59,27 +90,45 @@ async def _tick_once(
         sensor_type = d.get("sensor_type", "gas")
 
         if sensor_type == "gas":
-            gas = generate_gas(tick, scenario)
+            # R1: 센서별 시뮬 상태(평균회귀 prev + 이벤트 카운터)를 device dict 에 보관.
+            # generate_gas 가 in-place 로 sim_state 갱신 + 새 가스값 반환.
+            sim_state = d.setdefault("sim_state", {})
+            gas = generate_gas(tick, scenario, prev_state=sim_state)
             sensor_tasks.append(
                 post_sensor_data(client, device_id, "gas", gas)
             )
-            # detail 은 서버 알람 메시지에 붙음 — 대표값 CO 관례 (Phase A 결정 유지)
-            # TODO(Phase F): status 에 기여한 실제 worst 가스명 추적
+            # Layer 3: 알람 메시지 detail 에 "실제로 임계 넘긴 가스" 박기.
+            # 모든 가스가 정상이면 fallback 으로 CO 표시 (회복 메시지 등에서 의미 유지).
+            worst_label, worst_val = identify_worst_gas(gas)
+            if worst_label is None:
+                detail = f"CO:{gas['co']}"   # 정상 시 fallback (관례)
+            else:
+                detail = f"{worst_label}:{worst_val}"
             sensor_refs.append({
                 "device": d,
                 "sensor_type": "gas",
-                "detail": f"CO:{gas['co']}",
+                "detail": detail,
             })
 
         elif sensor_type == "power":
-            power = generate_power(tick, scenario)
+            # R1 v3: 전력도 sim_state(평균회귀 prev + 이벤트 카운터) 보존.
+            sim_state = d.setdefault("sim_state", {})
+            power = generate_power(tick, scenario, prev_state=sim_state)
             sensor_tasks.append(
                 post_sensor_data(client, device_id, "power", power)
             )
+            # Layer 3: 전력도 worst 항목 동적 식별
+            worst_label, worst_val = identify_worst_power(power)
+            if worst_label is None:
+                detail = f"전류:{power['current']}A"   # 정상 시 fallback
+            elif worst_label == "전류":
+                detail = f"전류:{worst_val}A"
+            else:   # 전압
+                detail = f"전압:{worst_val}V"
             sensor_refs.append({
                 "device": d,
                 "sensor_type": "power",
-                "detail": f"전류:{power['current']}A",
+                "detail": detail,
             })
         # 다른 sensor_type (temperature/motion) 은 현재 미지원 → 스킵
 
@@ -151,6 +200,83 @@ async def _tick_once(
 
 
 # ═══════════════════════════════════════════════════════════
+# P2+ — 동적 재로드 헬퍼
+# ═══════════════════════════════════════════════════════════
+
+async def _reload_devices_and_workers(
+    client: httpx.AsyncClient,
+    devices: list[dict],
+    workers: list[dict],
+) -> tuple[list[dict], list[dict]]:
+    """
+    Django 에서 devices/workers 재로드.
+    devices 는 통째 교체. workers 는 기존 in-memory 좌표 유지하며 diff 적용.
+
+    Returns:
+        (new_devices, new_workers) — 호출자가 자기 변수에 재할당.
+    """
+    try:
+        fresh_devices = await load_devices(client)
+        fresh_workers = await load_workers(client)
+    except Exception as e:
+        print(f"[scheduler] 동적 재로드 실패 (이번 사이클 스킵): {e!r}")
+        return devices, workers
+
+    # devices: x/y 는 DB 가 SoT 이지만 sim_state(R1 평균회귀 prev) 는 in-memory 보존
+    prev_dev_by_id = {d["device_id"]: d for d in devices}
+    prev_dev_ids  = set(prev_dev_by_id)
+    fresh_dev_ids = {d["device_id"] for d in fresh_devices}
+    added_dev   = fresh_dev_ids - prev_dev_ids
+    removed_dev = prev_dev_ids - fresh_dev_ids
+    if added_dev or removed_dev:
+        print(
+            f"[scheduler] device 갱신: +{len(added_dev)} -{len(removed_dev)} "
+            f"/ 총 {len(fresh_devices)} (신규: {sorted(added_dev) or '-'})"
+        )
+
+    # 기존 센서는 sim_state 보존하면서 메타(x, y, device_name, sensor_type) 갱신.
+    # sim_state 가 매번 리셋되면 평균회귀가 무의미해지고 매번 normal center 에서 시작.
+    new_devices: list[dict] = []
+    for fd in fresh_devices:
+        did = fd["device_id"]
+        if did in prev_dev_by_id:
+            existing = prev_dev_by_id[did]
+            existing["device_name"] = fd["device_name"]
+            existing["sensor_type"] = fd["sensor_type"]
+            existing["x"] = fd["x"]
+            existing["y"] = fd["y"]
+            new_devices.append(existing)
+        else:
+            new_devices.append(fd)
+
+    # workers: in-memory 좌표 보존 + diff 적용
+    # 매번 좌표 리셋되면 시뮬이 매번 점프하므로 보존이 필수
+    prev_workers_by_id = {w["worker_id"]: w for w in workers}
+    new_workers: list[dict] = []
+    for fw in fresh_workers:
+        wid = fw["worker_id"]
+        if wid in prev_workers_by_id:
+            # 기존 작업자 — in-memory 좌표(x, y, dx, dy) 유지, 메타만 갱신
+            existing = prev_workers_by_id[wid]
+            existing["worker_db_pk"] = fw["worker_db_pk"]
+            existing["name"]         = fw["name"]
+            new_workers.append(existing)
+        else:
+            # 신규 작업자 — fresh 그대로 추가 (load_workers 가 latest 좌표 채워줌)
+            new_workers.append(fw)
+
+    added_w   = {fw["worker_id"] for fw in fresh_workers} - set(prev_workers_by_id)
+    removed_w = set(prev_workers_by_id) - {fw["worker_id"] for fw in fresh_workers}
+    if added_w or removed_w:
+        print(
+            f"[scheduler] worker 갱신: +{len(added_w)} -{len(removed_w)} "
+            f"/ 총 {len(new_workers)} (신규: {sorted(added_w) or '-'})"
+        )
+
+    return new_devices, new_workers
+
+
+# ═══════════════════════════════════════════════════════════
 # 메인 루프
 # ═══════════════════════════════════════════════════════════
 
@@ -160,9 +286,10 @@ async def run_simulation_loop(app_state) -> None:
 
     루프 수명:
       1. httpx.AsyncClient 1개를 열고 shutdown 까지 재사용
-      2. Django 에서 devices / workers 1회 로드 (4차에서 동적 갱신 예정)
+      2. Django 에서 devices / workers 1회 로드
       3. 무한 루프 — 매 틱마다 _tick_once() 호출
-      4. shutdown 신호 시 CancelledError 로 빠져나오며 client 자동 정리
+      4. RELOAD_INTERVAL_SEC 마다 _reload_devices_and_workers() 호출 (P2+)
+      5. shutdown 신호 시 CancelledError 로 빠져나오며 client 자동 정리
 
     Args:
         app_state: FastAPI 의 app.state.
@@ -186,8 +313,13 @@ async def run_simulation_loop(app_state) -> None:
             f"{sum(1 for d in devices if d.get('sensor_type')=='gas')}, 전력 "
             f"{sum(1 for d in devices if d.get('sensor_type')=='power')}), "
             f"작업자 {len(workers)}명 로드 완료 "
-            f"(tick_interval={TICK_INTERVAL}s, scenario={getattr(app_state, 'scenario', DEFAULT_SCENARIO)})"
+            f"(tick_interval={TICK_INTERVAL}s, reload={RELOAD_INTERVAL_SEC}s, "
+            f"scenario={getattr(app_state, 'scenario', DEFAULT_SCENARIO)})"
         )
+
+        # P2+ 재로드 시점 추적 — TICK_INTERVAL 단위로 환산
+        # 예: TICK_INTERVAL=1, RELOAD_INTERVAL_SEC=5 → 5틱마다 재로드
+        reload_every_n_ticks = max(1, int(RELOAD_INTERVAL_SEC / max(TICK_INTERVAL, 0.1)))
 
         # ─── 무한 루프 ───
         tick = 0
@@ -196,6 +328,13 @@ async def run_simulation_loop(app_state) -> None:
             # getattr 폴백 — main.py 에서 app.state.scenario 초기화 누락 시에도
             # 루프가 죽지 않음
             scenario = getattr(app_state, "scenario", DEFAULT_SCENARIO)
+
+            # P2+ 주기 재로드 — _tick_once 보다 먼저 수행해서
+            # 신규 센서/작업자가 즉시 이번 틱부터 시뮬에 포함되도록 함.
+            if tick % reload_every_n_ticks == 0:
+                devices, workers = await _reload_devices_and_workers(
+                    client, devices, workers,
+                )
 
             try:
                 await _tick_once(client, devices, workers, scenario, tick)

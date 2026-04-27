@@ -20,6 +20,12 @@ alerts/services.py — 상태 전이 기반 알람 서비스
   Gas 병합  : _find_sensor_geofence, restricted→critical, classify_gas
               임계치는 IDLH 기준(관대) — section_12_13_gas.js 의 TH 와 동기화
   Power 병합: classify_power(24h 중앙값), _get_24h_avg_watt
+  팀원 병합 v1 (2026-04-24):
+    B3 — _build_message 에 influencing_sensors 인자 추가.
+         알람 메시지에 "어떤 센서가 원인인지" 로깅 ("sensor_01 danger, sensor_03 caution" 형태).
+         산업안전 ISO 45001 추적성 원칙에 부합. 내 기존 지오펜스 기반 메시지 포맷은 그대로 유지.
+    (B1 은 dashboard/views.py 에 반영 — normal 센서 거리 계산 스킵)
+    (B2/B4 는 검토 결과 제외. 자세한 근거는 docs/merge_history.md 참조)
 """
 import statistics
 import time
@@ -268,9 +274,42 @@ def _pick_primary_geofence(geofences: list, target_state: str):
 
 
 def _build_message(worker_name: str, prev: str, curr: str,
-                    geofence, sensor_status: str) -> str:
-    """전이별 메시지 조립."""
+                    geofence, sensor_status: str,
+                    influencing_sensors: list | None = None) -> str:
+    """
+    전이별 메시지 조립.
+
+    [팀원 병합 v1 — B3]
+      influencing_sensors 인자 추가. 알람 원인 센서가 있으면
+      지오펜스 이름 대신 "(sensor_01 danger, sensor_03 caution)" 형태로 표기.
+      근거: 산업안전 ISO 45001 — 사고 조사 시 근본 원인 추적성 강화.
+
+      우선순위: zone_name (지오펜스) > 영향 센서 ID > 기본 "(센서 주의)"
+      → 지오펜스 기반 알람은 기존 포맷 그대로, 센서 기반 알람만 구체화됨.
+    """
     zone_name = geofence.name if geofence else ''
+    influencing_sensors = influencing_sensors or []
+
+    # ─── 센서 상세 suffix 빌더 (B3) ───
+    # 지오펜스명이 있으면 그것을 우선. 없고 영향 센서가 있으면 센서 ID 노출.
+    def _sensor_suffix(default_suffix: str) -> str:
+        """
+        zone_name 이 있으면 " (zone_name)", 없고 센서가 있으면 " (sensor_XX status, ...)",
+        둘 다 없으면 default_suffix (예: " (센서 주의)") 반환.
+        """
+        if zone_name:
+            return f" ({zone_name})"
+        if influencing_sensors:
+            # 같은 상태 여러 개: "(sensor_01, sensor_03 caution)"
+            # 상태 섞임:        "(sensor_01 danger, sensor_03 caution)"
+            statuses = {st for _, st in influencing_sensors}
+            if len(statuses) == 1:
+                only_status = next(iter(statuses))
+                ids = ', '.join(sid for sid, _ in influencing_sensors)
+                return f" ({ids} {only_status})"
+            parts = [f"{sid} {st}" for sid, st in influencing_sensors]
+            return f" ({', '.join(parts)})"
+        return default_suffix
 
     # ─── critical (restricted 구역) ───
     if curr == 'critical' and prev != 'critical':
@@ -284,11 +323,11 @@ def _build_message(worker_name: str, prev: str, curr: str,
 
     # ─── 악화 ───
     if prev == 'safe' and curr == 'caution':
-        return f"{worker_name} 주의구역 진입" + (f" ({zone_name})" if zone_name else " (센서 주의)")
+        return f"{worker_name} 주의구역 진입" + _sensor_suffix(" (센서 주의)")
     if prev == 'safe' and curr == 'danger':
-        return f"{worker_name} 위험구역 진입" + (f" ({zone_name})" if zone_name else " (센서 위험)")
+        return f"{worker_name} 위험구역 진입" + _sensor_suffix(" (센서 위험)")
     if prev == 'caution' and curr == 'danger':
-        return f"{worker_name} 상태 악화 — 주의→위험" + (f" ({zone_name})" if zone_name else "")
+        return f"{worker_name} 상태 악화 — 주의→위험" + _sensor_suffix("")
 
     # ─── 회복 ───
     if prev == 'danger' and curr == 'caution':
@@ -300,9 +339,9 @@ def _build_message(worker_name: str, prev: str, curr: str,
 
     # ─── 지속 ───
     if curr == 'danger':
-        return f"{worker_name} 위험 상황 지속 중" + (f" ({zone_name})" if zone_name else "")
+        return f"{worker_name} 위험 상황 지속 중" + _sensor_suffix("")
     if curr == 'caution':
-        return f"{worker_name} 주의 상황 지속 중" + (f" ({zone_name})" if zone_name else "")
+        return f"{worker_name} 주의 상황 지속 중" + _sensor_suffix("")
 
     return f"{worker_name} 상태 변화"
 
@@ -351,13 +390,19 @@ def _is_escalation(prev: str, curr: str) -> bool:
 
 def evaluate_worker(worker_id: str, worker_name: str,
                      x: float, y: float,
-                     worst_sensor_status: str = 'normal') -> list[dict]:
+                     worst_sensor_status: str = 'normal',
+                     influencing_sensors: list | None = None) -> list[dict]:
     """
     작업자 1명의 상태 전이 판정 + 필요 시 알람 생성.
 
     Hysteresis:
       - 악화: 즉시 전이
       - 회복: N틱(기본 3) 연속 관측 후 전이 (노이즈 필터)
+
+    [팀원 병합 v1 — B3]
+      influencing_sensors: [(device_id, status), ...] — 작업자 근접 반경 내
+        비정상 센서 목록. _build_message 로 전달되어 알람 메시지에 반영됨.
+        기본값 None 이면 기존 동작과 동일 (하위 호환).
     """
     geofences = _find_containing_geofences(x, y)
     observed_state = _classify_state(geofences, worst_sensor_status)
@@ -417,6 +462,7 @@ def evaluate_worker(worker_id: str, worker_name: str,
         message = _build_message(
             worker_name, official_state, target_state,
             primary_fence, worst_sensor_status,
+            influencing_sensors=influencing_sensors,   # B3: 영향 센서 목록 전달
         )
 
         alarm = Alarm.objects.create(

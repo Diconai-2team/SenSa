@@ -11,14 +11,17 @@
  *   Phase E7   : 브라우저 시뮬 로직 제거 (본 커밋)
  *                → 데이터 생성·POST 는 FastAPI 전담
  *                → base.js 는 "수신 + UI 이벤트 dispatch" 만
+ *   P2+        : SENSOR_DEVICES 동적화 + 5초 폴링.
+ *                새 센서 추가/위치 변경이 5초 내 모든 구독자에 전파.
  *
  * 이벤트 목록 (SenSa.on 으로 다른 section_*.js 가 구독):
- *   sensa:gasData       { device_id, gas, status }
- *   sensa:powerData     { device_id, power, status }
- *   sensa:sensorUpdate  { device, data }
- *   sensa:workerMove    { workers }
- *   sensa:workersLoaded { workers }
- *   sensa:alarm         { alarm_level, message, ... }
+ *   sensa:gasData            { device_id, gas, status }
+ *   sensa:powerData          { device_id, power, status }
+ *   sensa:sensorUpdate       { device, data }
+ *   sensa:workerMove         { workers }
+ *   sensa:workersLoaded      { workers }
+ *   sensa:alarm              { alarm_level, message, ... }
+ *   sensa:sensorListChanged  { added, removed, moved, all }   ← P2+
  *
  * [E7 아키텍처]
  *
@@ -52,18 +55,86 @@ window.getCsrfToken = getCsrfToken;
 
 
 // ═══════════════════════════════════════════════════════════
-// 센서 장비 정의 (지도 마커 초기화용)
+// 센서 장비 — DB 가 진실의 출처 (P2+ 동적화)
 // ═══════════════════════════════════════════════════════════
 //
-// DB 의 Device 테이블, FastAPI scheduler 의 load_devices, 그리고 이 배열
-// 세 곳이 일치해야 함. 기준은 DB. 여기는 UI 배치 좌표까지 포함한 복제.
-window.SENSOR_DEVICES = [
-  { device_id: 'sensor_01', device_name: '가스센서 A', sensor_type: 'gas',   location: { x: 200, y: 150 } },
-  { device_id: 'sensor_02', device_name: '가스센서 B', sensor_type: 'gas',   location: { x: 500, y: 180 } },
-  { device_id: 'sensor_03', device_name: '가스센서 C', sensor_type: 'gas',   location: { x: 350, y: 390 } },
-  { device_id: 'power_01',  device_name: '스마트파워 A', sensor_type: 'power', location: { x: 620, y: 100 } },
-  { device_id: 'power_02',  device_name: '스마트파워 B', sensor_type: 'power', location: { x: 130, y: 390 } },
-];
+// [이력]
+//   v1: 5개 하드코딩 (sensor_01~03, power_01~02)
+//   P2+: /dashboard/api/device/ 동적 로드 + 5초 폴링.
+//        새 센서 추가/제거가 5초 내 자동 반영.
+//
+// SENSOR_DEVICES 형식은 v1 그대로 유지 — 다른 모듈(section_09_map.js,
+// handleSensorUpdate 등) 이 .device_id, .device_name, .sensor_type, .location
+// 키로 참조하므로 호환 보존.
+//
+// 신규 이벤트:
+//   sensa:sensorListChanged { added: [...], removed: [...] }
+//     → 5초 폴링 결과 SENSOR_DEVICES 가 바뀌면 발사.
+//       구독자: section_09_map.js (마커 추가/제거),
+//              section_12_13_gas.js / section_14_15_power.js (페이지네이션 갱신)
+window.SENSOR_DEVICES = [];
+
+var SENSOR_LIST_POLL_INTERVAL = 5000;   // ms — P2+ 결정값
+var sensorListLoadPromise = null;
+
+async function loadSensorListFromAPI() {
+  try {
+    var res = await fetch('/dashboard/api/device/', { credentials: 'include' });
+    if (!res.ok) {
+      console.error('[SENSOR_DEVICES] API 호출 실패:', res.status);
+      return;
+    }
+    var data = await res.json();
+    var list = data.results || data;
+
+    // API 응답 → SENSOR_DEVICES 형식으로 변환
+    var fresh = list.map(function (d) {
+      return {
+        device_id:   d.device_id,
+        device_name: d.device_name,
+        sensor_type: d.sensor_type,
+        location:    { x: Number(d.x) || 0, y: Number(d.y) || 0 },
+      };
+    });
+
+    // diff 계산 — added / removed / 좌표만 변경된 항목
+    var prevIds  = new Set(window.SENSOR_DEVICES.map(function (d) { return d.device_id; }));
+    var freshIds = new Set(fresh.map(function (d) { return d.device_id; }));
+    var added    = fresh.filter(function (d) { return !prevIds.has(d.device_id); });
+    var removed  = window.SENSOR_DEVICES.filter(function (d) { return !freshIds.has(d.device_id); });
+
+    // 좌표 변경 감지 — 요구사항 2(수동 위치 변경 반영) 대비
+    var freshById = {};
+    fresh.forEach(function (d) { freshById[d.device_id] = d; });
+    var moved = window.SENSOR_DEVICES
+      .filter(function (d) { return freshIds.has(d.device_id); })
+      .filter(function (d) {
+        var n = freshById[d.device_id];
+        return n.location.x !== d.location.x || n.location.y !== d.location.y;
+      });
+
+    // 마스터 배열 갱신 (참조 유지가 아니라 통째 교체 — 단순함 우선)
+    window.SENSOR_DEVICES = fresh;
+
+    // 변경이 있을 때만 이벤트 발사 (구독자가 불필요하게 재렌더하지 않도록)
+    if (added.length || removed.length || moved.length) {
+      console.log('[SENSOR_DEVICES] 갱신:',
+        '+' + added.length, '-' + removed.length, '~' + moved.length, '/ 총', fresh.length);
+      SenSa.emit('sensorListChanged', {
+        added:   added,
+        removed: removed,
+        moved:   moved,
+        all:     fresh,
+      });
+    }
+  } catch (e) {
+    console.error('[SENSOR_DEVICES] 로드 에러:', e);
+  }
+}
+
+// 페이지 로드 시 1회 + 이후 5초마다
+sensorListLoadPromise = loadSensorListFromAPI();
+setInterval(loadSensorListFromAPI, SENSOR_LIST_POLL_INTERVAL);
 
 
 // ═══════════════════════════════════════════════════════════
