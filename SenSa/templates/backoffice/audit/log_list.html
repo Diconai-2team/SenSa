@@ -1,0 +1,122 @@
+{% extends "backoffice/base.html" %}
+{% load static %}
+{% block title %}감사 로그 — 백오피스{% endblock %}
+
+{% block content %}
+<div class="bo-breadcrumb">
+    <span>운영 데이터 관리</span>
+    <span class="bo-breadcrumb-sep">/</span>
+    <span>감사 로그</span>
+</div>
+<h1 class="bo-page-title">감사 로그</h1>
+<p class="bo-page-desc">백오피스에서 발생한 모든 등록·수정·삭제·로그인 액션을 추적합니다.</p>
+
+<form method="get" class="bo-card" style="display:grid;grid-template-columns:1fr 140px 160px 140px 140px auto;gap:12px 16px;align-items:end;">
+    <div class="bo-field" style="margin:0;">
+        <label>키워드</label>
+        <input type="text" name="keyword" value="{{ q.keyword }}" placeholder="수행자/대상/메모/경로">
+    </div>
+    <div class="bo-field" style="margin:0;">
+        <label>액션</label>
+        <select name="action">
+            <option value="">전체</option>
+            {% for code, label in actions %}
+            <option value="{{ code }}" {% if q.action == code %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div class="bo-field" style="margin:0;">
+        <label>대상 모델</label>
+        <select name="target_model">
+            <option value="">전체</option>
+            {% for m in target_models %}
+            <option value="{{ m }}" {% if q.target_model == m %}selected{% endif %}>{{ m }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div class="bo-field" style="margin:0;">
+        <label>시작일</label>
+        <input type="date" name="from" value="{{ q.from }}">
+    </div>
+    <div class="bo-field" style="margin:0;">
+        <label>종료일</label>
+        <input type="date" name="to" value="{{ q.to }}">
+    </div>
+    <div style="display:flex;gap:8px;">
+        <a href="{% url 'backoffice:audit-log-list' %}" class="bo-btn">초기화</a>
+        <button type="submit" class="bo-btn bo-btn-dark">검색</button>
+    </div>
+</form>
+
+<div class="bo-card bo-mt-16">
+    <div class="bo-table-toolbar">
+        <div class="bo-table-toolbar-left">
+            <span>전체 로그 <strong>{{ total }}건</strong></span>
+        </div>
+    </div>
+
+    <table class="bo-table">
+        <colgroup>
+            <col style="width:170px;"><col style="width:90px;"><col style="width:130px;"><col style="width:140px;"><col><col style="width:120px;"><col style="width:100px;">
+        </colgroup>
+        <thead>
+            <tr>
+                <th>발생일시</th>
+                <th>액션</th>
+                <th>수행자</th>
+                <th>대상 모델</th>
+                <th>대상</th>
+                <th>IP</th>
+                <th>상세</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for log in rows %}
+            <tr>
+                <td>{{ log.created_at|date:"Y-m-d H:i:s" }}</td>
+                <td>
+                    {% if log.action in 'create,login' %}
+                        <span class="bo-badge bo-badge-status-active">{{ log.get_action_display }}</span>
+                    {% elif log.action == 'delete' or log.action == 'login_fail' %}
+                        <span class="bo-badge" style="background:#fee2e2;color:#b91c1c;">{{ log.get_action_display }}</span>
+                    {% elif log.action == 'update' %}
+                        <span class="bo-badge bo-badge-status-locked">{{ log.get_action_display }}</span>
+                    {% else %}
+                        <span class="bo-badge bo-badge-status-disabled">{{ log.get_action_display }}</span>
+                    {% endif %}
+                </td>
+                <td>{{ log.actor_username_snapshot|default:"-" }}</td>
+                <td><code style="font-size:11.5px;">{{ log.target_model|default:"-" }}</code></td>
+                <td style="max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="{{ log.target_repr }}">
+                    {% if log.target_pk %}#{{ log.target_pk }} — {% endif %}{{ log.target_repr|default:"-" }}
+                </td>
+                <td style="font-size:11.5px;color:var(--bo-text-muted);">{{ log.ip_address|default:"-" }}</td>
+                <td>
+                    {% if log.changes %}
+                    <details>
+                        <summary style="cursor:pointer;font-size:11.5px;color:var(--bo-primary);">변경 내역</summary>
+                        <pre style="margin:4px 0 0;padding:8px;background:var(--bo-bg);border-radius:4px;font-size:11px;max-width:400px;overflow:auto;">{{ log.changes|safe }}</pre>
+                    </details>
+                    {% else %}
+                    <span class="bo-text-subtle">-</span>
+                    {% endif %}
+                </td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="7" class="bo-table-empty">조건에 맞는 로그가 없습니다.</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <div class="bo-pagination">
+        <div class="bo-pagination-info">{{ page_start }} - {{ page_end }} / {{ total }}</div>
+        <div class="bo-pagination-pages">
+            {% if page > 1 %}<a href="?{% for k,v in q.items %}{{ k }}={{ v|urlencode }}&{% endfor %}page={{ page|add:'-1' }}">‹</a>{% else %}<span class="is-disabled">‹</span>{% endif %}
+            {% for p in page_range %}
+                {% if p == page %}<span class="is-current">{{ p }}</span>{% else %}<a href="?{% for k,v in q.items %}{{ k }}={{ v|urlencode }}&{% endfor %}page={{ p }}">{{ p }}</a>{% endif %}
+            {% endfor %}
+            {% if page < last_page %}<a href="?{% for k,v in q.items %}{{ k }}={{ v|urlencode }}&{% endfor %}page={{ page|add:'1' }}">›</a>{% else %}<span class="is-disabled">›</span>{% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}

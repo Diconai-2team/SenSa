@@ -1,0 +1,181 @@
+{% extends "backoffice/base.html" %}
+{% load static %}
+{% block title %}공지사항 관리 — 백오피스{% endblock %}
+
+{% block content %}
+<div class="bo-breadcrumb"><span>공지사항 관리</span></div>
+
+<div class="bo-flex-between" style="margin-bottom:8px;">
+    <div>
+        <h1 class="bo-page-title">공지사항 관리</h1>
+        <p class="bo-page-desc">시스템 공지를 등록하고 게시 기간을 관리합니다.</p>
+    </div>
+    <button type="button" class="bo-btn bo-btn-primary" data-open-create-modal>+ 공지 등록</button>
+</div>
+
+<form method="get" class="bo-card" style="display:grid;grid-template-columns:1fr 160px 140px auto;gap:12px 16px;align-items:end;">
+    <div class="bo-field" style="margin:0;">
+        <label>키워드</label>
+        <input type="text" name="keyword" value="{{ q.keyword }}" placeholder="제목/내용">
+    </div>
+    <div class="bo-field" style="margin:0;">
+        <label>카테고리</label>
+        <select name="category">
+            <option value="">전체</option>
+            {% for code, label in categories %}
+            <option value="{{ code }}" {% if q.category == code %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div class="bo-field" style="margin:0;">
+        <label>게시 상태</label>
+        <select name="published">
+            <option value="">전체</option>
+            <option value="1" {% if q.published == '1' %}selected{% endif %}>게시 중</option>
+            <option value="0" {% if q.published == '0' %}selected{% endif %}>게시 중지</option>
+        </select>
+    </div>
+    <div style="display:flex;gap:8px;">
+        <a href="{% url 'backoffice:notice-list' %}" class="bo-btn">초기화</a>
+        <button type="submit" class="bo-btn bo-btn-dark">검색</button>
+    </div>
+</form>
+
+<div class="bo-card bo-mt-16">
+    <div class="bo-table-toolbar">
+        <div class="bo-table-toolbar-left">
+            <span>전체 공지 <strong>{{ total }}건</strong></span>
+            <button type="button" class="bo-btn bo-btn-sm" id="bo-bulk-on" disabled>게시</button>
+            <button type="button" class="bo-btn bo-btn-sm bo-btn-warning" id="bo-bulk-off" disabled>게시 중지</button>
+            <button type="button" class="bo-btn bo-btn-sm bo-btn-danger" id="bo-bulk-delete" disabled>삭제</button>
+        </div>
+    </div>
+
+    <table class="bo-table" id="bo-notice-table">
+        <colgroup>
+            <col style="width:38px;"><col style="width:50px;"><col style="width:110px;"><col><col style="width:110px;"><col style="width:130px;"><col style="width:80px;"><col style="width:80px;">
+        </colgroup>
+        <thead>
+            <tr>
+                <th><input type="checkbox" class="bo-checkbox" id="bo-check-all"></th>
+                <th>고정</th>
+                <th>카테고리</th>
+                <th>제목</th>
+                <th>작성자</th>
+                <th>작성일</th>
+                <th>게시</th>
+                <th>관리</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for n in rows %}
+            <tr data-id="{{ n.id }}">
+                <td><input type="checkbox" class="bo-checkbox bo-row-check" value="{{ n.id }}"></td>
+                <td>{% if n.is_pinned %}📌{% endif %}</td>
+                <td>{{ n.get_category_display }}</td>
+                <td>{{ n.title }}</td>
+                <td>{% if n.created_by %}{{ n.created_by.first_name|default:n.created_by.username }}{% else %}-{% endif %}</td>
+                <td>{{ n.created_at|date:"Y-m-d H:i" }}</td>
+                <td>
+                    {% if n.is_currently_published %}
+                        <span class="bo-badge bo-badge-status-active">게시 중</span>
+                    {% elif n.is_published %}
+                        <span class="bo-badge bo-badge-status-locked">기간 외</span>
+                    {% else %}
+                        <span class="bo-badge bo-badge-status-disabled">중지</span>
+                    {% endif %}
+                </td>
+                <td><button type="button" class="bo-btn bo-btn-sm bo-btn-primary" data-edit="{{ n.id }}">수정</button></td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="8" class="bo-table-empty">등록된 공지가 없습니다.</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <div class="bo-pagination">
+        <div class="bo-pagination-info">{{ page_start }} - {{ page_end }} / {{ total }}</div>
+        <div class="bo-pagination-pages">
+            {% if page > 1 %}<a href="?{% for k,v in q.items %}{{ k }}={{ v|urlencode }}&{% endfor %}page={{ page|add:'-1' }}">‹</a>{% else %}<span class="is-disabled">‹</span>{% endif %}
+            {% for p in page_range %}
+                {% if p == page %}<span class="is-current">{{ p }}</span>{% else %}<a href="?{% for k,v in q.items %}{{ k }}={{ v|urlencode }}&{% endfor %}page={{ p }}">{{ p }}</a>{% endif %}
+            {% endfor %}
+            {% if page < last_page %}<a href="?{% for k,v in q.items %}{{ k }}={{ v|urlencode }}&{% endfor %}page={{ page|add:'1' }}">›</a>{% else %}<span class="is-disabled">›</span>{% endif %}
+        </div>
+    </div>
+</div>
+
+{# 등록/수정 모달 #}
+<div class="bo-modal-backdrop" id="bo-notice-modal" data-mode="create">
+    <div class="bo-modal bo-modal-wide">
+        <div class="bo-modal-header">
+            <h2 class="bo-modal-title" data-create-only>공지 등록</h2>
+            <h2 class="bo-modal-title" data-edit-only style="display:none;">공지 수정</h2>
+        </div>
+        <form id="bo-notice-form" novalidate>
+            <input type="hidden" name="id" value="">
+            <div class="bo-modal-body">
+                <div class="bo-modal-grid">
+                    <div class="bo-field bo-field-full" data-field="title">
+                        <label>제목 <span class="bo-required">*</span></label>
+                        <input type="text" name="title" maxlength="200">
+                        <div class="bo-field-error"></div>
+                    </div>
+                    <div class="bo-field" data-field="category">
+                        <label>카테고리 <span class="bo-required">*</span></label>
+                        <select name="category">
+                            <option value="">선택하세요</option>
+                            {% for code, label in categories %}
+                            <option value="{{ code }}">{{ label }}</option>
+                            {% endfor %}
+                        </select>
+                        <div class="bo-field-error"></div>
+                    </div>
+                    <div class="bo-field" data-field="is_pinned">
+                        <label style="display:flex;align-items:center;gap:8px;">
+                            <input type="checkbox" name="is_pinned" class="bo-checkbox">
+                            <span>📌 상단 고정</span>
+                        </label>
+                    </div>
+                    <div class="bo-field" data-field="published_from">
+                        <label>게시 시작일시</label>
+                        <input type="datetime-local" name="published_from">
+                        <div class="bo-field-error"></div>
+                    </div>
+                    <div class="bo-field" data-field="published_to">
+                        <label>게시 종료일시</label>
+                        <input type="datetime-local" name="published_to">
+                        <div class="bo-field-error"></div>
+                    </div>
+                    <div class="bo-field" data-field="is_published">
+                        <label style="display:flex;align-items:center;gap:8px;">
+                            <input type="checkbox" name="is_published" class="bo-checkbox" checked>
+                            <span>게시</span>
+                        </label>
+                    </div>
+                    <div class="bo-field" data-field="send_notify" data-create-only>
+                        <label style="display:flex;align-items:center;gap:8px;">
+                            <input type="checkbox" name="send_notify" class="bo-checkbox">
+                            <span>등록과 동시에 사용자에게 알림 발송</span>
+                        </label>
+                    </div>
+                    <div class="bo-field bo-field-full" data-field="content">
+                        <label>내용 <span class="bo-required">*</span></label>
+                        <textarea name="content" rows="8"></textarea>
+                        <div class="bo-field-error"></div>
+                    </div>
+                </div>
+            </div>
+            <div class="bo-modal-footer">
+                <button type="button" class="bo-btn" data-close-modal>취소</button>
+                <button type="submit" class="bo-btn bo-btn-primary">저장</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'js/backoffice/notices.js' %}"></script>
+{% endblock %}

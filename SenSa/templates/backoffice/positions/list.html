@@ -1,0 +1,116 @@
+{% extends "backoffice/base.html" %}
+{% load static %}
+{% block title %}직위 관리 — 백오피스{% endblock %}
+
+{% block content %}
+<div class="bo-breadcrumb">
+    <span>계정/권한 관리</span>
+    <span class="bo-breadcrumb-sep">/</span>
+    <span>직위 관리</span>
+</div>
+
+<div class="bo-flex-between" style="margin-bottom:8px;">
+    <div>
+        <h1 class="bo-page-title">직위 관리</h1>
+        <p class="bo-page-desc">사용자 등록 시 선택할 수 있는 직위 마스터를 관리합니다.</p>
+    </div>
+    <button type="button" class="bo-btn bo-btn-primary" data-open-create-modal>+ 직위 등록</button>
+</div>
+
+<div class="bo-card">
+    <form method="get" class="bo-flex" style="gap:12px;align-items:end;margin-bottom:16px;">
+        <div class="bo-field" style="flex:1;max-width:280px;margin:0;">
+            <label>직위명</label>
+            <input type="text" name="q" value="{{ q }}" placeholder="직위명 검색">
+        </div>
+        <a href="{% url 'backoffice:position-list' %}" class="bo-btn">초기화</a>
+        <button type="submit" class="bo-btn bo-btn-dark">검색</button>
+    </form>
+
+    <div class="bo-table-toolbar">
+        <div class="bo-table-toolbar-left">
+            <span>전체 <strong>{{ rows|length }}건</strong></span>
+            <button type="button" class="bo-btn bo-btn-sm bo-btn-danger" id="bo-bulk-delete" disabled>삭제</button>
+        </div>
+    </div>
+
+    <table class="bo-table" id="bo-pos-table">
+        <colgroup>
+            <col style="width:38px;"><col><col style="width:110px;"><col style="width:110px;"><col style="width:160px;"><col style="width:80px;">
+        </colgroup>
+        <thead>
+            <tr>
+                <th><input type="checkbox" class="bo-checkbox" id="bo-check-all"></th>
+                <th>직위명</th>
+                <th>정렬 순서</th>
+                <th>사용 여부</th>
+                <th>최근 수정</th>
+                <th>관리</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for p in rows %}
+            <tr data-pos-id="{{ p.id }}">
+                <td><input type="checkbox" class="bo-checkbox bo-row-check" value="{{ p.id }}"></td>
+                <td>{{ p.name }}</td>
+                <td>{{ p.sort_order }}</td>
+                <td>
+                    {% if p.is_active %}
+                        <span class="bo-badge bo-badge-status-active">사용</span>
+                    {% else %}
+                        <span class="bo-badge bo-badge-status-disabled">미사용</span>
+                    {% endif %}
+                </td>
+                <td>{{ p.updated_at|date:"Y-m-d H:i" }}</td>
+                <td>
+                    <button type="button" class="bo-btn bo-btn-sm bo-btn-primary" data-edit="{{ p.id }}">수정</button>
+                </td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="6" class="bo-table-empty">등록된 직위가 없습니다.</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+{# 등록/수정 모달 #}
+<div class="bo-modal-backdrop" id="bo-pos-modal" data-mode="create">
+    <div class="bo-modal">
+        <div class="bo-modal-header">
+            <h2 class="bo-modal-title" data-create-only>직위 등록</h2>
+            <h2 class="bo-modal-title" data-edit-only style="display:none;">직위 수정</h2>
+            <p class="bo-modal-desc">직위 정보를 입력해 주세요.</p>
+        </div>
+        <form id="bo-pos-form" novalidate>
+            <input type="hidden" name="id" value="">
+            <div class="bo-modal-body">
+                <div class="bo-field" data-field="name">
+                    <label>직위명 <span class="bo-required">*</span></label>
+                    <input type="text" name="name" maxlength="50" placeholder="예: 사원">
+                    <div class="bo-field-error"></div>
+                </div>
+                <div class="bo-field" data-field="sort_order">
+                    <label>정렬 순서</label>
+                    <input type="number" name="sort_order" min="1" max="999" placeholder="작을수록 상위 (대표이사=1)">
+                    <div class="bo-field-error"></div>
+                </div>
+                <div class="bo-field" data-field="is_active">
+                    <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+                        <input type="checkbox" name="is_active" class="bo-checkbox" checked>
+                        <span>사용</span>
+                    </label>
+                </div>
+            </div>
+            <div class="bo-modal-footer">
+                <button type="button" class="bo-btn" data-close-modal>취소</button>
+                <button type="submit" class="bo-btn bo-btn-primary">저장</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'js/backoffice/positions.js' %}"></script>
+{% endblock %}

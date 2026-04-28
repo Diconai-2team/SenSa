@@ -48,10 +48,11 @@ import asyncio
 import httpx
 
 from config import TICK_INTERVAL, DEFAULT_SCENARIO
-from django_loader import load_devices, load_workers
+from django_loader import load_devices, load_workers, load_thresholds
 from generators import (
     generate_gas, generate_power, move_worker,
     identify_worst_gas, identify_worst_power,   # Layer 3 — 알람 detail 라벨용
+    apply_thresholds,                            # v3 — Django DB 임계치 동기화
 )
 from poster import post_sensor_data, post_worker_location, post_check_geofence
 
@@ -308,6 +309,14 @@ async def run_simulation_loop(app_state) -> None:
             print(f"[scheduler] 초기 로드 실패 — Django 기동 여부 확인: {e!r}")
             return
 
+        # ─── v3 신규 — 임계치 동기화 (fail-soft) ───
+        # 실패해도 generators.py 의 fallback 임계치(KOSHA 표준 하드코딩)로 동작.
+        # Django 미기동 / 신규 배포 등에서 안전 마진 확보.
+        loaded = await load_thresholds(client)
+        n_thresholds = apply_thresholds(loaded)
+        if n_thresholds == 0:
+            print("[scheduler] 임계치 DB 로드 실패 또는 미설정 — fallback 사용")
+
         print(
             f"[scheduler] 장비 {len(devices)}개 (가스 "
             f"{sum(1 for d in devices if d.get('sensor_type')=='gas')}, 전력 "
@@ -335,6 +344,10 @@ async def run_simulation_loop(app_state) -> None:
                 devices, workers = await _reload_devices_and_workers(
                     client, devices, workers,
                 )
+                # v3 — 임계치도 동시 재로드. 백오피스에서 임계치 변경 시 5초 안에 반영.
+                # 실패해도 기존 GAS_THRESHOLDS 유지 (apply_thresholds 가 None 받으면 no-op).
+                loaded = await load_thresholds(client)
+                apply_thresholds(loaded)
 
             try:
                 await _tick_once(client, devices, workers, scenario, tick)

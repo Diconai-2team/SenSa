@@ -1,0 +1,76 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SenSa 산재 예방 통합 관제 시스템</title>
+  <!-- 라이브러리 CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <!-- 섹션별 CSS (독립 유지보수) -->
+  <link rel="stylesheet" href="{% static 'css/dashboard/base.css' %}">
+  <link rel="stylesheet" href="{% static 'css/common/header.css' %}">
+  <link rel="stylesheet" href="{% static 'css/dashboard/section_08_safety.css' %}">
+  <link rel="stylesheet" href="{% static 'css/dashboard/section_09_map.css' %}">
+  <link rel="stylesheet" href="{% static 'css/dashboard/section_10_events.css' %}">
+  <link rel="stylesheet" href="{% static 'css/dashboard/section_11_workers.css' %}">
+  <link rel="stylesheet" href="{% static 'css/dashboard/section_12_13_gas.css' %}">
+  <link rel="stylesheet" href="{% static 'css/dashboard/section_14_15_power.css' %}">
+</head>
+<body>
+
+<div class="dashboard-layout">
+
+  <!-- ═══════════ ①~⑦ 공통 헤더 ═══════════ -->
+  {% include "partials/_header.html" with active_page="dashboard" %}
+
+  <!-- ═══════════ 좌측 패널 (⑧ + ⑪ + 지오펜스) ═══════════ -->
+  <aside id="section-left">
+    {% include "dashboard/sections/section_08_safety.html" %}
+    {% include "dashboard/sections/section_11_workers.html" %}
+    <!-- 지오펜스 목록 -->
+    <div id="geofence-section" class="panel-section" style="border-bottom:none;">
+      <div class="panel-title">위험 구역</div>
+      <div id="geofence-list">
+        <p style="font-size:10px;color:#3a3f55;text-align:center;padding:10px;">지오펜스가 없습니다.</p>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ═══════════ 중앙 영역 (⑨ 탭 + 지도) ═══════════ -->
+  <main id="section-center">
+    {% include "dashboard/sections/section_09_map.html" %}
+  </main>
+
+  <!-- ═══════════ 우측 패널 (⑩ 이벤트) ═══════════ -->
+  <aside id="section-right">
+    {% include "dashboard/sections/section_10_events.html" %}
+  </aside>
+
+  <!-- ═══════════ 하단 패널 (⑫⑬ + ⑭⑮) ═══════════ -->
+  <div id="section-bottom">
+    {% include "dashboard/sections/section_12_13_gas.html" %}
+    {% include "dashboard/sections/section_14_15_power.html" %}
+  </div>
+
+</div>
+
+<!-- ═══════════ 라이브러리 JS ═══════════ -->
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+
+<!-- ═══════════ 공통 JS (헤더/사이드메뉴/시스템시간) ═══════════ -->
+<script src="{% static 'js/common/header.js' %}"></script>
+
+<!-- ═══════════ 섹션별 JS (로드 순서 중요!) ═══════════ -->
+<!-- 1. base.js 먼저 (이벤트 버스 + 시뮬레이션 엔진) -->
+<script src="{% static 'js/dashboard/base.js' %}"></script>
+<!-- 2. 각 섹션 독립 (순서 무관) -->
+<script src="{% static 'js/dashboard/section_09_map.js' %}"></script>
+<script src="{% static 'js/dashboard/section_10_events.js' %}"></script>
+<script src="{% static 'js/dashboard/section_11_workers.js' %}"></script>
+<script src="{% static 'js/dashboard/section_12_13_gas.js' %}"></script>
+<script src="{% static 'js/dashboard/section_14_15_power.js' %}"></script>
+
+</body>
+</html>

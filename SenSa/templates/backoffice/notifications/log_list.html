@@ -1,0 +1,135 @@
+{% extends "backoffice/base.html" %}
+{% load static %}
+{% block title %}알림 발송 이력 — 백오피스{% endblock %}
+
+{% block content %}
+<div class="bo-breadcrumb">
+    <span>알림/이벤트 관리</span>
+    <span class="bo-breadcrumb-sep">/</span>
+    <span>발송 이력</span>
+</div>
+<h1 class="bo-page-title">알림 발송 이력</h1>
+<p class="bo-page-desc">알림 정책에 따라 사용자에게 발송된 알림 결과를 조회합니다.</p>
+
+<div class="bo-stat-grid">
+    <div class="bo-stat-card">
+        <div class="bo-stat-label">전체 발송 건수</div>
+        <div class="bo-stat-value">{{ stats.total }}</div>
+    </div>
+    <div class="bo-stat-card">
+        <div class="bo-stat-label">최근 24h 성공</div>
+        <div class="bo-stat-value" style="color:var(--bo-success);">{{ stats.sent_24h }}</div>
+    </div>
+    <div class="bo-stat-card">
+        <div class="bo-stat-label">최근 24h 실패</div>
+        <div class="bo-stat-value {% if stats.failed_24h %}bo-stat-value-warn{% endif %}">{{ stats.failed_24h }}</div>
+    </div>
+    <div class="bo-stat-card">
+        <div class="bo-stat-label">최근 24h 대기</div>
+        <div class="bo-stat-value">{{ stats.pending_24h }}</div>
+    </div>
+</div>
+
+<form method="get" class="bo-card" style="display:grid;grid-template-columns:1fr 140px 140px 140px 140px auto;gap:12px 16px;align-items:end;">
+    <div class="bo-field" style="margin:0;">
+        <label>키워드</label>
+        <input type="text" name="keyword" value="{{ q.keyword }}" placeholder="수신자/정책/에러">
+    </div>
+    <div class="bo-field" style="margin:0;">
+        <label>채널</label>
+        <select name="channel">
+            <option value="">전체</option>
+            {% for code, label in channel_choices %}
+            <option value="{{ code }}" {% if q.channel == code %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div class="bo-field" style="margin:0;">
+        <label>상태</label>
+        <select name="status">
+            <option value="">전체</option>
+            {% for code, label in status_choices %}
+            <option value="{{ code }}" {% if q.status == code %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div class="bo-field" style="margin:0;">
+        <label>시작일</label>
+        <input type="date" name="from" value="{{ q.from }}">
+    </div>
+    <div class="bo-field" style="margin:0;">
+        <label>종료일</label>
+        <input type="date" name="to" value="{{ q.to }}">
+    </div>
+    <div style="display:flex;gap:8px;">
+        <a href="{% url 'backoffice:notification-log-list' %}" class="bo-btn">초기화</a>
+        <button type="submit" class="bo-btn bo-btn-dark">검색</button>
+    </div>
+</form>
+
+<div class="bo-card bo-mt-16">
+    <div class="bo-table-toolbar">
+        <div class="bo-table-toolbar-left">
+            <span>총 <strong>{{ total }}건</strong></span>
+        </div>
+    </div>
+
+    <table class="bo-table">
+        <colgroup>
+            <col style="width:160px;"><col style="width:160px;"><col style="width:120px;"><col style="width:90px;"><col style="width:80px;"><col><col style="width:160px;">
+        </colgroup>
+        <thead>
+            <tr>
+                <th>발송일시</th>
+                <th>정책</th>
+                <th>수신자</th>
+                <th>채널</th>
+                <th>상태</th>
+                <th>에러</th>
+                <th>관련 알람</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for log in rows %}
+            <tr>
+                <td>{{ log.created_at|date:"Y-m-d H:i:s" }}</td>
+                <td>{% if log.policy %}{{ log.policy.name }}{% else %}<span class="bo-text-subtle">-</span>{% endif %}</td>
+                <td>{{ log.recipient_name_snapshot|default:"-" }}</td>
+                <td>{{ log.get_channel_display }}</td>
+                <td>
+                    {% if log.send_status == 'sent' %}
+                        <span class="bo-badge bo-badge-status-active">성공</span>
+                    {% elif log.send_status == 'failed' %}
+                        <span class="bo-badge" style="background:#fee2e2;color:#b91c1c;">실패</span>
+                    {% elif log.send_status == 'pending' %}
+                        <span class="bo-badge bo-badge-status-locked">대기</span>
+                    {% else %}
+                        <span class="bo-badge bo-badge-status-disabled">건너뜀</span>
+                    {% endif %}
+                </td>
+                <td style="font-size:11.5px;color:var(--bo-text-muted);max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="{{ log.error_message }}">{{ log.error_message|default:"-" }}</td>
+                <td>{% if log.alarm %}#{{ log.alarm.id }} — {{ log.alarm.alarm_type }}{% else %}<span class="bo-text-subtle">-</span>{% endif %}</td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="7" class="bo-table-empty">발송 이력이 없습니다.</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <div class="bo-pagination">
+        <div class="bo-pagination-info">{{ page_start }} - {{ page_end }} / {{ total }}</div>
+        <div class="bo-pagination-pages">
+            {% if page > 1 %}
+                <a href="?{% for k,v in q.items %}{{ k }}={{ v|urlencode }}&{% endfor %}page={{ page|add:'-1' }}">‹</a>
+            {% else %}<span class="is-disabled">‹</span>{% endif %}
+            {% for p in page_range %}
+                {% if p == page %}<span class="is-current">{{ p }}</span>
+                {% else %}<a href="?{% for k,v in q.items %}{{ k }}={{ v|urlencode }}&{% endfor %}page={{ p }}">{{ p }}</a>{% endif %}
+            {% endfor %}
+            {% if page < last_page %}
+                <a href="?{% for k,v in q.items %}{{ k }}={{ v|urlencode }}&{% endfor %}page={{ page|add:'1' }}">›</a>
+            {% else %}<span class="is-disabled">›</span>{% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}

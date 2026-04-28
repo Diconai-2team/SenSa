@@ -1,0 +1,108 @@
+/* ============================================================
+   로그인 페이지 전용 스타일 — 다크 테마
+   ============================================================ */
+
+.auth-wrapper.login {
+    max-width: 420px;
+}
+
+/* ─── 헤더 (브랜드 + 태그라인 + 설명) ─── */
+.login-header h1 {
+    margin: 0 0 8px 0;
+    font-size: 30px;
+    font-weight: 800;
+    color: var(--text-strong);
+    letter-spacing: -0.5px;
+    background: linear-gradient(135deg, #60a5fa 0%, #a78bfa 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+
+.login-header .tagline {
+    margin: 0 0 10px 0;
+    color: var(--text);
+    font-size: 14px;
+    font-weight: 500;
+}
+
+.login-header .desc {
+    margin: 0;
+    color: var(--text-dim);
+    font-size: 12px;
+    line-height: 1.6;
+}
+
+/* ─── 로그인 버튼 (solid primary) ─── */
+.btn-login {
+    width: 100%;
+    padding: 12px;
+    background: var(--color-primary);
+    color: #fff;
+    border: none;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    margin-top: 6px;
+    transition: background 0.15s, transform 0.1s;
+}
+
+.btn-login:hover {
+    background: var(--color-primary-hover);
+}
+
+.btn-login:active {
+    transform: translateY(1px);
+}
+
+.btn-login:focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 2px;
+}
+
+/* ─── 회원가입 버튼 (outline) ─── */
+.btn-signup-outline {
+    display: block;
+    width: 100%;
+    padding: 11px;
+    margin-top: 10px;
+    background: transparent;
+    color: var(--text);
+    border: 1px solid var(--border-input);
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: 500;
+    text-align: center;
+    text-decoration: none;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.btn-signup-outline:hover {
+    background: var(--bg-hover);
+    border-color: #3a424b;
+    color: var(--text-strong);
+    text-decoration: none;
+}
+
+.btn-signup-outline:active {
+    transform: translateY(1px);
+}
+
+/* ─── 테스트 계정 안내 박스 ─── */
+.demo-hint {
+    margin-top: 18px;
+    padding: 12px 14px;
+    background: rgba(59, 130, 246, 0.06);
+    border: 1px solid rgba(59, 130, 246, 0.22);
+    border-radius: 6px;
+    font-size: 11.5px;
+    color: var(--text-dim);
+    line-height: 1.7;
+}
+
+.demo-hint strong {
+    color: var(--text);
+    font-weight: 600;
+}

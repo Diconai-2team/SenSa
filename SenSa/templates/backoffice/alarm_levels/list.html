@@ -1,0 +1,152 @@
+{% extends "backoffice/base.html" %}
+{% load static %}
+{% block title %}위험 기준 관리 — 백오피스{% endblock %}
+
+{% block content %}
+<div class="bo-breadcrumb">
+    <span>기준정보 관리</span>
+    <span class="bo-breadcrumb-sep">/</span>
+    <span>위험 기준 관리</span>
+</div>
+
+<div class="bo-flex-between" style="margin-bottom:8px;">
+    <div>
+        <h1 class="bo-page-title">위험 기준 관리</h1>
+        <p class="bo-page-desc">알림 단계별 표시 색상, 강도, 우선순위를 관리합니다.</p>
+    </div>
+    <button type="button" class="bo-btn bo-btn-primary" id="bo-al-add">+ 단계 등록</button>
+</div>
+
+<div class="bo-card">
+    <div class="bo-table-toolbar">
+        <div class="bo-table-toolbar-left">
+            <span>등록 단계 <strong>{{ rows|length }}건</strong></span>
+            <button type="button" class="bo-btn bo-btn-sm bo-btn-danger" id="bo-al-bulk-delete" disabled>삭제</button>
+        </div>
+    </div>
+
+    <table class="bo-table" id="bo-al-table">
+        <colgroup>
+            <col style="width:38px;"><col style="width:130px;"><col style="width:120px;"><col><col style="width:90px;"><col style="width:90px;"><col style="width:80px;"><col style="width:80px;">
+        </colgroup>
+        <thead>
+            <tr>
+                <th><input type="checkbox" class="bo-checkbox" id="bo-al-check-all"></th>
+                <th>단계 코드</th>
+                <th>단계명</th>
+                <th>표시 색상</th>
+                <th>알림 강도</th>
+                <th>우선순위</th>
+                <th>사용 여부</th>
+                <th>관리</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for a in rows %}
+            <tr data-id="{{ a.id }}" {% if a.is_system %}data-is-system="1"{% endif %}>
+                <td><input type="checkbox" class="bo-checkbox bo-row-check" value="{{ a.id }}"></td>
+                <td><code style="font-size:12px;">{{ a.code }}</code></td>
+                <td>
+                    {{ a.name }}
+                    {% if a.is_system %}<span class="bo-text-subtle" style="font-size:11px;margin-left:4px;">(시스템)</span>{% endif %}
+                </td>
+                <td>
+                    <span class="bo-color-dot is-{{ a.color }}"></span>
+                    {{ a.get_color_display }}
+                </td>
+                <td>{{ a.get_intensity_display }}</td>
+                <td>{{ a.priority }}</td>
+                <td>
+                    {% if a.is_active %}
+                        <span class="bo-badge bo-badge-status-active">사용</span>
+                    {% else %}
+                        <span class="bo-badge bo-badge-status-disabled">미사용</span>
+                    {% endif %}
+                </td>
+                <td>
+                    <button type="button" class="bo-btn bo-btn-sm bo-btn-primary" data-edit="{{ a.id }}">수정</button>
+                </td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="8" class="bo-table-empty">등록된 단계가 없습니다.</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+{# ── 등록/수정 모달 ── #}
+<div class="bo-modal-backdrop" id="bo-al-modal" data-mode="create">
+  <div class="bo-modal">
+    <div class="bo-modal-header">
+      <h2 class="bo-modal-title" data-create-only>위험 기준 등록</h2>
+      <h2 class="bo-modal-title" data-edit-only style="display:none;">위험 기준 수정</h2>
+    </div>
+    <form id="bo-al-form" novalidate>
+      <input type="hidden" name="id" value="">
+      <div class="bo-modal-body">
+        <div class="bo-modal-grid">
+          <div class="bo-field" data-field="code">
+            <label>단계 코드 <span class="bo-required">*</span></label>
+            <input type="text" name="code" maxlength="50" placeholder="예: WARNING">
+            <div class="bo-field-error"></div>
+          </div>
+          <div class="bo-field" data-field="name">
+            <label>단계명 <span class="bo-required">*</span></label>
+            <input type="text" name="name" maxlength="20" placeholder="예: 경고">
+            <div class="bo-field-error"></div>
+          </div>
+          <div class="bo-field" data-field="color">
+            <label>표시 색상 <span class="bo-required">*</span></label>
+            <select name="color">
+              <option value="">선택하세요</option>
+              <option value="gray">회색</option>
+              <option value="green">녹색</option>
+              <option value="yellow">황색</option>
+              <option value="orange">주황색</option>
+              <option value="red">적색</option>
+              <option value="black">검정색</option>
+            </select>
+            <div class="bo-field-error"></div>
+          </div>
+          <div class="bo-field" data-field="intensity">
+            <label>알림 강도 <span class="bo-required">*</span></label>
+            <select name="intensity">
+              <option value="">선택하세요</option>
+              <option value="normal">정상</option>
+              <option value="caution">주의</option>
+              <option value="warning">경고</option>
+              <option value="danger">위험</option>
+            </select>
+            <div class="bo-field-error"></div>
+          </div>
+          <div class="bo-field" data-field="priority">
+            <label>우선순위 <span class="bo-required">*</span></label>
+            <input type="number" name="priority" min="1" max="999" placeholder="작을수록 높은 우선순위">
+            <div class="bo-field-error"></div>
+          </div>
+          <div class="bo-field" data-field="is_active">
+            <label style="display:flex;align-items:center;gap:8px;">
+              <input type="checkbox" name="is_active" class="bo-checkbox" checked>
+              <span>사용</span>
+            </label>
+          </div>
+          <div class="bo-field bo-field-full" data-field="description">
+            <label>설명</label>
+            <textarea name="description" maxlength="500"></textarea>
+            <div class="bo-field-error"></div>
+          </div>
+        </div>
+      </div>
+      <div class="bo-modal-footer">
+        <button type="button" class="bo-btn" data-close-modal>취소</button>
+        <button type="submit" class="bo-btn bo-btn-primary">저장</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'js/backoffice/alarm_levels.js' %}"></script>
+{% endblock %}

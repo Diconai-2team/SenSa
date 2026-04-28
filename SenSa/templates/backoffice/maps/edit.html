@@ -1,0 +1,236 @@
+{% extends "backoffice/base.html" %}
+{% load static %}
+{% block title %}지도 편집 — 백오피스{% endblock %}
+
+{% block extra_css %}
+<style>
+.bo-map-layout {
+    display: grid;
+    grid-template-columns: 1fr 360px;
+    gap: 16px;
+    align-items: start;
+}
+.bo-map-canvas-wrap {
+    background: #1f2937;
+    border-radius: var(--bo-radius);
+    padding: 12px;
+    box-shadow: var(--bo-shadow-sm);
+}
+.bo-map-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 10px;
+    color: #fff;
+    font-size: 12.5px;
+}
+.bo-map-toolbar > * { flex-shrink: 0; }
+.bo-map-toolbar .bo-btn { padding: 4px 10px; font-size: 12px; background:#374151; color:#e5e7eb; border-color:#4b5563; }
+.bo-map-toolbar .bo-btn:hover { background:#4b5563; }
+.bo-map-toolbar .bo-btn.is-active { background: var(--bo-primary); border-color: var(--bo-primary); color:#fff; }
+#bo-canvas {
+    display: block;
+    background: #0b0f17;
+    border-radius: var(--bo-radius-sm);
+    cursor: crosshair;
+    width: 100%;
+    height: auto;
+}
+.bo-canvas-empty {
+    height: 480px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #9ca3af;
+    background: #0b0f17;
+    border-radius: var(--bo-radius-sm);
+    font-size: 13px;
+}
+.bo-gf-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    max-height: 480px;
+    overflow-y: auto;
+}
+.bo-gf-list li {
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--bo-border-soft);
+    cursor: pointer;
+    font-size: 13px;
+}
+.bo-gf-list li:hover { background: var(--bo-bg); }
+.bo-gf-list li.is-active { background: var(--bo-primary-soft); }
+.bo-gf-zone-dot {
+    display: inline-block;
+    width: 10px; height: 10px;
+    border-radius: 2px;
+    margin-right: 6px;
+    vertical-align: middle;
+}
+.zone-danger     { background: #ef4444; }
+.zone-caution    { background: #f59e0b; }
+.zone-restricted { background: #6b7280; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="bo-breadcrumb"><span>지도 편집 관리</span></div>
+
+<div class="bo-flex-between" style="margin-bottom:8px;">
+    <div>
+        <h1 class="bo-page-title">지도 편집</h1>
+        <p class="bo-page-desc">공장 평면도에 위험 구역(지오펜스)과 장비 위치를 시각적으로 편집합니다.</p>
+    </div>
+    <div class="bo-flex bo-gap-8">
+        <button type="button" class="bo-btn" id="bo-gf-add">+ 지오펜스 등록</button>
+    </div>
+</div>
+
+<div class="bo-map-layout">
+    <div class="bo-map-canvas-wrap">
+        <div class="bo-map-toolbar">
+            <span style="margin-right:auto;">
+                {% if active_map %}
+                    📍 {{ active_map.name }} ({{ active_map.width }} × {{ active_map.height }})
+                {% else %}
+                    지도 없음 — 좌표 가이드 모드
+                {% endif %}
+            </span>
+            <button type="button" class="bo-btn" id="bo-tool-select">선택</button>
+            <button type="button" class="bo-btn" id="bo-tool-draw">폴리곤 그리기</button>
+            <button type="button" class="bo-btn" id="bo-tool-clear" style="background:#7f1d1d;border-color:#991b1b;color:#fecaca;">취소</button>
+        </div>
+        {% if active_map %}
+        <canvas id="bo-canvas" width="{{ active_map.width|default:1360 }}" height="{{ active_map.height|default:960 }}"></canvas>
+        {% else %}
+        <canvas id="bo-canvas" width="1360" height="960"></canvas>
+        {% endif %}
+        <div style="color:#9ca3af;font-size:11.5px;margin-top:8px;">
+            💡 <strong>그리기</strong>: 점을 차례로 클릭. 마지막에 첫 점 근처를 클릭하면 도형이 닫힙니다.
+            <br>
+            💡 <strong>점 드래그 편집</strong>: 우측 목록에서 지오펜스 클릭 → 점 핸들 표시 → 드래그하여 이동 → 자동 저장.
+        </div>
+    </div>
+
+    <div class="bo-card" style="padding:0;">
+        <div style="padding:14px 16px;border-bottom:1px solid var(--bo-border-soft);">
+            <h3 class="bo-mt-0" style="font-size:14px;font-weight:600;margin:0;">지오펜스 ({{ geofences|length }})</h3>
+        </div>
+        <ul class="bo-gf-list" id="bo-gf-list">
+            {% for g in geofences %}
+            <li data-id="{{ g.id }}" style="display:flex;justify-content:space-between;align-items:center;">
+                <div style="flex:1;min-width:0;">
+                    <span class="bo-gf-zone-dot zone-{{ g.zone_type }}"></span>
+                    <strong>{{ g.name }}</strong>
+                    <div style="font-size:11.5px;color:var(--bo-text-muted);margin-top:2px;">
+                        {{ g.get_zone_type_display }} / 점 {{ g.polygon|length }}개
+                    </div>
+                </div>
+                <button type="button" class="bo-btn bo-btn-sm" data-edit-btn>편집</button>
+            </li>
+            {% empty %}
+            <li class="bo-text-subtle" style="cursor:default;">등록된 지오펜스가 없습니다.</li>
+            {% endfor %}
+        </ul>
+    </div>
+</div>
+
+{# 지오펜스 등록/수정 모달 #}
+<div class="bo-modal-backdrop" id="bo-gf-modal" data-mode="create">
+    <div class="bo-modal">
+        <div class="bo-modal-header">
+            <h2 class="bo-modal-title" data-create-only>지오펜스 등록</h2>
+            <h2 class="bo-modal-title" data-edit-only style="display:none;">지오펜스 수정</h2>
+        </div>
+        <form id="bo-gf-form" novalidate>
+            <input type="hidden" name="id" value="">
+            <div class="bo-modal-body">
+                <div class="bo-modal-grid">
+                    <div class="bo-field bo-field-full" data-field="name">
+                        <label>지오펜스명 <span class="bo-required">*</span></label>
+                        <input type="text" name="name" maxlength="100">
+                        <div class="bo-field-error"></div>
+                    </div>
+                    <div class="bo-field" data-field="zone_type">
+                        <label>구역 유형 <span class="bo-required">*</span></label>
+                        <select name="zone_type">
+                            <option value="">선택하세요</option>
+                            {% for code, label in zone_types %}
+                            <option value="{{ code }}">{{ label }}</option>
+                            {% endfor %}
+                        </select>
+                        <div class="bo-field-error"></div>
+                    </div>
+                    <div class="bo-field" data-field="risk_level">
+                        <label>위험 등급 <span class="bo-required">*</span></label>
+                        <select name="risk_level">
+                            <option value="">선택하세요</option>
+                            {% for code, label in risk_levels %}
+                            <option value="{{ code }}">{{ label }}</option>
+                            {% endfor %}
+                        </select>
+                        <div class="bo-field-error"></div>
+                    </div>
+                    <div class="bo-field" data-field="is_active">
+                        <label style="display:flex;align-items:center;gap:8px;">
+                            <input type="checkbox" name="is_active" class="bo-checkbox" checked>
+                            <span>활성</span>
+                        </label>
+                    </div>
+                    <div class="bo-field bo-field-full" data-field="polygon_json">
+                        <label>폴리곤 좌표 (JSON) <span class="bo-required">*</span></label>
+                        <textarea name="polygon_json" rows="3" style="font-family:monospace;font-size:12px;" placeholder='[[100,100],[300,100],[300,200]]'></textarea>
+                        <div class="bo-field-error"></div>
+                    </div>
+                    <div class="bo-field bo-field-full" data-field="description">
+                        <label>설명</label>
+                        <textarea name="description" maxlength="500"></textarea>
+                    </div>
+                </div>
+            </div>
+            <div class="bo-modal-footer bo-modal-footer-spread">
+                <button type="button" class="bo-btn bo-btn-danger" id="bo-gf-delete" data-edit-only style="display:none;">삭제</button>
+                <div class="bo-flex bo-gap-8">
+                    <button type="button" class="bo-btn" data-close-modal>취소</button>
+                    <button type="submit" class="bo-btn bo-btn-primary">저장</button>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+window.BO_MAP_BOOTSTRAP = {
+    map: {% if active_map %}{
+        url: "{{ active_map.image.url }}",
+        width: {{ active_map.width|default:1360 }},
+        height: {{ active_map.height|default:960 }}
+    }{% else %}null{% endif %},
+    geofences: [
+        {% for g in geofences %}
+        {
+            id: {{ g.id }}, name: "{{ g.name|escapejs }}",
+            zone_type: "{{ g.zone_type }}",
+            polygon: {{ g.polygon|safe }}
+        }{% if not forloop.last %},{% endif %}
+        {% endfor %}
+    ],
+    devices: [
+        {% for d in devices %}
+        {
+            id: {{ d.id }}, device_id: "{{ d.device_id|escapejs }}",
+            device_name: "{{ d.device_name|escapejs }}",
+            sensor_type: "{{ d.sensor_type }}",
+            x: {{ d.x }}, y: {{ d.y }},
+            status: "{{ d.status }}"
+        }{% if not forloop.last %},{% endif %}
+        {% endfor %}
+    ],
+};
+</script>
+<script src="{% static 'js/backoffice/maps.js' %}"></script>
+{% endblock %}

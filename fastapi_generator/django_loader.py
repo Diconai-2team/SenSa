@@ -98,3 +98,34 @@ async def load_geofences(client: httpx.AsyncClient) -> list[dict]:
     data = res.json()
     items = data.get("results", data) if isinstance(data, dict) else data
     return [{"name": it["name"], "polygon": it["polygon"]} for it in items]
+
+async def load_thresholds(client: httpx.AsyncClient) -> dict:
+    """
+    Django 백오피스에서 임계치 데이터를 로드.
+
+    응답 형식 (Django backoffice/views.py: thresholds_for_fastapi):
+      {
+        "categories": { "TH_GAS": {...}, ... },
+        "flat":       { "TH_GAS.co": {item_code, operator, caution, danger, ...}, ... }
+      }
+
+    이 함수는 응답 JSON 을 그대로 반환하고,
+    generators.apply_thresholds() 가 받아 GAS_THRESHOLDS 갱신.
+
+    Returns:
+        백오피스 응답 dict 또는 None (실패 시).
+
+    Note:
+        이 호출은 fail-soft. 실패해도 기본 (하드코딩) 임계치로 동작 유지.
+    """
+    try:
+        res = await client.get(
+            f"{DJANGO_BASE_URL}/dashboard/api/thresholds/",
+            headers=INTERNAL_HEADERS,
+            timeout=3.0,
+        )
+        res.raise_for_status()
+        return res.json()
+    except Exception as e:
+        print(f"[django_loader] load_thresholds 실패 (fallback 유지): {e!r}")
+        return None

@@ -1,0 +1,54 @@
+/* section_14_15_power.css — ⑭ 전력 테이블 + ⑮ 전력 차트
+   [Step 1B] 페이지네이션 패턴 도입 + B-3 헤더 (합산 + 현재 설비) */
+
+.power-summary { font-size: 22px; font-weight: 700; color: #fff; margin-bottom: 6px; }
+.power-summary .unit { font-size: 12px; color: var(--text-dim); font-weight: 500; }
+
+/* B-3: 현재 설비 와트 — 큰 글씨(합산) 옆에 작은 글씨로 부가 정보 */
+.power-summary .power-current-watt {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-dim);
+  margin-left: 12px;
+  vertical-align: middle;
+}
+
+
+/* ════════════════════════════════════════════════════════════════
+   위험도별 행 배경색 (가스 테이블과 동일한 패턴)
+   JS가 <tr>에 row-danger / row-caution / row-normal 클래스 적용
+   ════════════════════════════════════════════════════════════════ */
+
+#section-14-power-table tbody tr.row-danger {
+  background: rgba(231, 76, 60, 0.12);
+  box-shadow: inset 3px 0 0 0 #e74c3c;
+}
+
+#section-14-power-table tbody tr.row-danger:hover {
+  background: rgba(231, 76, 60, 0.18);
+}
+
+#section-14-power-table tbody tr.row-caution {
+  background: rgba(241, 196, 15, 0.10);
+  box-shadow: inset 3px 0 0 0 #f1c40f;
+}
+
+#section-14-power-table tbody tr.row-caution:hover {
+  background: rgba(241, 196, 15, 0.16);
+}
+
+/* 값 셀 색상 강조 */
+#section-14-power-table tbody tr.row-danger .gas-value {
+  color: #ff6b6b;
+  font-weight: 600;
+}
+
+#section-14-power-table tbody tr.row-caution .gas-value {
+  color: #ffd84d;
+  font-weight: 600;
+}
+
+/* 부드러운 전환 */
+#section-14-power-table tbody tr {
+  transition: background-color 0.3s ease;
+}

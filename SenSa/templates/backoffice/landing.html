@@ -1,0 +1,47 @@
+{% extends "backoffice/base.html" %}
+{% block title %}백오피스 — 관리 콘솔{% endblock %}
+
+{% block content %}
+<div class="bo-breadcrumb">
+    <span>관리 콘솔</span>
+</div>
+<h1 class="bo-page-title">슈퍼관리자 콘솔</h1>
+<p class="bo-page-desc">시스템 운영 마스터 데이터를 관리합니다. 좌측 메뉴에서 항목을 선택해 주세요.</p>
+
+<div class="bo-stat-grid">
+    <div class="bo-stat-card">
+        <div class="bo-stat-label">전체 사용자</div>
+        <div class="bo-stat-value">{{ stats.user_count }}</div>
+    </div>
+    <div class="bo-stat-card">
+        <div class="bo-stat-label">등록 부서</div>
+        <div class="bo-stat-value">{{ stats.org_count }}</div>
+    </div>
+    <div class="bo-stat-card">
+        <div class="bo-stat-label">사용 직위</div>
+        <div class="bo-stat-value">{{ stats.position_count }}</div>
+    </div>
+    <div class="bo-stat-card">
+        <div class="bo-stat-label">잠긴 계정</div>
+        <div class="bo-stat-value {% if stats.locked_count %}bo-stat-value-warn{% endif %}">{{ stats.locked_count }}</div>
+    </div>
+</div>
+
+<div class="bo-card">
+    <h3 class="bo-mt-0" style="font-size:15px;font-weight:600;margin-bottom:12px;">관리 메뉴</h3>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill, minmax(220px,1fr));gap:12px;">
+        <a href="{% url 'backoffice:user-list' %}" class="bo-card" style="text-decoration:none;">
+            <div style="font-size:14px;font-weight:600;color:var(--bo-text);margin-bottom:4px;">사용자 관리</div>
+            <div style="font-size:12.5px;color:var(--bo-text-muted);">계정을 조회하고 등록·수정·삭제합니다.</div>
+        </a>
+        <a href="{% url 'backoffice:org-manage' %}" class="bo-card" style="text-decoration:none;">
+            <div style="font-size:14px;font-weight:600;color:var(--bo-text);margin-bottom:4px;">조직 관리</div>
+            <div style="font-size:12.5px;color:var(--bo-text-muted);">조직도와 부서·구성원을 관리합니다.</div>
+        </a>
+        <a href="{% url 'backoffice:position-list' %}" class="bo-card" style="text-decoration:none;">
+            <div style="font-size:14px;font-weight:600;color:var(--bo-text);margin-bottom:4px;">직위 관리</div>
+            <div style="font-size:12.5px;color:var(--bo-text-muted);">직위 마스터를 등록·수정합니다.</div>
+        </a>
+    </div>
+</div>
+{% endblock %}

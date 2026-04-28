@@ -1,0 +1,229 @@
+{% extends "backoffice/base.html" %}
+{% load static %}
+{% block title %}조직 관리 — 백오피스{% endblock %}
+
+{% block content %}
+<div class="bo-breadcrumb">
+    <span>계정/권한 관리</span>
+    <span class="bo-breadcrumb-sep">/</span>
+    <span>조직 관리</span>
+</div>
+<h1 class="bo-page-title">조직 관리</h1>
+<p class="bo-page-desc">조직도와 부서 정보를 조회하고 구성원 정보를 관리합니다.</p>
+
+<div class="bo-org-layout">
+
+    {% comment %} ════════════════════════════════════════════════════════════
+       좌측: 조직 트리
+       ════════════════════════════════════════════════════════════ {% endcomment %}
+    <div class="bo-card">
+        <div class="bo-flex-between" style="margin-bottom:12px;">
+            <h3 class="bo-mt-0" style="font-size:14px;font-weight:600;margin:0;">조직도</h3>
+            <button type="button" class="bo-btn bo-btn-sm bo-btn-primary" id="bo-add-dept">+ 추가</button>
+        </div>
+
+        <div class="bo-field" style="margin-bottom:8px;">
+            <input type="text" id="bo-tree-search" placeholder="부서명 검색">
+        </div>
+
+        <ul class="bo-org-tree" id="bo-org-tree">
+            {% if company %}
+            <li class="is-company" data-org-id="{{ company.id }}">
+                {{ company.name }}
+            </li>
+            {% for d in departments %}
+            <li class="bo-org-tree-item {% if d.is_unassigned_bucket %}is-unassigned{% endif %}"
+                data-org-id="{{ d.id }}"
+                data-org-name="{{ d.name }}">
+                {{ d.name }} <span class="bo-text-subtle">({{ d.users.count }})</span>
+            </li>
+            {% endfor %}
+            {% else %}
+            <li class="is-unassigned">회사가 등록되지 않았습니다.</li>
+            {% endif %}
+        </ul>
+
+        <div class="bo-text-muted bo-mt-16" style="font-size:12px;">
+            TIP. 부서를 선택하면 우측에서 상세 정보와 구성원을 확인할 수 있습니다.
+        </div>
+    </div>
+
+    {% comment %} ════════════════════════════════════════════════════════════
+       우측: 부서 상세 + 구성원 카드
+       ════════════════════════════════════════════════════════════ {% endcomment %}
+    <div class="bo-org-detail" id="bo-org-detail">
+        <div class="bo-card" id="bo-org-detail-empty">
+            <div class="bo-table-empty">좌측에서 부서를 선택해 주세요.</div>
+        </div>
+
+        <div class="bo-card" id="bo-org-info-card" style="display:none;">
+            <div class="bo-flex-between">
+                <h3 class="bo-mt-0" id="bo-org-name" style="font-size:15px;font-weight:600;margin:0;"></h3>
+                <div class="bo-flex bo-gap-8">
+                    <button type="button" class="bo-btn bo-btn-sm" id="bo-org-edit">수정</button>
+                    <button type="button" class="bo-btn bo-btn-sm bo-btn-danger" id="bo-org-delete">삭제</button>
+                </div>
+            </div>
+            <dl class="bo-org-info-grid bo-mt-16">
+                <div>
+                    <dt>부서 코드</dt>
+                    <dd id="bo-org-code">-</dd>
+                </div>
+                <div>
+                    <dt>구성원 수</dt>
+                    <dd id="bo-org-member-count">-</dd>
+                </div>
+                <div>
+                    <dt>조직장</dt>
+                    <dd id="bo-org-leader">-</dd>
+                </div>
+                <div>
+                    <dt>최근 수정</dt>
+                    <dd id="bo-org-updated">-</dd>
+                </div>
+            </dl>
+        </div>
+
+        <div class="bo-card" id="bo-org-members-card" style="display:none;">
+            <div class="bo-flex-between">
+                <h3 class="bo-mt-0" style="font-size:15px;font-weight:600;margin:0;">구성원 정보</h3>
+                <button type="button" class="bo-btn bo-btn-sm bo-btn-primary" id="bo-add-member">+ 구성원 추가</button>
+            </div>
+
+            <table class="bo-table bo-mt-16">
+                <colgroup>
+                    <col style="width:38px;"><col><col><col><col style="width:90px;">
+                </colgroup>
+                <thead>
+                    <tr>
+                        <th><input type="checkbox" class="bo-checkbox" id="bo-members-check-all"></th>
+                        <th>사용자명</th>
+                        <th>아이디</th>
+                        <th>직위</th>
+                        <th>계정 상태</th>
+                    </tr>
+                </thead>
+                <tbody id="bo-members-body"></tbody>
+            </table>
+
+            <div class="bo-flex-between bo-mt-16">
+                <span class="bo-text-muted" id="bo-members-selected">0명 선택</span>
+                <div class="bo-flex bo-gap-8">
+                    <button type="button" class="bo-btn bo-btn-sm" id="bo-member-move" disabled>부서 이동</button>
+                    <button type="button" class="bo-btn bo-btn-sm" id="bo-member-remove" disabled>소속 제외</button>
+                    <button type="button" class="bo-btn bo-btn-sm bo-btn-primary" id="bo-member-leader" disabled>조직장 임명</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% comment %} ════════════════════════════════════════════════════════════════
+   부서 등록/수정 모달
+   ════════════════════════════════════════════════════════════════ {% endcomment %}
+<div class="bo-modal-backdrop" id="bo-org-modal" data-mode="create">
+    <div class="bo-modal">
+        <div class="bo-modal-header">
+            <h2 class="bo-modal-title" data-create-only>부서 추가</h2>
+            <h2 class="bo-modal-title" data-edit-only style="display:none;">부서 수정</h2>
+            <p class="bo-modal-desc">부서 정보를 입력해 주세요.</p>
+        </div>
+        <form id="bo-org-form" novalidate>
+            <input type="hidden" name="id" value="">
+            <input type="hidden" name="parent" value="{{ company.id|default:'' }}">
+            <div class="bo-modal-body">
+                <div class="bo-field" data-field="name">
+                    <label>부서명 <span class="bo-required">*</span></label>
+                    <input type="text" name="name" maxlength="50" placeholder="예: 경영지원팀">
+                    <div class="bo-field-error"></div>
+                </div>
+                <div class="bo-field" data-field="code">
+                    <label>부서 코드</label>
+                    <input type="text" name="code" maxlength="50" placeholder="예: 001">
+                    <div class="bo-field-error"></div>
+                </div>
+                <div class="bo-field" data-field="description">
+                    <label>설명</label>
+                    <textarea name="description" maxlength="500"></textarea>
+                    <div class="bo-field-error"></div>
+                </div>
+            </div>
+            <div class="bo-modal-footer">
+                <button type="button" class="bo-btn" data-close-modal>취소</button>
+                <button type="submit" class="bo-btn bo-btn-primary">저장</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+{% comment %} ════════════════════════════════════════════════════════════════
+   구성원 선택 팝업 (3-패널)
+   ════════════════════════════════════════════════════════════════ {% endcomment %}
+<div class="bo-modal-backdrop" id="bo-member-picker">
+    <div class="bo-modal bo-modal-wide">
+        <div class="bo-modal-header">
+            <h2 class="bo-modal-title">구성원 선택</h2>
+            <p class="bo-modal-desc">조직에 추가할 구성원을 선택하고 반영합니다.</p>
+        </div>
+        <div class="bo-modal-body">
+            <div style="display:grid;grid-template-columns:1fr 1.5fr 1fr;gap:12px;">
+                <div class="bo-card" style="padding:12px;">
+                    <div style="font-size:12.5px;font-weight:600;margin-bottom:8px;">조직 목록</div>
+                    <ul class="bo-org-tree" id="bo-picker-tree" style="max-height:320px;overflow-y:auto;"></ul>
+                </div>
+                <div class="bo-card" style="padding:12px;">
+                    <div style="font-size:12.5px;font-weight:600;margin-bottom:8px;">구성원 목록</div>
+                    <div id="bo-picker-source" style="max-height:320px;overflow-y:auto;font-size:13px;"></div>
+                </div>
+                <div class="bo-card" style="padding:12px;">
+                    <div class="bo-flex-between" style="margin-bottom:8px;">
+                        <span style="font-size:12.5px;font-weight:600;">선택된 구성원</span>
+                        <button type="button" class="bo-btn bo-btn-sm" id="bo-picker-clear">모두 해제</button>
+                    </div>
+                    <div id="bo-picker-selected" style="max-height:320px;overflow-y:auto;font-size:13px;"></div>
+                </div>
+            </div>
+        </div>
+        <div class="bo-modal-footer">
+            <button type="button" class="bo-btn" data-close-modal>취소</button>
+            <button type="button" class="bo-btn bo-btn-primary" id="bo-picker-confirm">확인</button>
+        </div>
+    </div>
+</div>
+
+{% comment %} ════════════════════════════════════════════════════════════════
+   부서 이동 팝업
+   ════════════════════════════════════════════════════════════════ {% endcomment %}
+<div class="bo-modal-backdrop" id="bo-move-modal">
+    <div class="bo-modal">
+        <div class="bo-modal-header">
+            <h2 class="bo-modal-title">부서 이동</h2>
+            <p class="bo-modal-desc">선택한 사용자가 이동할 부서를 골라 주세요.</p>
+        </div>
+        <div class="bo-modal-body">
+            <div class="bo-card" style="padding:12px;">
+                <ul class="bo-org-tree" id="bo-move-tree" style="max-height:320px;overflow-y:auto;"></ul>
+            </div>
+        </div>
+        <div class="bo-modal-footer">
+            <button type="button" class="bo-btn" data-close-modal>취소</button>
+            <button type="button" class="bo-btn bo-btn-primary" id="bo-move-confirm" disabled>확인</button>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+window.BO_ORG_BOOTSTRAP = {
+    company: {% if company %}{ id: {{ company.id }}, name: "{{ company.name|escapejs }}" }{% else %}null{% endif %},
+    departments: [
+        {% for d in departments %}
+        { id: {{ d.id }}, name: "{{ d.name|escapejs }}", is_unassigned: {{ d.is_unassigned_bucket|yesno:"true,false" }}, member_count: {{ d.users.count }} }{% if not forloop.last %},{% endif %}
+        {% endfor %}
+    ],
+};
+</script>
+<script src="{% static 'js/backoffice/organizations.js' %}"></script>
+{% endblock %}

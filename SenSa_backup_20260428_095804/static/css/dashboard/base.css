@@ -1,0 +1,133 @@
+/* ============================================================
+   base.css — 공통 변수 + 전체 그리드 레이아웃
+
+   [변경 이력]
+     v1 : 헤더 스타일 + 그리드 + 패널/모달/테이블 모두 포함
+     v2 ⭐: 헤더 시각 스타일은 common/header.css 로 이관.
+            여기는 "대시보드 Grid 셀 배치"만 담당.
+            grid-template-rows: 52px → 56px (공통 헤더 높이와 일치)
+     팀원 병합 v1: --color-info 토큰 추가 (info 레벨 알람용)
+     Step 1A: .sensor-pager 관련 스타일 추가 (가스/전력 패널 페이지네이션 공용).
+              .sensor-tab 계열은 후방 호환을 위해 일단 보존 — 사용처는 모두 제거됨.
+   ============================================================ */
+
+:root {
+  --bg-body: #0f1117;
+  --bg-panel: #1a1d27;
+  --bg-card: #12151f;
+  --border: #2a2d3a;
+  --text: #e0e0e0;
+  --text-dim: #5a6080;
+  --text-muted: #8b949e;
+  --text-bright: #ffffff;
+  --accent: #4a7fff;
+  --color-normal: #2ecc71;
+  --color-caution: #f1c40f;
+  --color-danger: #e74c3c;
+  --color-critical: #9b59b6;
+  --color-info: #3498db;    /* 팀원 병합 v1 — info 레벨 알람용 (회복/복귀 메시지) */
+  --font-mono: 'Cascadia Code', 'Consolas', monospace;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: 'Segoe UI', -apple-system, sans-serif; background: var(--bg-body); color: var(--text); overflow: hidden; height: 100vh; }
+
+/* 전체 그리드 */
+.dashboard-layout {
+  display: grid;
+  grid-template-rows: 56px 1fr 220px;     /* v2: 공통 헤더 높이와 맞춤 */
+  grid-template-columns: 240px 1fr 260px;
+  grid-template-areas: "header header header" "left center right" "bottom bottom bottom";
+  height: 100vh;
+}
+
+/* ⭐ 헤더는 Grid 셀 배치만 담당 — 시각 스타일은 common/header.css 단일 출처 */
+#section-header {
+  grid-area: header;
+  z-index: 100;   /* 대시보드 Grid 내 다른 요소(leaflet 등) 보다 위. common 의 20 을 override. */
+}
+
+/* 패널 공통 */
+#section-left { grid-area: left; background: var(--bg-panel); border-right: 1px solid var(--border); display: flex; flex-direction: column; overflow-y: auto; }
+#section-center { grid-area: center; display: flex; flex-direction: column; overflow: hidden; position: relative; }
+#section-right { grid-area: right; background: var(--bg-panel); border-left: 1px solid var(--border); display: flex; flex-direction: column; overflow: hidden; }
+#section-bottom { grid-area: bottom; display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; border-top: 2px solid var(--border); background: var(--bg-panel); }
+
+.panel-section { padding: 14px; border-bottom: 1px solid var(--border); }
+.panel-title { font-size: 12px; font-weight: 700; color: var(--text); margin-bottom: 10px; display: flex; align-items: center; justify-content: space-between; }
+.panel-title .detail-link { font-size: 10px; color: var(--accent); cursor: pointer; text-decoration: none; }
+
+.bottom-panel { padding: 12px 14px; border-right: 1px solid var(--border); display: flex; flex-direction: column; overflow: hidden; }
+.bottom-panel:last-child { border-right: none; }
+.bottom-panel-title { font-size: 11px; font-weight: 700; color: var(--text); margin-bottom: 8px; display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; }
+.bottom-panel-title .sensor-badge { padding: 2px 8px; border-radius: 4px; font-size: 9px; font-weight: 600; background: #4a7fff22; color: var(--accent); border: 1px solid #4a7fff44; }
+
+/* === Step 1A: 센서 페이지네이션 (가스/전력 패널 공용) === */
+.sensor-pager { display: flex; align-items: center; gap: 4px; }
+.sensor-pager-name { color: var(--accent); font-weight: 600; }
+.sensor-pager-btn {
+  padding: 0 6px; height: 18px; border-radius: 4px;
+  font-size: 14px; font-weight: 700; line-height: 1;
+  background: transparent; color: var(--text-muted, #8b949e);
+  border: 1px solid var(--border, #2a2d3a); cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center;
+}
+.sensor-pager-btn:hover:not(:disabled) { background: #4a7fff22; color: var(--accent); border-color: #4a7fff44; }
+.sensor-pager-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+.sensor-pager-index {
+  font-size: 9px; font-weight: 600; padding: 0 4px;
+  min-width: 28px; text-align: center;
+  color: var(--text-muted, #8b949e); font-family: var(--font-mono);
+}
+
+/* (deprecated) 구 sensor-tab 계열 — 사용처는 페이지네이션으로 교체됨. 후방 호환용 보존. */
+.sensor-tab-group { display: flex; gap: 4px; }
+.sensor-tab { padding: 2px 8px; border-radius: 4px; font-size: 9px; font-weight: 600; background: transparent; color: var(--text-muted, #5a6080); border: 1px solid #2a2d3a; cursor: pointer; }
+.sensor-tab.active { background: #4a7fff22; color: var(--accent); border-color: #4a7fff44; }
+
+.chart-area { flex: 1; min-height: 0; }
+.chart-area canvas { width: 100% !important; height: 100% !important; }
+
+/* 상태 배지 */
+.status-badge { display: inline-block; padding: 2px 7px; border-radius: 4px; font-size: 9px; font-weight: 700; }
+.status-normal  { background: #2ecc7118; color: var(--color-normal); }
+.status-caution { background: #f1c40f18; color: var(--color-caution); }
+.status-danger  { background: #e74c3c18; color: var(--color-danger); }
+
+/* 데이터 테이블 공통
+   [Step 1B 후속] 실시간 수치 갱신 시 컬럼 폭이 들썩이는 문제 해결:
+     1) table-layout: fixed — 컬럼이 내용에 맞게 자동 신축하지 않음.
+        실제 컬럼 비율은 각 테이블의 <colgroup> 에서 정의 (가스/전력 별도).
+     2) tabular-nums — 숫자 셀의 폰트가 등폭(monospace) 숫자 사용.
+        '1' 과 '8' 의 폭이 같아져 자릿수 변경 시도 컬럼 흔들림 0.
+*/
+.data-table { width: 100%; border-collapse: collapse; flex: 1; table-layout: fixed; }
+.data-table th { text-align: left; padding: 5px 8px; font-size: 9px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-dim); border-bottom: 1px solid var(--border); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.data-table td { padding: 4px 8px; font-size: 11px; border-bottom: 1px solid #1e2230; font-family: var(--font-mono); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.data-table .gas-name { color: #a0a8c0; font-family: 'Segoe UI', sans-serif; }
+.data-table .gas-value { color: var(--text); font-variant-numeric: tabular-nums; }
+.data-table .gas-unit { font-variant-numeric: tabular-nums; }
+
+/* 모달 */
+#fence-modal { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 9999; align-items: center; justify-content: center; }
+#fence-modal.open { display: flex; }
+.modal-box { background: var(--bg-panel); border: 1px solid var(--border); border-radius: 10px; padding: 20px; width: 320px; }
+.modal-box h2 { font-size: 14px; font-weight: 700; margin-bottom: 14px; color: #fff; }
+.form-group { margin-bottom: 10px; }
+.form-group label { display: block; font-size: 10px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 4px; }
+.form-group input, .form-group select, .form-group textarea { width: 100%; padding: 7px 9px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 4px; color: var(--text); font-size: 12px; outline: none; }
+.form-group input:focus, .form-group select:focus { border-color: var(--accent); }
+.form-group textarea { resize: vertical; min-height: 50px; }
+.form-group select option { background: var(--bg-panel); }
+.modal-actions { display: flex; gap: 6px; margin-top: 14px; }
+.btn-primary { flex: 1; padding: 8px; background: var(--accent); border: none; border-radius: 4px; color: #fff; font-size: 12px; font-weight: 600; cursor: pointer; }
+.btn-secondary { flex: 1; padding: 8px; background: transparent; border: 1px solid var(--border); border-radius: 4px; color: #a0a8c0; font-size: 12px; cursor: pointer; }
+
+/* Leaflet 팝업 */
+.leaflet-popup-content-wrapper { background: var(--bg-panel) !important; border: 1px solid var(--border) !important; border-radius: 8px !important; color: var(--text) !important; }
+.leaflet-popup-tip { background: var(--bg-panel) !important; }
+.popup-title { font-weight: 700; font-size: 13px; margin-bottom: 6px; }
+.popup-row { display: flex; justify-content: space-between; font-size: 11px; padding: 2px 0; border-bottom: 1px solid var(--border); }
+.popup-row:last-child { border: none; }
+.popup-row .label { color: var(--text-dim); }
+.popup-row .value { color: var(--text); font-weight: 500; font-family: var(--font-mono); }

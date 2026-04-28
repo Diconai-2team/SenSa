@@ -1,0 +1,178 @@
+{% extends "backoffice/base.html" %}
+{% load static %}
+{% block title %}알림 정책 — 백오피스{% endblock %}
+
+{% block content %}
+<div class="bo-breadcrumb">
+    <span>알림/이벤트 관리</span>
+    <span class="bo-breadcrumb-sep">/</span>
+    <span>알림 정책</span>
+</div>
+
+<div class="bo-flex-between" style="margin-bottom:8px;">
+    <div>
+        <h1 class="bo-page-title">알림 정책 관리</h1>
+        <p class="bo-page-desc">위험 분류 + 알람 단계 트리거에 대한 발송 채널과 수신 대상을 정의합니다.</p>
+    </div>
+    <button type="button" class="bo-btn bo-btn-primary" data-open-create-modal>+ 정책 등록</button>
+</div>
+
+<div class="bo-card">
+    <div class="bo-table-toolbar">
+        <div class="bo-table-toolbar-left">
+            <span>등록 정책 <strong>{{ rows|length }}건</strong></span>
+            <button type="button" class="bo-btn bo-btn-sm" id="bo-bulk-on" disabled>사용 전환</button>
+            <button type="button" class="bo-btn bo-btn-sm bo-btn-warning" id="bo-bulk-off" disabled>미사용 전환</button>
+            <button type="button" class="bo-btn bo-btn-sm bo-btn-danger" id="bo-bulk-delete" disabled>삭제</button>
+        </div>
+    </div>
+
+    <table class="bo-table" id="bo-policy-table">
+        <colgroup>
+            <col style="width:38px;"><col style="width:140px;"><col><col style="width:110px;"><col style="width:80px;"><col style="width:160px;"><col style="width:90px;"><col style="width:80px;">
+        </colgroup>
+        <thead>
+            <tr>
+                <th><input type="checkbox" class="bo-checkbox" id="bo-check-all"></th>
+                <th>정책 코드</th>
+                <th>정책명</th>
+                <th>위험 분류</th>
+                <th>알람 단계</th>
+                <th>발송 채널</th>
+                <th>사용 여부</th>
+                <th>관리</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for p in rows %}
+            <tr data-id="{{ p.id }}">
+                <td><input type="checkbox" class="bo-checkbox bo-row-check" value="{{ p.id }}"></td>
+                <td><code style="font-size:12px;">{{ p.code }}</code></td>
+                <td>{{ p.name }}</td>
+                <td>{{ p.risk_category.name }}</td>
+                <td>{{ p.alarm_level.name }}</td>
+                <td>
+                    <div class="bo-applies-pills">
+                        {% for ch in p.channels_list %}
+                            <span class="bo-pill">{{ ch }}</span>
+                        {% endfor %}
+                    </div>
+                </td>
+                <td>
+                    {% if p.is_active %}
+                        <span class="bo-badge bo-badge-status-active">사용</span>
+                    {% else %}
+                        <span class="bo-badge bo-badge-status-disabled">미사용</span>
+                    {% endif %}
+                </td>
+                <td><button type="button" class="bo-btn bo-btn-sm bo-btn-primary" data-edit="{{ p.id }}">수정</button></td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="8" class="bo-table-empty">등록된 정책이 없습니다.</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+{# 등록/수정 모달 #}
+<div class="bo-modal-backdrop" id="bo-policy-modal" data-mode="create">
+    <div class="bo-modal bo-modal-wide">
+        <div class="bo-modal-header">
+            <h2 class="bo-modal-title" data-create-only>알림 정책 등록</h2>
+            <h2 class="bo-modal-title" data-edit-only style="display:none;">알림 정책 수정</h2>
+            <p class="bo-modal-desc">위험 분류 + 알람 단계 발생 시 적용할 발송 채널과 대상자를 설정하세요.</p>
+        </div>
+        <form id="bo-policy-form" novalidate>
+            <input type="hidden" name="id" value="">
+            <div class="bo-modal-body">
+                <div class="bo-modal-grid">
+                    <div class="bo-field" data-field="code">
+                        <label>정책 코드 <span class="bo-required">*</span></label>
+                        <input type="text" name="code" maxlength="50" placeholder="예: POLICY_GAS_CRITICAL">
+                        <div class="bo-field-error"></div>
+                    </div>
+                    <div class="bo-field" data-field="name">
+                        <label>정책명 <span class="bo-required">*</span></label>
+                        <input type="text" name="name" maxlength="100">
+                        <div class="bo-field-error"></div>
+                    </div>
+                    <div class="bo-field" data-field="risk_category">
+                        <label>위험 분류 <span class="bo-required">*</span></label>
+                        <select name="risk_category">
+                            <option value="">선택하세요</option>
+                            {% for c in risk_categories %}
+                            <option value="{{ c.id }}">{{ c.name }} ({{ c.code }})</option>
+                            {% endfor %}
+                        </select>
+                        <div class="bo-field-error"></div>
+                    </div>
+                    <div class="bo-field" data-field="alarm_level">
+                        <label>알람 단계 <span class="bo-required">*</span></label>
+                        <select name="alarm_level">
+                            <option value="">선택하세요</option>
+                            {% for a in alarm_levels %}
+                            <option value="{{ a.id }}">{{ a.name }} (priority={{ a.priority }})</option>
+                            {% endfor %}
+                        </select>
+                        <div class="bo-field-error"></div>
+                    </div>
+                    <div class="bo-field bo-field-full" data-field="channels_csv">
+                        <label>발송 채널 <span class="bo-required">*</span></label>
+                        <div class="bo-checkgroup">
+                            {% for code, label in channel_choices %}
+                            <label><input type="checkbox" class="bo-checkbox" name="channel_{{ code }}" value="{{ code }}"> {{ label }}</label>
+                            {% endfor %}
+                        </div>
+                        <div class="bo-field-error"></div>
+                    </div>
+                    <div class="bo-field bo-field-full" data-field="recipients_csv">
+                        <label>수신 대상 <span class="bo-required">*</span></label>
+                        <div class="bo-checkgroup" style="margin-bottom:6px;">
+                            <label><input type="checkbox" class="bo-checkbox" name="rcpt_all_users" value="all_users"> 전체 사용자</label>
+                            <label><input type="checkbox" class="bo-checkbox" name="rcpt_leaders" value="leaders"> 부서 조직장</label>
+                            <label><input type="checkbox" class="bo-checkbox" name="rcpt_role_super" value="role:super_admin"> 슈퍼관리자</label>
+                            <label><input type="checkbox" class="bo-checkbox" name="rcpt_role_admin" value="role:admin"> 관리자</label>
+                            <label><input type="checkbox" class="bo-checkbox" name="rcpt_role_operator" value="role:operator"> 운영자</label>
+                        </div>
+                        <div style="font-size:12px;color:var(--bo-text-muted);margin-bottom:6px;">조직 (필요시 다중선택)</div>
+                        <div class="bo-checkgroup" style="max-height:120px;overflow-y:auto;border:1px solid var(--bo-border);padding:8px;border-radius:var(--bo-radius-sm);">
+                            {% for org in organizations %}
+                            <label><input type="checkbox" class="bo-checkbox" name="rcpt_org_{{ org.id }}" value="group:{{ org.id }}"> {{ org.name }}</label>
+                            {% endfor %}
+                        </div>
+                        <div class="bo-field-error"></div>
+                    </div>
+                    <div class="bo-field bo-field-full" data-field="message_template">
+                        <label>메시지 템플릿</label>
+                        <textarea name="message_template" maxlength="500" placeholder="{worker_name} 등 placeholder 사용 가능"></textarea>
+                        <div class="bo-field-error"></div>
+                    </div>
+                    <div class="bo-field" data-field="sort_order">
+                        <label>정렬 순서</label>
+                        <input type="number" name="sort_order" min="1" max="99999">
+                    </div>
+                    <div class="bo-field" data-field="is_active">
+                        <label style="display:flex;align-items:center;gap:8px;">
+                            <input type="checkbox" name="is_active" class="bo-checkbox" checked>
+                            <span>사용</span>
+                        </label>
+                    </div>
+                    <div class="bo-field bo-field-full" data-field="description">
+                        <label>설명</label>
+                        <textarea name="description" maxlength="500"></textarea>
+                    </div>
+                </div>
+            </div>
+            <div class="bo-modal-footer">
+                <button type="button" class="bo-btn" data-close-modal>취소</button>
+                <button type="submit" class="bo-btn bo-btn-primary">저장</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'js/backoffice/policies.js' %}"></script>
+{% endblock %}

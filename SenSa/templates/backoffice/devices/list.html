@@ -1,0 +1,232 @@
+{% extends "backoffice/base.html" %}
+{% load static %}
+{% block title %}설비/장비 관리 — 백오피스{% endblock %}
+
+{% block content %}
+<div class="bo-breadcrumb"><span>설비/장비 관리</span></div>
+
+<div class="bo-flex-between" style="margin-bottom:8px;">
+    <div>
+        <h1 class="bo-page-title">설비/장비 관리</h1>
+        <p class="bo-page-desc">시스템에 등록된 센서·전력·위치 노드 장비를 관리합니다.</p>
+    </div>
+    <div class="bo-flex bo-gap-8">
+        <button type="button" class="bo-btn" id="bo-auto-map">📍 좌표→지오펜스 자동 매핑</button>
+        <div style="position:relative;display:inline-block;">
+            <button type="button" class="bo-btn" id="bo-csv-toggle">📁 CSV 업로드 ▾</button>
+            <div id="bo-csv-menu" style="display:none;position:absolute;right:0;top:100%;background:#fff;border:1px solid var(--bo-border);border-radius:var(--bo-radius-sm);box-shadow:var(--bo-shadow-md);min-width:200px;z-index:100;padding:6px;">
+                <button type="button" class="bo-csv-trigger" data-mode="create" style="display:block;width:100%;text-align:left;padding:8px 12px;background:none;border:0;cursor:pointer;font-size:13px;">신규 등록만 (기존 건너뜀)</button>
+                <button type="button" class="bo-csv-trigger" data-mode="upsert" style="display:block;width:100%;text-align:left;padding:8px 12px;background:none;border:0;cursor:pointer;font-size:13px;">덮어쓰기 (upsert)</button>
+            </div>
+            <input type="file" id="bo-csv-input" accept=".csv" style="display:none;">
+        </div>
+        <button type="button" class="bo-btn bo-btn-primary" data-open-create-modal>+ 장비 등록</button>
+    </div>
+</div>
+
+{# 장비 변경 이력 모달 #}
+<div class="bo-modal-backdrop" id="bo-history-modal">
+    <div class="bo-modal bo-modal-wide">
+        <div class="bo-modal-header">
+            <h2 class="bo-modal-title">장비 변경 이력</h2>
+            <p class="bo-modal-desc" id="bo-history-device">-</p>
+        </div>
+        <div class="bo-modal-body">
+            <table class="bo-table" id="bo-history-table">
+                <colgroup>
+                    <col style="width:170px;"><col style="width:100px;"><col style="width:120px;"><col>
+                </colgroup>
+                <thead>
+                    <tr><th>일시</th><th>액션</th><th>수행자</th><th>변경 내역</th></tr>
+                </thead>
+                <tbody id="bo-history-body"></tbody>
+            </table>
+        </div>
+        <div class="bo-modal-footer">
+            <button type="button" class="bo-btn" data-close-modal>닫기</button>
+        </div>
+    </div>
+</div>
+
+<form method="get" class="bo-card" style="display:grid;grid-template-columns:1fr 140px 140px 140px auto;gap:12px 16px;align-items:end;">
+    <div class="bo-field" style="margin:0;">
+        <label>키워드</label>
+        <input type="text" name="keyword" value="{{ q.keyword }}" placeholder="장비 ID/이름">
+    </div>
+    <div class="bo-field" style="margin:0;">
+        <label>센서 타입</label>
+        <select name="type">
+            <option value="">전체</option>
+            {% for code, label in sensor_types %}
+            <option value="{{ code }}" {% if q.type == code %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div class="bo-field" style="margin:0;">
+        <label>상태</label>
+        <select name="status">
+            <option value="">전체</option>
+            <option value="normal" {% if q.status == 'normal' %}selected{% endif %}>정상</option>
+            <option value="caution" {% if q.status == 'caution' %}selected{% endif %}>주의</option>
+            <option value="danger" {% if q.status == 'danger' %}selected{% endif %}>위험</option>
+        </select>
+    </div>
+    <div class="bo-field" style="margin:0;">
+        <label>활성</label>
+        <select name="active">
+            <option value="">전체</option>
+            <option value="1" {% if q.active == '1' %}selected{% endif %}>활성</option>
+            <option value="0" {% if q.active == '0' %}selected{% endif %}>비활성</option>
+        </select>
+    </div>
+    <div style="display:flex;gap:8px;">
+        <a href="{% url 'backoffice:device-list' %}" class="bo-btn">초기화</a>
+        <button type="submit" class="bo-btn bo-btn-dark">검색</button>
+    </div>
+</form>
+
+<div class="bo-card bo-mt-16">
+    <div class="bo-table-toolbar">
+        <div class="bo-table-toolbar-left">
+            <span>전체 장비 <strong>{{ total }}건</strong></span>
+            <button type="button" class="bo-btn bo-btn-sm" id="bo-bulk-on" disabled>활성화</button>
+            <button type="button" class="bo-btn bo-btn-sm bo-btn-warning" id="bo-bulk-off" disabled>비활성화</button>
+            <button type="button" class="bo-btn bo-btn-sm bo-btn-danger" id="bo-bulk-delete" disabled>삭제</button>
+        </div>
+    </div>
+
+    <table class="bo-table" id="bo-device-table">
+        <colgroup>
+            <col style="width:38px;"><col style="width:130px;"><col><col style="width:100px;"><col style="width:130px;"><col style="width:100px;"><col style="width:80px;"><col style="width:80px;"><col style="width:80px;">
+        </colgroup>
+        <thead>
+            <tr>
+                <th><input type="checkbox" class="bo-checkbox" id="bo-check-all"></th>
+                <th>장비 ID</th>
+                <th>장비명</th>
+                <th>센서 타입</th>
+                <th>좌표</th>
+                <th>지오펜스</th>
+                <th>상태</th>
+                <th>활성</th>
+                <th>관리</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for d in rows %}
+            <tr data-id="{{ d.id }}">
+                <td><input type="checkbox" class="bo-checkbox bo-row-check" value="{{ d.id }}"></td>
+                <td><code style="font-size:12px;">{{ d.device_id }}</code></td>
+                <td>{{ d.device_name }}</td>
+                <td>{{ d.get_sensor_type_display }}</td>
+                <td style="font-variant-numeric:tabular-nums;font-size:12px;color:var(--bo-text-muted);">({{ d.x|floatformat:0 }}, {{ d.y|floatformat:0 }})</td>
+                <td>{% if d.geofence %}{{ d.geofence.name }}{% else %}<span class="bo-text-subtle">-</span>{% endif %}</td>
+                <td>
+                    {% if d.status == 'danger' %}
+                        <span class="bo-badge" style="background:#fee2e2;color:#b91c1c;">위험</span>
+                    {% elif d.status == 'caution' %}
+                        <span class="bo-badge bo-badge-status-locked">주의</span>
+                    {% else %}
+                        <span class="bo-badge bo-badge-status-active">정상</span>
+                    {% endif %}
+                </td>
+                <td>{% if d.is_active %}<span class="bo-badge bo-badge-status-active">활성</span>{% else %}<span class="bo-badge bo-badge-status-disabled">비활성</span>{% endif %}</td>
+                <td>
+                    <button type="button" class="bo-btn bo-btn-sm" data-history="{{ d.id }}" data-device-id="{{ d.device_id }}">이력</button>
+                    <button type="button" class="bo-btn bo-btn-sm bo-btn-primary" data-edit="{{ d.id }}">수정</button>
+                </td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="9" class="bo-table-empty">등록된 장비가 없습니다.</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <div class="bo-pagination">
+        <div class="bo-pagination-info">{{ page_start }} - {{ page_end }} / {{ total }}</div>
+        <div class="bo-pagination-pages">
+            {% if page > 1 %}<a href="?{% for k,v in q.items %}{{ k }}={{ v|urlencode }}&{% endfor %}page={{ page|add:'-1' }}">‹</a>{% else %}<span class="is-disabled">‹</span>{% endif %}
+            {% for p in page_range %}
+                {% if p == page %}<span class="is-current">{{ p }}</span>{% else %}<a href="?{% for k,v in q.items %}{{ k }}={{ v|urlencode }}&{% endfor %}page={{ p }}">{{ p }}</a>{% endif %}
+            {% endfor %}
+            {% if page < last_page %}<a href="?{% for k,v in q.items %}{{ k }}={{ v|urlencode }}&{% endfor %}page={{ page|add:'1' }}">›</a>{% else %}<span class="is-disabled">›</span>{% endif %}
+        </div>
+    </div>
+</div>
+
+{# 등록/수정 모달 #}
+<div class="bo-modal-backdrop" id="bo-device-modal" data-mode="create">
+    <div class="bo-modal">
+        <div class="bo-modal-header">
+            <h2 class="bo-modal-title" data-create-only>장비 등록</h2>
+            <h2 class="bo-modal-title" data-edit-only style="display:none;">장비 수정</h2>
+        </div>
+        <form id="bo-device-form" novalidate>
+            <input type="hidden" name="id" value="">
+            <div class="bo-modal-body">
+                <div class="bo-modal-grid">
+                    <div class="bo-field" data-field="device_id">
+                        <label>장비 ID <span class="bo-required">*</span></label>
+                        <input type="text" name="device_id" maxlength="50" placeholder="예: GAS-001">
+                        <div class="bo-field-error"></div>
+                    </div>
+                    <div class="bo-field" data-field="device_name">
+                        <label>장비명 <span class="bo-required">*</span></label>
+                        <input type="text" name="device_name" maxlength="100">
+                        <div class="bo-field-error"></div>
+                    </div>
+                    <div class="bo-field" data-field="sensor_type">
+                        <label>센서 타입 <span class="bo-required">*</span></label>
+                        <select name="sensor_type">
+                            <option value="">선택하세요</option>
+                            {% for code, label in sensor_types %}
+                            <option value="{{ code }}">{{ label }}</option>
+                            {% endfor %}
+                        </select>
+                        <div class="bo-field-error"></div>
+                    </div>
+                    <div class="bo-field" data-field="geofence_id">
+                        <label>지오펜스 (선택)</label>
+                        <select name="geofence_id">
+                            <option value="">미지정</option>
+                            {% for g in geofences %}
+                            <option value="{{ g.id }}">{{ g.name }}</option>
+                            {% endfor %}
+                        </select>
+                        <div class="bo-field-error"></div>
+                    </div>
+                    <div class="bo-field" data-field="x">
+                        <label>X 좌표 <span class="bo-required">*</span></label>
+                        <input type="number" step="any" name="x">
+                        <div class="bo-field-error"></div>
+                    </div>
+                    <div class="bo-field" data-field="y">
+                        <label>Y 좌표 <span class="bo-required">*</span></label>
+                        <input type="number" step="any" name="y">
+                        <div class="bo-field-error"></div>
+                    </div>
+                    <div class="bo-field" data-field="last_value_unit">
+                        <label>측정 단위</label>
+                        <input type="text" name="last_value_unit" maxlength="20" placeholder="예: ppm, A, V">
+                    </div>
+                    <div class="bo-field" data-field="is_active">
+                        <label style="display:flex;align-items:center;gap:8px;">
+                            <input type="checkbox" name="is_active" class="bo-checkbox" checked>
+                            <span>활성</span>
+                        </label>
+                    </div>
+                </div>
+            </div>
+            <div class="bo-modal-footer">
+                <button type="button" class="bo-btn" data-close-modal>취소</button>
+                <button type="submit" class="bo-btn bo-btn-primary">저장</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'js/backoffice/devices.js' %}"></script>
+{% endblock %}

@@ -1,0 +1,187 @@
+{% extends "backoffice/base.html" %}
+{% load static %}
+{% block title %}운영 데이터 관리 — 백오피스{% endblock %}
+
+{% block content %}
+<div class="bo-breadcrumb"><span>운영 데이터 관리</span></div>
+<h1 class="bo-page-title">운영 데이터 보관 정책</h1>
+<p class="bo-page-desc">시스템 누적 데이터의 보관 기간을 관리합니다. 정책 변경은 다음 정리 작업 사이클부터 반영됩니다.</p>
+
+<div class="bo-card" style="background:#fffbeb;border-color:#fde68a;color:#92400e;font-size:13px;">
+    💡 보관 기간을 짧게 잡으면 디스크 사용량이 줄지만, 장기 분석/감사 추적에 영향이 있을 수 있습니다.
+    감사 로그는 법정 요구로 최소 2년 권장.
+</div>
+
+<div class="bo-card bo-mt-16">
+    <table class="bo-table" id="bo-retention-table">
+        <colgroup>
+            <col><col style="width:140px;"><col style="width:130px;"><col style="width:100px;"><col style="width:160px;"><col style="width:80px;">
+        </colgroup>
+        <thead>
+            <tr>
+                <th>대상 데이터</th>
+                <th>보관 기간 (일)</th>
+                <th>현재 누적</th>
+                <th>활성</th>
+                <th>최근 정리</th>
+                <th>관리</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for r in rows %}
+            <tr data-id="{{ r.id }}">
+                <td>
+                    <strong>{{ r.get_target_display }}</strong>
+                    {% if r.description %}
+                    <div style="font-size:11.5px;color:var(--bo-text-muted);margin-top:2px;">{{ r.description }}</div>
+                    {% endif %}
+                </td>
+                <td><strong>{{ r.retention_days }}</strong> 일</td>
+                <td style="font-variant-numeric:tabular-nums;">
+                    {% if r.target == 'sensor_data' %}{{ counts.sensor_data }}건
+                    {% elif r.target == 'worker_location' %}{{ counts.worker_location }}건
+                    {% elif r.target == 'alarms' %}{{ counts.alarms }}건
+                    {% elif r.target == 'notification_logs' %}{{ counts.notification_logs }}건
+                    {% else %}-
+                    {% endif %}
+                </td>
+                <td>
+                    {% if r.is_active %}
+                        <span class="bo-badge bo-badge-status-active">활성</span>
+                    {% else %}
+                        <span class="bo-badge bo-badge-status-disabled">비활성</span>
+                    {% endif %}
+                </td>
+                <td style="font-size:12px;color:var(--bo-text-muted);">
+                    {% if r.last_run_at %}
+                        {{ r.last_run_at|date:"Y-m-d H:i" }}<br>
+                        <span style="font-size:11px;">{{ r.last_run_deleted }}건 삭제</span>
+                    {% else %}
+                        <span class="bo-text-subtle">미실행</span>
+                    {% endif %}
+                </td>
+                <td>
+                    <button type="button" class="bo-btn bo-btn-sm bo-btn-primary" data-edit="{{ r.id }}">수정</button>
+                    {% if r.is_active %}
+                    <button type="button" class="bo-btn bo-btn-sm bo-btn-warning" data-run="{{ r.id }}" data-target-name="{{ r.get_target_display }}">지금 실행</button>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+{# 수정 모달 #}
+<div class="bo-modal-backdrop" id="bo-retention-modal">
+    <div class="bo-modal">
+        <div class="bo-modal-header">
+            <h2 class="bo-modal-title">보관 정책 수정</h2>
+            <p class="bo-modal-desc" id="bo-retention-target">-</p>
+        </div>
+        <form id="bo-retention-form" novalidate>
+            <input type="hidden" name="id" value="">
+            <div class="bo-modal-body">
+                <div class="bo-field" data-field="retention_days">
+                    <label>보관 기간 (일) <span class="bo-required">*</span></label>
+                    <input type="number" name="retention_days" min="1" max="3650" placeholder="예: 90">
+                    <div class="bo-field-error"></div>
+                </div>
+                <div class="bo-field" data-field="is_active">
+                    <label style="display:flex;align-items:center;gap:8px;">
+                        <input type="checkbox" name="is_active" class="bo-checkbox">
+                        <span>정책 활성화</span>
+                    </label>
+                </div>
+                <div class="bo-field" data-field="description">
+                    <label>설명</label>
+                    <textarea name="description" maxlength="500"></textarea>
+                </div>
+            </div>
+            <div class="bo-modal-footer">
+                <button type="button" class="bo-btn" data-close-modal>취소</button>
+                <button type="submit" class="bo-btn bo-btn-primary">저장</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function() {
+    'use strict';
+    const modal = document.getElementById('bo-retention-modal');
+    const form  = document.getElementById('bo-retention-form');
+    const tbody = document.querySelector('#bo-retention-table tbody');
+    const targetEl = document.getElementById('bo-retention-target');
+
+    function open() { modal.classList.add('is-open'); document.body.style.overflow='hidden'; }
+    function close() {
+        modal.classList.remove('is-open'); document.body.style.overflow='';
+        form.reset(); BO.showFormErrors(form, {});
+    }
+
+    modal.addEventListener('click', e => {
+        if (e.target === modal || e.target.matches('[data-close-modal]')) close();
+    });
+    document.addEventListener('keydown', e => {
+        if (e.key === 'Escape' && modal.classList.contains('is-open')) close();
+    });
+
+    tbody.addEventListener('click', async e => {
+        // [지금 실행] 버튼
+        const runBtn = e.target.closest('[data-run]');
+        if (runBtn) {
+            const id = runBtn.dataset.run;
+            const targetName = runBtn.dataset.targetName;
+            const ok = await BO.confirm(`'${targetName}' 의 보관 기간 지난 데이터를 지금 삭제합니다.\n계속하시겠습니까?`);
+            if (!ok) return;
+            const res = await BO.fetchJSON(`/backoffice/api/retention/${id}/run-now/`, { method:'POST' });
+            if (!res.ok) { BO.toast(res.data.error || '실행 실패', 'error'); return; }
+            BO.toast(`${res.data.deleted}건 삭제되었습니다.`, 'success');
+            setTimeout(() => location.reload(), 600);
+            return;
+        }
+
+        // [수정] 버튼
+        const btn = e.target.closest('[data-edit]');
+        if (!btn) return;
+        const { ok, data } = await BO.fetchJSON(`/backoffice/api/retention/${btn.dataset.edit}/`);
+        if (!ok) { BO.toast('정책을 불러오지 못했습니다.', 'error'); return; }
+        const r = data.retention;
+        form.querySelector('[name="id"]').value = r.id;
+        form.querySelector('[name="retention_days"]').value = r.retention_days;
+        form.querySelector('[name="is_active"]').checked = !!r.is_active;
+        form.querySelector('[name="description"]').value = r.description || '';
+        targetEl.textContent = r.target_display;
+        BO.showFormErrors(form, {});
+        open();
+    });
+
+    form.addEventListener('submit', async e => {
+        e.preventDefault();
+        BO.showFormErrors(form, {});
+        const fd = new FormData(form);
+        const payload = Object.fromEntries(fd.entries());
+        payload.is_active = form.querySelector('[name="is_active"]').checked ? 'on' : '';
+        const id = payload.id;
+        const { ok, status, data } = await BO.fetchJSON(
+            `/backoffice/api/retention/${id}/update/`,
+            { method:'POST', body:JSON.stringify(payload) },
+        );
+        if (!ok) {
+            if (status === 400 && data.errors) {
+                BO.showFormErrors(form, data.errors);
+                BO.toast('입력값을 확인해 주세요.', 'error');
+            } else BO.toast(data.error || '저장 실패', 'error');
+            return;
+        }
+        BO.toast('수정되었습니다.', 'success');
+        close();
+        setTimeout(() => location.reload(), 400);
+    });
+})();
+</script>
+{% endblock %}

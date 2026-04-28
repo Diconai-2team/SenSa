@@ -1,0 +1,85 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>로그인 — 디코나이 관제 플랫폼</title>
+    <link rel="stylesheet" href="{% static 'css/components.css' %}">
+    <link rel="stylesheet" href="{% static 'css/accounts/login.css' %}">
+    <link rel="stylesheet" href="{% static 'css/accounts/login-page.css' %}">
+</head>
+<body>
+    <div class="auth-wrapper login">
+        <div class="auth-card">
+            <div class="auth-header login-header">
+                <h1>디코나이</h1>
+                <p class="tagline">산업 안전 통합 관제 플랫폼</p>
+                <p class="desc">
+                    유해가스·전력·작업자 위치를 실시간으로 모니터링하고<br>
+                    위험 상황을 즉시 감지하는 지능형 관제 시스템
+                </p>
+            </div>
+
+            {# 메인 기능 정의 1-3: 로그인 실패 처리 #}
+            {% if error_message %}
+            <div class="error-msg">{{ error_message }}</div>
+            {% endif %}
+
+            {% if messages %}
+                {% for message in messages %}
+                <div class="alert alert-{{ message.tags }}">{{ message }}</div>
+                {% endfor %}
+            {% endif %}
+
+            {# 메인 기능 정의 1-1: 로그인 화면 (아이디/비밀번호 폼 + 버튼) #}
+            <form method="POST" action="{% url 'login' %}" id="login-form">
+                {% csrf_token %}
+                {% if next %}
+                <input type="hidden" name="next" value="{{ next }}">
+                {% endif %}
+
+                <div class="form-group">
+                    <label for="username">아이디</label>
+                    <input type="text"
+                           id="username"
+                           name="username"
+                           value="{{ prefill_username|default:'' }}"
+                           placeholder="아이디를 입력하세요 (4~20자)"
+                           minlength="4"
+                           maxlength="20"
+                           required
+                           {% if not prefill_username %}autofocus{% endif %}>
+                </div>
+
+                <div class="form-group">
+                    <label for="password">비밀번호</label>
+                    {# 메인 기능 정의 1-2: 비밀번호 마스킹 처리 #}
+                    <input type="password"
+                           id="password"
+                           name="password"
+                           placeholder="비밀번호를 입력하세요"
+                           required
+                           {% if prefill_username %}autofocus{% endif %}>
+                </div>
+
+                <button type="submit" class="btn-login">로그인</button>
+            </form>
+
+            <a href="{% url 'signup' %}" class="btn-signup-outline">회원가입</a>
+
+            <div class="demo-hint">
+                <strong>테스트 계정</strong><br>
+                관리자: admin / admin1234<br>
+                운영자: operator / operator1234
+            </div>
+
+            <p class="auth-footer">
+                산업 안전 통합 관제 시스템 v1.0
+            </p>
+        </div>
+    </div>
+
+    <script src="{% static 'js/accounts/login-validation.js' %}"></script>
+</body>
+</html>

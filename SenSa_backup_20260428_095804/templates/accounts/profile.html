@@ -1,0 +1,149 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="csrf-token" content="{{ csrf_token }}">
+  <title>내 정보 확인 | SenSa</title>
+  <link rel="stylesheet" href="{% static 'css/common/header.css' %}">
+  <link rel="stylesheet" href="{% static 'css/accounts/profile.css' %}">
+</head>
+<body>
+
+{# ═══════════ 공통 헤더 ═══════════ #}
+{% include "partials/_header.html" with active_page="profile" %}
+
+<main class="profile-page">
+
+  {# ─── 페이지 타이틀 ─── #}
+  <div class="profile-page-title-row">
+    <h1 class="profile-page-title">내 정보 확인</h1>
+  </div>
+
+  {# ─── 내 정보 카드 ─── #}
+  <section class="profile-card">
+    <div class="profile-card-header">
+      <h2 class="profile-card-title">내 정보</h2>
+      <button type="button" class="btn-password-change" id="btn-open-pw-modal">
+        비밀번호 변경
+      </button>
+    </div>
+
+    <div class="profile-card-body">
+      <div class="profile-info-grid">
+        {# 좌열 #}
+        <div class="profile-info-row">
+          <span class="profile-info-label">이름</span>
+          <span class="profile-info-value">
+            {{ profile_user.first_name|default:profile_user.username }}
+          </span>
+        </div>
+        <div class="profile-info-row">
+          <span class="profile-info-label">이메일</span>
+          <span class="profile-info-value">{{ profile_user.email|default:"-" }}</span>
+        </div>
+
+        <div class="profile-info-row">
+          <span class="profile-info-label">ID</span>
+          <span class="profile-info-value">{{ profile_user.username }}</span>
+        </div>
+        <div class="profile-info-row">
+          <span class="profile-info-label">연락처</span>
+          <span class="profile-info-value">{{ profile_user.phone|default:"-" }}</span>
+        </div>
+
+        <div class="profile-info-row">
+          <span class="profile-info-label">소속</span>
+          <span class="profile-info-value">{{ profile_user.department|default:"-" }}</span>
+        </div>
+        <div class="profile-info-row">
+          <span class="profile-info-label">직급</span>
+          <span class="profile-info-value">{{ profile_user.position|default:"-" }}</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+{# ═══════════ 비밀번호 변경 모달 ═══════════ #}
+<div class="pw-modal-backdrop" id="pw-modal" hidden>
+  <div class="pw-modal">
+    <h3 class="pw-modal-title">비밀번호 변경</h3>
+
+    {# 현재 비밀번호 #}
+    <div class="pw-field" data-field="current_password">
+      <label class="pw-label" for="pw-current">현재 비밀번호</label>
+      <p class="pw-hint" data-hint="current_password">
+        *본인 확인을 위해 현재 사용 중인 비밀번호를 입력해 주세요.
+      </p>
+      <div class="pw-input-wrap">
+        <input type="password" id="pw-current"
+               class="pw-input" autocomplete="current-password">
+        <button type="button" class="pw-input-clear"
+                data-clear-target="pw-current" aria-label="지우기">✕</button>
+      </div>
+    </div>
+
+    {# 신규 비밀번호 #}
+    <div class="pw-field" data-field="new_password">
+      <label class="pw-label" for="pw-new">신규 비밀번호</label>
+      <p class="pw-hint" data-hint="new_password">
+        *영문, 숫자, 특수문자 조합으로 8~16자 이내로 입력해 주세요.
+      </p>
+      <div class="pw-input-wrap">
+        <input type="password" id="pw-new"
+               class="pw-input" autocomplete="new-password">
+        <button type="button" class="pw-input-clear"
+                data-clear-target="pw-new" aria-label="지우기">✕</button>
+      </div>
+    </div>
+
+    {# 비밀번호 확인 #}
+    <div class="pw-field" data-field="new_password_confirm">
+      <label class="pw-label" for="pw-confirm">비밀번호 확인</label>
+      <p class="pw-hint" data-hint="new_password_confirm">
+        *위에서 입력한 신규 비밀번호를 다시 한번 입력해 주세요.
+      </p>
+      <div class="pw-input-wrap">
+        <input type="password" id="pw-confirm"
+               class="pw-input" autocomplete="new-password">
+        <button type="button" class="pw-input-clear"
+                data-clear-target="pw-confirm" aria-label="지우기">✕</button>
+      </div>
+    </div>
+
+    <div class="pw-modal-actions">
+      <button type="button" class="btn-cancel" id="btn-pw-cancel">취소</button>
+      <button type="button" class="btn-submit" id="btn-pw-submit">변경 완료</button>
+    </div>
+  </div>
+</div>
+
+{# ═══════════ 변경 완료 모달 ═══════════ #}
+<div class="pw-done-backdrop" id="pw-done-modal" hidden>
+  <div class="pw-done-modal">
+    <div class="pw-done-icon">
+      <svg width="48" height="48" viewBox="0 0 48 48" fill="none" aria-hidden="true">
+        <circle cx="24" cy="24" r="22" stroke="#2ecc71" stroke-width="3"/>
+        <path d="M14 25 L21 32 L34 17" stroke="#2ecc71" stroke-width="4"
+              stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+      </svg>
+    </div>
+    <div class="pw-done-subtitle">비밀번호 변경</div>
+    <div class="pw-done-title">비밀번호가 변경되었습니다.</div>
+    <button type="button" class="btn-confirm" id="btn-pw-done-confirm">확인</button>
+  </div>
+</div>
+
+<script>
+  window.PROFILE_INIT = {
+    passwordChangeUrl: "{% url 'api-password-change' %}"
+  };
+</script>
+<script src="{% static 'js/common/header.js' %}"></script>
+<script src="{% static 'js/accounts/profile.js' %}"></script>
+
+</body>
+</html>

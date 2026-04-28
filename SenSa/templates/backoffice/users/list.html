@@ -1,0 +1,290 @@
+{% extends "backoffice/base.html" %}
+{% load static %}
+{% block title %}사용자 관리 — 백오피스{% endblock %}
+
+{% block content %}
+<div class="bo-breadcrumb">
+    <span>계정/권한 관리</span>
+    <span class="bo-breadcrumb-sep">/</span>
+    <span>사용자 관리</span>
+</div>
+
+<div class="bo-flex-between" style="margin-bottom:8px;">
+    <div>
+        <h1 class="bo-page-title">사용자 관리</h1>
+        <p class="bo-page-desc">계정을 조회하고 등록, 수정, 삭제할 수 있습니다.</p>
+    </div>
+    <button type="button" class="bo-btn bo-btn-primary" data-open-create-modal>+ 사용자 등록</button>
+</div>
+
+{% comment %} ════════════════════════════════════════════════════════════════
+   검색 필터 카드
+   ════════════════════════════════════════════════════════════════ {% endcomment %}
+<form method="get" class="bo-card bo-filter-card" id="bo-filter-form">
+    <div class="bo-field">
+        <label>사용자명</label>
+        <input type="text" name="name" value="{{ q.name }}" placeholder="이름 입력">
+    </div>
+    <div class="bo-field">
+        <label>소속</label>
+        <select name="organization">
+            <option value="">전체</option>
+            {% for org in organizations %}
+            <option value="{{ org.id }}" {% if q.organization == org.id|stringformat:"s" %}selected{% endif %}>{{ org.name }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div class="bo-field">
+        <label>직위</label>
+        <select name="position">
+            <option value="">전체</option>
+            {% for p in positions %}
+            <option value="{{ p.id }}" {% if q.position == p.id|stringformat:"s" %}selected{% endif %}>{{ p.name }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div class="bo-field">
+        <label>권한</label>
+        <select name="role">
+            <option value="">전체</option>
+            {% for code, label in roles %}
+            <option value="{{ code }}" {% if q.role == code %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div class="bo-field">
+        <label>계정 상태</label>
+        <select name="status">
+            <option value="">전체</option>
+            <option value="active" {% if q.status == 'active' %}selected{% endif %}>사용</option>
+            <option value="locked" {% if q.status == 'locked' %}selected{% endif %}>잠금</option>
+            <option value="disabled" {% if q.status == 'disabled' %}selected{% endif %}>비활성</option>
+        </select>
+    </div>
+    <div class="bo-filter-actions">
+        <a href="{% url 'backoffice:user-list' %}" class="bo-btn">초기화</a>
+        <button type="submit" class="bo-btn bo-btn-dark">검색</button>
+    </div>
+    {# 정렬값은 검색 시 보존 #}
+    <input type="hidden" name="sort" value="{{ sort }}">
+</form>
+
+{% comment %} ════════════════════════════════════════════════════════════════
+   목록 카드
+   ════════════════════════════════════════════════════════════════ {% endcomment %}
+<div class="bo-card bo-mt-16">
+    <div class="bo-table-toolbar">
+        <div class="bo-table-toolbar-left">
+            <span>전체 사용자 <strong>{{ total }}명</strong></span>
+            <button type="button" class="bo-btn bo-btn-sm bo-btn-danger" id="bo-bulk-delete" disabled>삭제</button>
+            <button type="button" class="bo-btn bo-btn-sm bo-btn-warning" id="bo-bulk-lock" disabled>계정 잠금</button>
+            <button type="button" class="bo-btn bo-btn-sm" id="bo-bulk-unlock" disabled>계정 잠금 해제</button>
+        </div>
+        <div>
+            <select id="bo-sort" class="bo-sort-select">
+                {% for code, label in sort_options %}
+                <option value="{{ code }}" {% if sort == code %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+            </select>
+        </div>
+    </div>
+
+    <table class="bo-table" id="bo-user-table">
+        <colgroup>
+            <col style="width:38px;">
+            <col><col><col><col><col><col><col><col><col><col style="width:70px;">
+        </colgroup>
+        <thead>
+            <tr>
+                <th><input type="checkbox" class="bo-checkbox" id="bo-check-all"></th>
+                <th>사용자명</th>
+                <th>소속</th>
+                <th>직급</th>
+                <th>아이디</th>
+                <th>권한</th>
+                <th>계정 상태</th>
+                <th>연락처</th>
+                <th>최근 로그인</th>
+                <th>등록일</th>
+                <th>관리</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for u in rows %}
+            <tr data-user-id="{{ u.id }}">
+                <td><input type="checkbox" class="bo-checkbox bo-row-check" value="{{ u.id }}"></td>
+                <td>{{ u.first_name|default:"-" }}</td>
+                <td>{{ u.display_organization }}</td>
+                <td>{{ u.display_position }}</td>
+                <td>{{ u.username }}</td>
+                <td>
+                    {% if u.role == 'super_admin' %}
+                        <span class="bo-badge bo-badge-role-super">슈퍼관리자</span>
+                    {% elif u.role == 'admin' %}
+                        <span class="bo-badge bo-badge-role-admin">관리자</span>
+                    {% else %}
+                        <span class="bo-badge bo-badge-role-operator">운영자</span>
+                    {% endif %}
+                </td>
+                <td>
+                    {% if u.account_status == 'active' %}
+                        <span class="bo-badge bo-badge-status-active">사용</span>
+                    {% elif u.account_status == 'locked' %}
+                        <span class="bo-badge bo-badge-status-locked">잠금</span>
+                    {% else %}
+                        <span class="bo-badge bo-badge-status-disabled">비활성</span>
+                    {% endif %}
+                </td>
+                <td>{{ u.phone|default:"-" }}</td>
+                <td>{% if u.last_login %}{{ u.last_login|date:"Y-m-d H:i" }}{% else %}-{% endif %}</td>
+                <td>{{ u.date_joined|date:"Y-m-d" }}</td>
+                <td>
+                    <button type="button" class="bo-btn bo-btn-sm bo-btn-primary" data-edit-user="{{ u.id }}">수정</button>
+                </td>
+            </tr>
+            {% empty %}
+            <tr>
+                <td colspan="11" class="bo-table-empty">조건에 맞는 사용자가 없습니다.</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <div class="bo-pagination">
+        <div class="bo-pagination-info">{{ page_start }} - {{ page_end }} / {{ total }}</div>
+        <div class="bo-pagination-pages">
+            {% if page > 1 %}
+                <a href="?{% for k,v in q.items %}{{ k }}={{ v|urlencode }}&{% endfor %}sort={{ sort }}&page={{ page|add:'-1' }}">‹</a>
+            {% else %}
+                <span class="is-disabled">‹</span>
+            {% endif %}
+
+            {% for p in page_range %}
+                {% if p == page %}
+                    <span class="is-current">{{ p }}</span>
+                {% else %}
+                    <a href="?{% for k,v in q.items %}{{ k }}={{ v|urlencode }}&{% endfor %}sort={{ sort }}&page={{ p }}">{{ p }}</a>
+                {% endif %}
+            {% endfor %}
+
+            {% if page < last_page %}
+                <a href="?{% for k,v in q.items %}{{ k }}={{ v|urlencode }}&{% endfor %}sort={{ sort }}&page={{ page|add:'1' }}">›</a>
+            {% else %}
+                <span class="is-disabled">›</span>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+{% comment %} ════════════════════════════════════════════════════════════════
+   사용자 등록/수정 모달
+   ════════════════════════════════════════════════════════════════ {% endcomment %}
+<div class="bo-modal-backdrop" id="bo-user-modal" data-mode="create">
+    <div class="bo-modal">
+        <div class="bo-modal-header">
+            <h2 class="bo-modal-title" data-create-only>사용자 등록</h2>
+            <h2 class="bo-modal-title" data-edit-only style="display:none;">사용자 정보 수정</h2>
+            <p class="bo-modal-desc" data-create-only>관리자 또는 사용자 계정을 등록합니다.</p>
+            <p class="bo-modal-desc" data-edit-only style="display:none;">사용자의 프로필 정보를 수정합니다.</p>
+        </div>
+        <form id="bo-user-form" novalidate>
+            <input type="hidden" name="id" value="">
+            <div class="bo-modal-body">
+                <div class="bo-modal-grid">
+
+                    <div class="bo-field" data-field="name">
+                        <label>사용자명 <span class="bo-required">*</span></label>
+                        <input type="text" name="name" maxlength="20" placeholder="이름을 입력하세요">
+                        <div class="bo-field-error"></div>
+                    </div>
+
+                    <div class="bo-field" data-field="username">
+                        <label>아이디 <span class="bo-required">*</span></label>
+                        <input type="text" name="username" maxlength="20" placeholder="아이디를 입력하세요">
+                        <div class="bo-field-error"></div>
+                    </div>
+
+                    <div class="bo-field" data-create-only data-field="password">
+                        <label>비밀번호 <span class="bo-required">*</span></label>
+                        <input type="password" name="password" maxlength="20" placeholder="비밀번호를 입력하세요">
+                        <div class="bo-field-error"></div>
+                    </div>
+
+                    <div class="bo-field" data-create-only data-field="password_check">
+                        <label>비밀번호 확인 <span class="bo-required">*</span></label>
+                        <input type="password" name="password_check" maxlength="20" placeholder="비밀번호를 다시 입력하세요">
+                        <div class="bo-field-error"></div>
+                    </div>
+
+                    <div class="bo-field" data-field="organization">
+                        <label>소속 <span class="bo-required">*</span></label>
+                        <select name="organization">
+                            <option value="">조직을 선택하세요</option>
+                            {% for org in organizations %}
+                            <option value="{{ org.id }}">{{ org.name }}</option>
+                            {% endfor %}
+                        </select>
+                        <div class="bo-field-error"></div>
+                    </div>
+
+                    <div class="bo-field" data-field="role">
+                        <label>권한 <span class="bo-required">*</span></label>
+                        <select name="role">
+                            <option value="">권한을 선택하세요</option>
+                            {% for code, label in roles %}
+                            <option value="{{ code }}">{{ label }}</option>
+                            {% endfor %}
+                        </select>
+                        <div class="bo-field-error"></div>
+                    </div>
+
+                    <div class="bo-field" data-field="position_obj">
+                        <label>직위</label>
+                        <select name="position_obj">
+                            <option value="">직위를 선택하세요</option>
+                            {% for p in positions %}
+                            <option value="{{ p.id }}">{{ p.name }}</option>
+                            {% endfor %}
+                        </select>
+                        <div class="bo-field-error"></div>
+                    </div>
+
+                    <div class="bo-field" data-field="account_status">
+                        <label>계정 상태 <span class="bo-required">*</span></label>
+                        <select name="account_status">
+                            <option value="">상태를 선택하세요</option>
+                            <option value="active">사용</option>
+                            <option value="locked" data-edit-only>잠금</option>
+                            <option value="disabled">비활성</option>
+                        </select>
+                        <div class="bo-field-error"></div>
+                    </div>
+
+                    <div class="bo-field" data-field="email">
+                        <label>이메일</label>
+                        <input type="text" name="email" maxlength="100" placeholder="example@company.com">
+                        <div class="bo-field-error"></div>
+                    </div>
+
+                    <div class="bo-field" data-field="phone">
+                        <label>연락처</label>
+                        <input type="text" name="phone" maxlength="20" placeholder="010-0000-0000">
+                        <div class="bo-field-error"></div>
+                    </div>
+
+                </div>
+            </div>
+            <div class="bo-modal-footer">
+                <button type="button" class="bo-btn" data-close-modal>취소</button>
+                <button type="submit" class="bo-btn bo-btn-primary" data-create-only>등록</button>
+                <button type="submit" class="bo-btn bo-btn-primary" data-edit-only style="display:none;">저장</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'js/backoffice/users.js' %}"></script>
+{% endblock %}

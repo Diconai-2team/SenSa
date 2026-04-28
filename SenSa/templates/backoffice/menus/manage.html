@@ -1,0 +1,109 @@
+{% extends "backoffice/base.html" %}
+{% load static %}
+{% block title %}메뉴 관리 — 백오피스{% endblock %}
+
+{% block content %}
+<div class="bo-breadcrumb">
+    <span>메뉴 관리</span>
+</div>
+<h1 class="bo-page-title">메뉴 관리</h1>
+<p class="bo-page-desc">역할별 백오피스 메뉴 노출 권한을 관리합니다. 슈퍼관리자는 항상 전체 메뉴에 접근할 수 있어 별도 설정이 없습니다.</p>
+
+<div class="bo-card" style="background:#fffbeb;border-color:#fde68a;color:#92400e;font-size:13px;">
+    💡 <strong>관리자(admin) 역할</strong>의 메뉴 권한을 설정합니다.
+    "조회 가능"이 꺼지면 좌측 메뉴(SNB)에서 해당 메뉴가 표시되지 않습니다.
+    "등록/수정 가능"이 꺼지면 페이지 진입은 가능하나 등록/수정 액션이 비활성화됩니다.
+</div>
+
+<div class="bo-card bo-mt-16">
+    <h3 class="bo-mt-0" style="font-size:15px;font-weight:600;margin-bottom:12px;">관리자 (admin) 메뉴 권한</h3>
+
+    <table class="bo-table" id="bo-menu-table">
+        <colgroup>
+            <col><col style="width:140px;"><col style="width:140px;"><col style="width:160px;">
+        </colgroup>
+        <thead>
+            <tr>
+                <th>메뉴</th>
+                <th>조회 가능</th>
+                <th>등록/수정 가능</th>
+                <th>최근 수정</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for r in rows %}
+            <tr data-menu-code="{{ r.menu_code }}">
+                <td>
+                    <strong>{{ r.menu_name }}</strong>
+                    <div style="font-size:11.5px;color:var(--bo-text-muted);font-family:monospace;">{{ r.menu_code }}</div>
+                </td>
+                <td>
+                    <label class="bo-toggle-switch" style="cursor:pointer;display:inline-flex;align-items:center;gap:8px;">
+                        <input type="checkbox" class="bo-checkbox bo-perm-visible" {% if r.is_visible %}checked{% endif %}>
+                        <span>{{ r.is_visible|yesno:"노출,숨김" }}</span>
+                    </label>
+                </td>
+                <td>
+                    <label class="bo-toggle-switch" style="cursor:pointer;display:inline-flex;align-items:center;gap:8px;">
+                        <input type="checkbox" class="bo-checkbox bo-perm-writable" {% if r.is_writable %}checked{% endif %} {% if not r.is_visible %}disabled{% endif %}>
+                        <span>{{ r.is_writable|yesno:"가능,불가" }}</span>
+                    </label>
+                </td>
+                <td class="bo-perm-updated">{{ r.updated_at }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function() {
+    'use strict';
+    const tbody = document.querySelector('#bo-menu-table tbody');
+
+    async function update(tr) {
+        const menuCode = tr.dataset.menuCode;
+        const visibleCb = tr.querySelector('.bo-perm-visible');
+        const writableCb = tr.querySelector('.bo-perm-writable');
+
+        // visible 꺼지면 writable 도 자동 꺼짐
+        if (!visibleCb.checked) {
+            writableCb.checked = false;
+            writableCb.disabled = true;
+        } else {
+            writableCb.disabled = false;
+        }
+
+        const payload = {
+            role: 'admin',
+            menu_code: menuCode,
+            is_visible: visibleCb.checked,
+            is_writable: writableCb.checked,
+        };
+        const { ok, data } = await BO.fetchJSON('/backoffice/api/menu-perms/update/', {
+            method: 'POST', body: JSON.stringify(payload)
+        });
+        if (!ok) {
+            BO.toast(data.error || '저장 실패', 'error');
+            // 롤백
+            visibleCb.checked = !visibleCb.checked;
+            return;
+        }
+        BO.toast('저장되었습니다.', 'success');
+        // 라벨 갱신
+        visibleCb.nextElementSibling.textContent = visibleCb.checked ? '노출' : '숨김';
+        writableCb.nextElementSibling.textContent = writableCb.checked ? '가능' : '불가';
+        tr.querySelector('.bo-perm-updated').textContent = data.perm.updated_at;
+    }
+
+    tbody.addEventListener('change', e => {
+        if (e.target.classList.contains('bo-perm-visible') || e.target.classList.contains('bo-perm-writable')) {
+            update(e.target.closest('tr'));
+        }
+    });
+})();
+</script>
+{% endblock %}

@@ -1,0 +1,359 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>알람 기록 | SenSa</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:          #0d1117;
+      --bg-card:     #161b22;
+      --bg-hover:    #1c2230;
+      --border:      #21262d;
+      --text:        #c9d1d9;
+      --text-dim:    #6e7681;
+      --color-danger:   #e74c3c;
+      --color-caution:  #f1c40f;
+      --color-critical: #9b59b6;
+      --color-info:     #3498db;
+      --color-normal:   #2ecc71;
+    }
+
+    body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', sans-serif; min-height: 100vh; }
+
+    /* ── 헤더 ── */
+    .page-header {
+      background: var(--bg-card);
+      border-bottom: 1px solid var(--border);
+      padding: 14px 24px;
+      display: flex; align-items: center; gap: 16px;
+    }
+    .page-header a.back-link {
+      color: var(--text-dim); text-decoration: none; font-size: 13px;
+      display: flex; align-items: center; gap: 6px;
+    }
+    .page-header a.back-link:hover { color: var(--text); }
+    .page-header h1 { font-size: 16px; font-weight: 600; flex: 1; }
+    .page-header .header-actions { display: flex; gap: 10px; align-items: center; }
+
+    /* ── 통계 카드 ── */
+    .stats-row {
+      display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px;
+      padding: 16px 24px;
+    }
+    .stat-card {
+      background: var(--bg-card); border: 1px solid var(--border);
+      border-radius: 8px; padding: 14px 16px;
+    }
+    .stat-card .label { font-size: 11px; color: var(--text-dim); margin-bottom: 6px; }
+    .stat-card .value { font-size: 24px; font-weight: 700; }
+    .stat-card.danger  .value { color: var(--color-danger); }
+    .stat-card.caution .value { color: var(--color-caution); }
+    .stat-card.info    .value { color: var(--color-info); }
+    .stat-card.total   .value { color: var(--text); }
+    .stat-card.h24     .value { color: var(--color-info); }
+
+    /* ── 필터 탭 ── */
+    .filter-tabs {
+      display: flex; gap: 0; padding: 0 24px;
+      border-bottom: 1px solid var(--border);
+    }
+    .filter-tab {
+      padding: 10px 20px; font-size: 13px; color: var(--text-dim);
+      text-decoration: none; border-bottom: 2px solid transparent;
+      transition: color 0.15s, border-color 0.15s;
+    }
+    .filter-tab:hover { color: var(--text); }
+    .filter-tab.active { color: var(--text); border-bottom-color: #58a6ff; }
+    .filter-tab .badge {
+      display: inline-block; font-size: 10px; font-weight: 700;
+      padding: 1px 6px; border-radius: 8px; margin-left: 6px; vertical-align: middle;
+    }
+    .filter-tab.all    .badge { background: #21262d; color: var(--text-dim); }
+    .filter-tab.danger .badge { background: #3d1515; color: var(--color-danger); }
+    .filter-tab.caution .badge { background: #3d3000; color: var(--color-caution); }
+    .filter-tab.info   .badge { background: #0d2035; color: var(--color-info); }
+
+    /* ── 테이블 ── */
+    .table-wrap { padding: 16px 24px; }
+    table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    thead th {
+      text-align: left; padding: 8px 12px; font-size: 11px; font-weight: 600;
+      color: var(--text-dim); border-bottom: 1px solid var(--border);
+      text-transform: uppercase; letter-spacing: 0.5px;
+    }
+    tbody tr {
+      border-bottom: 1px solid var(--border);
+      transition: background 0.1s;
+    }
+    tbody tr:hover { background: var(--bg-hover); }
+    tbody td { padding: 10px 12px; vertical-align: middle; }
+
+    /* 레벨 뱃지 */
+    .level-badge {
+      display: inline-flex; align-items: center; gap: 4px;
+      padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600;
+      white-space: nowrap;
+    }
+    .level-badge.danger   { background: #3d1515; color: var(--color-danger);   border: 1px solid var(--color-danger); }
+    .level-badge.caution  { background: #3d3000; color: var(--color-caution);  border: 1px solid var(--color-caution); }
+    .level-badge.critical { background: #2d1540; color: var(--color-critical); border: 1px solid var(--color-critical); }
+    .level-badge.info     { background: #0d2035; color: var(--color-info);     border: 1px solid var(--color-info); }
+
+    /* 읽음 상태 */
+    .read-dot {
+      display: inline-block; width: 7px; height: 7px;
+      border-radius: 50%; vertical-align: middle;
+    }
+    .read-dot.unread { background: #58a6ff; }
+    .read-dot.read   { background: var(--border); }
+
+    /* 메시지 셀 */
+    .msg-cell { max-width: 380px; }
+    .msg-text { color: var(--text); line-height: 1.5; }
+    .msg-meta { font-size: 10px; color: var(--text-dim); margin-top: 3px; }
+
+    /* 빈 상태 */
+    .empty-state {
+      text-align: center; padding: 60px 0; color: var(--text-dim); font-size: 13px;
+    }
+    .empty-state .icon { font-size: 36px; margin-bottom: 12px; }
+
+    /* ── 페이지네이션 ── */
+    .pagination {
+      display: flex; justify-content: center; align-items: center;
+      gap: 6px; padding: 16px 24px;
+    }
+    .pagination a, .pagination span {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 32px; height: 32px; border-radius: 6px; font-size: 12px;
+      text-decoration: none; border: 1px solid var(--border);
+    }
+    .pagination a { color: var(--text-dim); }
+    .pagination a:hover { background: var(--bg-hover); color: var(--text); }
+    .pagination span.current { background: #1f6feb; color: #fff; border-color: #1f6feb; font-weight: 600; }
+    .pagination span.disabled { color: var(--border); cursor: default; }
+
+    /* ── 버튼 ── */
+    .btn {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 7px 14px; border-radius: 6px; font-size: 12px;
+      border: 1px solid var(--border); cursor: pointer;
+      text-decoration: none; transition: background 0.15s;
+    }
+    .btn-ghost { background: none; color: var(--text-dim); }
+    .btn-ghost:hover { background: var(--bg-hover); color: var(--text); }
+    .btn-danger { background: #3d1515; color: var(--color-danger); border-color: var(--color-danger); }
+
+    /* 타입 뱃지 */
+    .type-text { font-size: 11px; color: var(--text-dim); }
+
+    @media (max-width: 768px) {
+      .stats-row { grid-template-columns: repeat(2, 1fr); }
+      .hide-mobile { display: none; }
+    }
+  </style>
+</head>
+<body>
+
+<div class="page-header">
+  <a class="back-link" href="/dashboard/">← 대시보드로</a>
+  <h1>🔔 알람 기록</h1>
+  <div class="header-actions">
+    <form method="get" style="display:inline">
+      <input type="hidden" name="level" value="{{ level_filter }}">
+    </form>
+    <button class="btn btn-ghost" onclick="markAllRead()">✓ 모두 읽음 처리</button>
+  </div>
+</div>
+
+<!-- 통계 카드 -->
+<div class="stats-row">
+  <div class="stat-card total">
+    <div class="label">전체 알람</div>
+    <div class="value">{{ stats.total }}</div>
+  </div>
+  <div class="stat-card danger">
+    <div class="label">🔴 위험 / 심각</div>
+    <div class="value">{{ stats.danger }}</div>
+  </div>
+  <div class="stat-card caution">
+    <div class="label">⚠️ 주의</div>
+    <div class="value">{{ stats.caution }}</div>
+  </div>
+  <div class="stat-card info">
+    <div class="label">ℹ️ 정보</div>
+    <div class="value">{{ stats.info }}</div>
+  </div>
+  <div class="stat-card h24">
+    <div class="label">⏱ 최근 24시간</div>
+    <div class="value">{{ stats.last_24h }}</div>
+  </div>
+</div>
+
+<!-- 필터 탭 -->
+<div class="filter-tabs">
+  <a href="?level=all"
+     class="filter-tab all {% if level_filter == 'all' %}active{% endif %}">
+    전체
+    <span class="badge">{{ stats.total }}</span>
+  </a>
+  <a href="?level=danger"
+     class="filter-tab danger {% if level_filter == 'danger' %}active{% endif %}">
+    🔴 위험
+    <span class="badge">{{ stats.danger }}</span>
+  </a>
+  <a href="?level=caution"
+     class="filter-tab caution {% if level_filter == 'caution' %}active{% endif %}">
+    ⚠️ 주의
+    <span class="badge">{{ stats.caution }}</span>
+  </a>
+  <a href="?level=info"
+     class="filter-tab info {% if level_filter == 'info' %}active{% endif %}">
+    ℹ️ 정보
+    <span class="badge">{{ stats.info }}</span>
+  </a>
+</div>
+
+<!-- 알람 테이블 -->
+<div class="table-wrap">
+  {% if alarms %}
+  <table>
+    <thead>
+      <tr>
+        <th style="width:6px;"></th>
+        <th>레벨</th>
+        <th>발생 시각</th>
+        <th>메시지</th>
+        <th class="hide-mobile">유형</th>
+        <th class="hide-mobile">작업자</th>
+        <th class="hide-mobile">구역</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for alarm in alarms %}
+      <tr>
+        <!-- 읽음 표시 -->
+        <td>
+          <span class="read-dot {% if alarm.is_read %}read{% else %}unread{% endif %}"></span>
+        </td>
+
+        <!-- 레벨 뱃지 -->
+        <td>
+          {% if alarm.alarm_level == 'danger' %}
+            <span class="level-badge danger">🔴 위험</span>
+          {% elif alarm.alarm_level == 'critical' %}
+            <span class="level-badge critical">🚨 심각</span>
+          {% elif alarm.alarm_level == 'caution' %}
+            <span class="level-badge caution">⚠️ 주의</span>
+          {% else %}
+            <span class="level-badge info">ℹ️ 정보</span>
+          {% endif %}
+        </td>
+
+        <!-- 시각 -->
+        <td style="white-space:nowrap; color: var(--text-dim); font-size:11px;">
+          {{ alarm.created_at|date:"Y-m-d" }}<br>
+          <span style="font-size:12px; color: var(--text);">{{ alarm.created_at|date:"H:i:s" }}</span>
+        </td>
+
+        <!-- 메시지 -->
+        <td class="msg-cell">
+          <div class="msg-text">{{ alarm.message }}</div>
+          {% if alarm.device_id %}
+          <div class="msg-meta">센서: {{ alarm.device_id }}{% if alarm.sensor_type %} ({{ alarm.sensor_type }}){% endif %}</div>
+          {% endif %}
+        </td>
+
+        <!-- 유형 -->
+        <td class="hide-mobile">
+          <span class="type-text">
+            {% if alarm.alarm_type == 'geofence_enter' %}위험구역 진입
+            {% elif alarm.alarm_type == 'sensor_caution' %}센서 주의
+            {% elif alarm.alarm_type == 'sensor_danger' %}센서 위험
+            {% elif alarm.alarm_type == 'combined' %}복합 위험
+            {% else %}{{ alarm.alarm_type }}{% endif %}
+          </span>
+        </td>
+
+        <!-- 작업자 -->
+        <td class="hide-mobile" style="font-size:11px;">
+          {% if alarm.worker_name %}
+            <span style="color:var(--text);">{{ alarm.worker_name }}</span>
+          {% else %}
+            <span style="color:var(--border);">—</span>
+          {% endif %}
+        </td>
+
+        <!-- 구역 -->
+        <td class="hide-mobile" style="font-size:11px;">
+          {% if alarm.geofence %}
+            <span style="color:var(--text);">{{ alarm.geofence.name }}</span>
+          {% else %}
+            <span style="color:var(--border);">—</span>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <!-- 페이지네이션 -->
+  {% if alarms.has_other_pages %}
+  <div class="pagination">
+    {% if alarms.has_previous %}
+      <a href="?level={{ level_filter }}&page={{ alarms.previous_page_number }}">‹</a>
+    {% else %}
+      <span class="disabled">‹</span>
+    {% endif %}
+
+    {% for num in alarms.paginator.page_range %}
+      {% if alarms.number == num %}
+        <span class="current">{{ num }}</span>
+      {% elif num > alarms.number|add:'-3' and num < alarms.number|add:'3' %}
+        <a href="?level={{ level_filter }}&page={{ num }}">{{ num }}</a>
+      {% endif %}
+    {% endfor %}
+
+    {% if alarms.has_next %}
+      <a href="?level={{ level_filter }}&page={{ alarms.next_page_number }}">›</a>
+    {% else %}
+      <span class="disabled">›</span>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  {% else %}
+  <div class="empty-state">
+    <div class="icon">🔕</div>
+    <p>{% if level_filter == 'danger' %}위험/심각 알람이 없습니다.{% elif level_filter == 'caution' %}주의 알람이 없습니다.{% else %}알람 기록이 없습니다.{% endif %}</p>
+  </div>
+  {% endif %}
+</div>
+
+<script>
+function getCsrfToken() {
+  var c = document.cookie.split(';').find(function(c) { return c.trim().startsWith('csrftoken='); });
+  return c ? c.split('=')[1] : '';
+}
+
+async function markAllRead() {
+  try {
+    var res = await fetch('/dashboard/api/alarm/read_all/', {
+      method: 'PATCH',
+      headers: { 'X-CSRFToken': getCsrfToken(), 'Content-Type': 'application/json' },
+      credentials: 'include',
+    });
+    if (res.ok) {
+      document.querySelectorAll('.read-dot.unread').forEach(function(el) {
+        el.classList.replace('unread', 'read');
+      });
+    }
+  } catch (e) {}
+}
+</script>
+</body>
+</html>

@@ -34,6 +34,10 @@ from .serializers import LoginSerializer, UserSerializer, SignupSerializer
 
 def root_redirect(request):
     if request.user.is_authenticated:
+        if getattr(request.user, 'is_super_admin_role', False):
+            return redirect('backoffice:landing')
+        if request.user.role == 'admin':
+            return redirect('backoffice:landing')
         return redirect('dashboard')
     return redirect('login')
 
@@ -56,10 +60,38 @@ def login_page(request):
 
         if serializer.is_valid():
             user = serializer.validated_data['user']
+
+            # ─── 백오피스 — 잠금/비활성 계정 차단 ───
+            if not user.is_active:
+                error_message = '비활성 계정입니다. 관리자에게 문의해 주세요.'
+                return render(request, 'accounts/login.html', {
+                    'error_message': error_message,
+                    'next'            : request.GET.get('next', ''),
+                    'prefill_username': username,
+                })
+            if getattr(user, 'is_locked', False):
+                error_message = '잠긴 계정입니다. 관리자에게 문의해 주세요.'
+                return render(request, 'accounts/login.html', {
+                    'error_message': error_message,
+                    'next'            : request.GET.get('next', ''),
+                    'prefill_username': username,
+                })
+
             login(request, user)
             messages.success(request, f'{user.username}님 환영합니다.')
 
-            next_url = request.GET.get('next') or request.POST.get('next') or '/dashboard/'
+            # ─── 역할별 진입 분기 ───
+            # 슈퍼관리자는 백오피스로, 그 외는 기존 대시보드로.
+            # next 파라미터가 명시되어 있으면 우선 적용 (외부 deep link 호환).
+            next_url = request.GET.get('next') or request.POST.get('next')
+            if not next_url:
+                if getattr(user, 'is_super_admin_role', False):
+                    next_url = '/backoffice/'
+                elif user.role == 'admin':
+                    # v5: admin 도 백오피스 진입 가능 — MenuPermission 으로 메뉴 제어
+                    next_url = '/backoffice/'
+                else:
+                    next_url = '/dashboard/'
             if not next_url.startswith('/'):
                 next_url = '/home/'
             return redirect(next_url)

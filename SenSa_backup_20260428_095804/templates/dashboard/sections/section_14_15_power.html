@@ -1,0 +1,47 @@
+<!-- section_14_15_power.html — ⑭ 전력 테이블 + ⑮ 전력 차트
+     [Step 1B] 가스 패널과 동일한 페이지네이션 패턴 적용.
+              하드코딩된 행 2개(스마트파워 A/B) → DB 기반 동적 페이지네이션.
+              ‹ / › 버튼으로 전력 센서 순회. 디바이스 이름은 제목에 동적 표시.
+              헤더 와트(B-3): 큰 글씨에 전체 합산, 작은 글씨에 현재 설비 와트. -->
+
+<!-- ⑭ 스마트 전력 시스템 -->
+<div id="section-14-power-table" class="bottom-panel">
+  <div class="bottom-panel-title">
+    <span>스마트 전력 시스템 위험 현황 — <span id="power-current-name" class="sensor-pager-name">…</span></span>
+    <div class="sensor-pager">
+      <button class="sensor-pager-btn" id="power-pager-prev" type="button" aria-label="이전 설비" disabled>‹</button>
+      <span class="sensor-pager-index"><span id="power-pager-cur">0</span> / <span id="power-pager-total">0</span></span>
+      <button class="sensor-pager-btn" id="power-pager-next" type="button" aria-label="다음 설비" disabled>›</button>
+    </div>
+  </div>
+
+  <!-- 전력 요약: 큰 글씨 = 전체 합산 / 작은 글씨 = 현재 설비 와트 -->
+  <div class="power-summary" id="power-total-watt">
+    0 <span class="unit">W</span>
+    <span class="power-current-watt"><span id="power-cur-watt">0</span> W (현재 설비)</span>
+  </div>
+
+  <table class="data-table" id="power-status-table">
+    <colgroup>
+      <col style="width: 35%;">  <!-- 설비명 -->
+      <col style="width: 22%;">  <!-- 전류 -->
+      <col style="width: 22%;">  <!-- 전압 -->
+      <col style="width: 21%;">  <!-- 위험도 -->
+    </colgroup>
+    <thead><tr><th>설비명</th><th>전류</th><th>전압</th><th>위험도</th></tr></thead>
+    <tbody>
+      <tr id="power-row-current">
+        <td class="gas-name" id="power-row-name">—</td>
+        <td class="gas-value" id="power-row-current-val">—</td>
+        <td class="gas-value" id="power-row-voltage-val">—</td>
+        <td><span class="status-badge status-normal" id="power-row-badge">—</span></td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- ⑮ AI 예측 - 전력 -->
+<div id="section-15-power-chart" class="bottom-panel">
+  <div class="bottom-panel-title">AI 예측 - 스마트 전력 시스템 위험<a class="detail-link" style="font-size:10px;">+ 상세보기</a></div>
+  <div class="chart-area"><canvas id="chart-power"></canvas></div>
+</div>

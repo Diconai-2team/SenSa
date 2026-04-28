@@ -1,0 +1,97 @@
+{# 슬라이드 사이드 메뉴 (햄버거 버튼으로 열림) #}
+{# active_page: "dashboard" | "safety" | "vr" | "profile" | "workers" #}
+
+{# 백드롭 — 클릭 시 메뉴 닫기 #}
+<div class="app-sidemenu-backdrop" id="app-sidemenu-backdrop" hidden></div>
+
+<aside class="app-sidemenu" id="app-sidemenu" hidden aria-label="전체 메뉴">
+
+  <div class="app-sidemenu-header">
+    <div class="app-sidemenu-brand">산재 예방 관제</div>
+    <button type="button" class="app-sidemenu-close"
+            id="btn-sidemenu-close" aria-label="메뉴 닫기">✕</button>
+  </div>
+
+  {% if request.user.is_authenticated %}
+    <div class="app-sidemenu-user">
+      <div class="app-sidemenu-user-avatar">
+        {{ request.user.username|slice:":1"|upper }}
+      </div>
+      <div class="app-sidemenu-user-info">
+        <div class="app-sidemenu-user-name">{{ request.user.username }}</div>
+        <div class="app-sidemenu-user-role">
+          {% if request.user.is_staff %}
+            관리자
+          {% else %}
+            운영자
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  {% endif %}
+
+  <nav class="app-sidemenu-nav">
+    <div class="app-sidemenu-section-title">주요 메뉴</div>
+    <ul class="app-sidemenu-list">
+
+      {# ─── 대시보드 ─── #}
+      <li class="app-sidemenu-item {% if active_page == 'dashboard' %}is-active{% endif %}">
+        <a href="{% url 'dashboard' %}" class="app-sidemenu-link">
+          <span class="app-sidemenu-icon">🏠</span>
+          <span class="app-sidemenu-label">대시보드</span>
+        </a>
+      </li>
+
+      {# ─── 작업자 현황 (Phase 4A 신규) ─── #}
+      <li class="app-sidemenu-item {% if active_page == 'workers' %}is-active{% endif %}">
+        <a href="{% url 'workers:list' %}" class="app-sidemenu-link">
+          <span class="app-sidemenu-icon">👷</span>
+          <span class="app-sidemenu-label">작업자 현황</span>
+        </a>
+      </li>
+
+      {# ─── 관리자 메뉴 (is_staff 만) ─── #}
+      {% if request.user.is_staff %}
+        <li class="app-sidemenu-item">
+          <a href="/admin/" target="_blank" rel="noopener" class="app-sidemenu-link">
+            <span class="app-sidemenu-icon">🔑</span>
+            <span class="app-sidemenu-label">관리자 메뉴</span>
+            <span class="app-sidemenu-hint">새 창</span>
+          </a>
+        </li>
+      {% endif %}
+
+      {# ─── 내 정보 ─── #}
+      <li class="app-sidemenu-item {% if active_page == 'profile' %}is-active{% endif %}">
+        <a href="{% url 'profile' %}" class="app-sidemenu-link">
+          <span class="app-sidemenu-icon">👤</span>
+          <span class="app-sidemenu-label">내 정보</span>
+        </a>
+      </li>
+
+    </ul>
+
+    <div class="app-sidemenu-section-title">안전 확인</div>
+    <ul class="app-sidemenu-list">
+      <li class="app-sidemenu-item {% if active_page == 'safety' %}is-active{% endif %}">
+        <a href="{% url 'safety:checklist' %}" class="app-sidemenu-link">
+          <span class="app-sidemenu-icon">✅</span>
+          <span class="app-sidemenu-label">안전 확인 체크리스트</span>
+        </a>
+      </li>
+      <li class="app-sidemenu-item {% if active_page == 'vr' %}is-active{% endif %}">
+        <a href="{% url 'vr_training:player' %}" class="app-sidemenu-link">
+          <span class="app-sidemenu-icon">🥽</span>
+          <span class="app-sidemenu-label">VR 교육</span>
+        </a>
+      </li>
+    </ul>
+  </nav>
+
+  <div class="app-sidemenu-footer">
+    <a href="{% url 'logout' %}" class="app-sidemenu-logout">
+      <span class="app-sidemenu-icon">↩</span>
+      <span>로그아웃</span>
+    </a>
+  </div>
+</aside>

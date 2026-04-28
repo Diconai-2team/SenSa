@@ -62,17 +62,75 @@ import random
 # 가스 임계치 (KOSHA, ACGIH, NIOSH 기준)
 # Django 쪽 판정과 반드시 일치해야 함
 # ═══════════════════════════════════════════════════════════
+#
+# [v3 변경 — DB 동기화 도입]
+#   기존: 모듈 로드 시 1회 정의된 dict 를 영구 사용 (코드 재배포 필요)
+#   현행: scheduler 가 startup + 5초 주기 재로드 시 apply_thresholds() 로 교체.
+#         아래 값은 Django 미기동 / 통신 실패 시의 fallback (산업안전 표준).
+#
+# 포맷 (v3 신규):
+#   { item_code: {"operator": "over"|"under", "caution": float, "danger": float} }
+#
+#   - operator='over'  : 측정값이 caution 초과 시 주의, danger 초과 시 위험
+#   - operator='under' : 측정값이 caution 미만 시 주의, danger 미만 시 위험
+#
+#   O2 는 양방향이므로 두 항목 분리:
+#     'o2'      → under 18→16 (저산소)
+#     'o2_high' → over  21.5→23.5 (과산소)
 GAS_THRESHOLDS = {
-    "co":  {"normal": 25,   "danger": 200},
-    "h2s": {"normal": 10,   "danger": 50},
-    "co2": {"normal": 1000, "danger": 5000},
-    "o2":  {"low": 18.0,    "high": 23.5},
-    "no2": {"normal": 3,    "danger": 5},
-    "so2": {"normal": 2,    "danger": 5},
-    "o3":  {"normal": 0.05, "danger": 0.1},
-    "nh3": {"normal": 25,   "danger": 50},
-    "voc": {"normal": 0.5,  "danger": 2.0},
+    "co":      {"operator": "over",  "caution": 25,    "danger": 200},
+    "h2s":     {"operator": "over",  "caution": 10,    "danger": 50},
+    "co2":     {"operator": "over",  "caution": 1000,  "danger": 5000},
+    "o2":      {"operator": "under", "caution": 18.0,  "danger": 16.0},
+    "o2_high": {"operator": "over",  "caution": 21.5,  "danger": 23.5},
+    "no2":     {"operator": "over",  "caution": 3,     "danger": 5},
+    "so2":     {"operator": "over",  "caution": 2,     "danger": 5},
+    "o3":      {"operator": "over",  "caution": 0.05,  "danger": 0.1},
+    "nh3":     {"operator": "over",  "caution": 25,    "danger": 50},
+    "voc":     {"operator": "over",  "caution": 0.5,   "danger": 2.0},
 }
+
+
+def apply_thresholds(loaded: dict | None) -> int:
+    """
+    Django 백오피스에서 받은 임계치를 GAS_THRESHOLDS 에 반영.
+
+    Args:
+        loaded: django_loader.load_thresholds() 결과.
+            형식 {"categories": {...}, "flat": {"TH_GAS.<item_code>": {...}}}
+            None 이면 fallback 유지 (no-op).
+
+    Returns:
+        반영된 임계치 항목 수. loaded 가 None 이면 0.
+
+    동작:
+      - TH_GAS 분류의 active=True 항목만 사용.
+      - 기존 GAS_THRESHOLDS 와 동일한 키가 있으면 갱신, 없으면 추가.
+      - DB 에 없는 항목은 fallback 보존 (지우지 않음 — 안전).
+    """
+    if not loaded:
+        return 0
+    flat = loaded.get('flat') or {}
+    n = 0
+    for key, entry in flat.items():
+        # key 형식: "TH_GAS.co"
+        if not key.startswith('TH_GAS.'):
+            continue
+        item_code = entry.get('item_code') or key.split('.', 1)[1]
+        op = entry.get('operator')
+        caution = entry.get('caution')
+        danger = entry.get('danger')
+        if op not in ('over', 'under') or caution is None or danger is None:
+            continue
+        GAS_THRESHOLDS[item_code] = {
+            "operator": op,
+            "caution":  float(caution),
+            "danger":   float(danger),
+        }
+        n += 1
+    if n:
+        print(f"[generators] GAS_THRESHOLDS 갱신: {n} 항목 (DB 동기화)")
+    return n
 
 GAS_NORMAL_CENTER = {
     "co": 12, "h2s": 2, "co2": 600, "o2": 20.9,
@@ -286,26 +344,38 @@ def identify_worst_gas(gas: dict) -> tuple[str | None, float | None]:
             continue
         v = float(val)
 
-        if key == "o2":
-            if v < 18:
-                score = (18 - v) / 2.0   # 18 → 0점, 16 → 1점
-            elif v > 21.5:
-                score = (v - 21.5) / 2.0
+        # ─── 이 가스에 적용 가능한 임계치 후보 수집 ───
+        # 일반: 키와 동일한 임계치 1개
+        # O2:  'o2' (under) + 'o2_high' (over) 둘 다 평가 — 가장 위험한 쪽 채택
+        candidates = []
+        if key in GAS_THRESHOLDS:
+            candidates.append(GAS_THRESHOLDS[key])
+        if key == 'o2' and 'o2_high' in GAS_THRESHOLDS:
+            candidates.append(GAS_THRESHOLDS['o2_high'])
+
+        for t in candidates:
+            op = t.get('operator', 'over')
+            caution = t.get('caution')
+            danger  = t.get('danger')
+            if caution is None or danger is None:
+                continue
+
+            # over: caution 초과해야 점수, danger 에서 score=1.0
+            if op == 'over':
+                if v < caution:
+                    continue
+                score = (v - caution) / max(danger - caution, 0.001)
+            # under: caution 미만이어야 점수, danger 에서 score=1.0
+            elif op == 'under':
+                if v > caution:
+                    continue
+                score = (caution - v) / max(caution - danger, 0.001)
             else:
                 continue
-        else:
-            t = GAS_THRESHOLDS.get(key)
-            if not t or "normal" not in t:
-                continue
-            caution_th = t["normal"]
-            danger_th  = t["danger"]
-            if v < caution_th:
-                continue
-            score = (v - caution_th) / max(danger_th - caution_th, 0.001)
 
-        if score > worst_score:
-            worst_score = score
-            worst_key   = key
+            if score > worst_score:
+                worst_score = score
+                worst_key   = key   # 라벨용 — 항상 원본 가스 키 (o2_high 가 아니라 o2)
 
     if worst_key is None:
         return None, None

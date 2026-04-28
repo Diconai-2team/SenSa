@@ -1,0 +1,30 @@
+<!-- section_10_events.html — ⑩ 이벤트 현황 -->
+<div id="section-10-events">
+  <!-- 패널 제목 -->
+  <div class="panel-title" style="padding:12px 14px 8px; display:flex; align-items:center; justify-content:space-between;">
+    <span>이벤트 현황 <span id="alarm-badge">0</span></span>
+    <a class="detail-link" href="/dashboard/alarms/" target="_blank">+ 상세보기</a>
+  </div>
+
+  <!-- 실시간 경고 배너 -->
+  <div id="alert-banner" style="display:none;">
+    <div id="alert-banner-content"></div>
+    <button id="alert-banner-close" onclick="closeBanner()">✕</button>
+  </div>
+
+  <!-- 알람 목록 -->
+  <div id="alarm-list"><p class="alarm-empty">알람이 없습니다.</p></div>
+
+  <!-- 24시간 이벤트 요약 -->
+  <div class="event-summary">
+    ℹ️ 최근 24시간 동안 발생한 이벤트 현황<br>
+    <span class="count-danger">위험 0 건</span>&nbsp;/&nbsp;<span class="count-caution">주의 0 건</span>
+  </div>
+
+  <!-- 하단 액션 -->
+  <div style="padding:6px 14px; display:flex; align-items:center; gap:10px;">
+    <button id="alarm-read-all" onclick="readAllAlarms()">모두 읽음</button>
+    <a class="detail-link" href="/dashboard/alarms/?level=danger"  target="_blank" style="font-size:10px; color: var(--color-danger);">🔴 위험만 보기</a>
+    <a class="detail-link" href="/dashboard/alarms/?level=caution" target="_blank" style="font-size:10px; color: var(--color-caution);">⚠️ 주의만 보기</a>
+  </div>
+</div>

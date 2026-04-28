@@ -1,0 +1,155 @@
+/*
+ * _sidebar.css — "작업 전 안전 확인" 공통 사이드바
+ *
+ * 체크리스트 페이지와 VR 교육 페이지가 같은 컴포넌트를 공유한다.
+ * 토큰은 :root 변수 (checklist.css 또는 player.css 에서 선언됨).
+ */
+
+.safety-sidebar {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 18px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 240px;
+  max-width: 260px;
+  align-self: flex-start;
+  position: sticky;
+  top: 84px;
+}
+
+/* ─── 헤더 ─── */
+.safety-sidebar-header {
+  padding: 0 6px 14px;
+  border-bottom: 1px solid var(--border);
+}
+.safety-sidebar-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-strong);
+  letter-spacing: 0.3px;
+}
+
+/* ─── 메뉴 리스트 ─── */
+.safety-sidebar-menu {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.safety-sidebar-item {
+  display: block;
+}
+
+/* ─── 링크/아이템 공통 ─── */
+.safety-sidebar-link {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 6px;
+  text-decoration: none;
+  color: var(--text-dim);
+  font-size: 13px;
+  line-height: 1.4;
+  transition: background 0.12s ease-in-out, color 0.12s ease-in-out;
+  cursor: pointer;
+}
+
+.safety-sidebar-item:not(.is-locked) .safety-sidebar-link:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+/* ─── 활성 상태 (현재 페이지) ─── */
+.safety-sidebar-item.is-active .safety-sidebar-link {
+  background: rgba(59, 130, 246, 0.14);
+  color: var(--text-strong);
+  border-left: 2px solid var(--color-primary);
+  padding-left: 10px;
+}
+
+/* ─── 잠금 상태 (체크리스트 미완료 시 VR 메뉴) ─── */
+.safety-sidebar-item.is-locked .safety-sidebar-link {
+  cursor: not-allowed;
+  opacity: 0.42;
+}
+.safety-sidebar-item.is-locked .safety-sidebar-link:hover {
+  background: transparent;
+}
+
+/* ─── 아이콘 (번호 원 또는 체크/잠금) ─── */
+.safety-sidebar-icon {
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1.5px solid #4a5160;
+  border-radius: 50%;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-dim);
+  background: transparent;
+}
+
+.safety-sidebar-icon.done {
+  background: var(--color-normal);
+  border-color: var(--color-normal);
+  color: #0d1117;
+}
+
+.safety-sidebar-icon.locked {
+  border: none;
+  font-size: 14px;
+  background: transparent;
+  color: var(--text-dim);
+}
+
+/* ─── 라벨 ─── */
+.safety-sidebar-label {
+  flex: 1;
+}
+
+/* ─── 푸터 — 대시보드 복귀 링크 ─── */
+.safety-sidebar-footer {
+  margin-top: auto;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+.safety-sidebar-back {
+  display: inline-block;
+  font-size: 12px;
+  color: var(--text-dim);
+  text-decoration: none;
+  padding: 6px 8px;
+  border-radius: 4px;
+  transition: background 0.12s ease-in-out, color 0.12s ease-in-out;
+}
+.safety-sidebar-back:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+/* ─── 반응형 — 모바일에서는 상단 수평 메뉴로 전환 ─── */
+@media (max-width: 900px) {
+  .safety-sidebar {
+    min-width: 0;
+    max-width: none;
+    position: static;
+    padding: 12px;
+  }
+  .safety-sidebar-menu {
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+  .safety-sidebar-footer {
+    margin-top: 10px;
+  }
+}

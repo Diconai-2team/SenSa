@@ -51,6 +51,7 @@ INSTALLED_APPS = [
     'dashboard',
     'safety',
     'vr_training',     # ← 추가
+    'backoffice',      # ← 백오피스 (슈퍼관리자 채널)
 ]
 
 # ==========================================================
@@ -64,6 +65,7 @@ MIDDLEWARE = [
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'mysite.middleware.InternalAPIKeyMiddleware',    # ← 추가 (Auth 뒤)
+    'backoffice.middleware.AuditContextMiddleware',  # v6 — 시그널이 request user/IP 를 알 수 있게
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
     'mysite.middleware.DevStaticNoCacheMiddleware',   # ⭐ Step 1A 후속 — DEBUG 시 정적 파일 캐시 무효화
@@ -87,6 +89,7 @@ TEMPLATES = [
                 'django.template.context_processors.request',
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
+                'backoffice.context_processors.menu_perms',
             ],
         },
     },
@@ -213,6 +216,7 @@ INTERNAL_API_ALLOWED_PATHS = [
     '/dashboard/api/device/',       # ← 추가: FastAPI 기동 시 장비 목록 GET
     '/dashboard/api/worker/',       # ← 추가: 작업자 목록 GET + /worker/<pk>/latest/
     '/dashboard/api/geofence/',     # ← 추가: (현재 scheduler 에서 호출 안 하지만 django_loader 에 load_geofences 있음)
+    '/dashboard/api/thresholds/',   # ← 추가: 임계치 DB → FastAPI 동기화
 ]
 
 ALARM_RE_ALARM_INTERVAL_SEC = 60   # 상태 지속 시 재알림 주기

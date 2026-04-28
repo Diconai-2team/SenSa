@@ -1,0 +1,191 @@
+{% extends "backoffice/base.html" %}
+{% load static %}
+{% block title %}공통 코드 관리 — 백오피스{% endblock %}
+
+{% block content %}
+<div class="bo-breadcrumb">
+    <span>기준정보 관리</span>
+    <span class="bo-breadcrumb-sep">/</span>
+    <span>공통 코드 관리</span>
+</div>
+<h1 class="bo-page-title">공통 코드 관리</h1>
+<p class="bo-page-desc">운영 화면에서 사용되는 코드 그룹과 그룹 내 코드 데이터를 관리합니다.</p>
+
+<div class="bo-master-layout">
+
+  <div class="bo-card">
+    <div class="bo-flex-between" style="margin-bottom:12px;">
+      <h3 class="bo-mt-0" style="font-size:14px;font-weight:600;margin:0;">코드 그룹</h3>
+      <button type="button" class="bo-btn bo-btn-sm bo-btn-primary" id="bo-cg-add">+ 그룹</button>
+    </div>
+    <div class="bo-field" style="margin-bottom:8px;">
+      <input type="text" id="bo-cg-search" placeholder="그룹명 검색">
+    </div>
+    <ul class="bo-master-tree" id="bo-cg-tree">
+      {% for g in groups %}
+      <li data-cg-id="{{ g.id }}" data-cg-name="{{ g.name }}" {% if g.is_system %}class="is-system"{% endif %}>
+        <span>{{ g.name }}</span>
+        <span class="bo-tree-code">{{ g.code }}</span>
+      </li>
+      {% empty %}
+      <li class="bo-text-subtle" style="cursor:default;">등록된 그룹이 없습니다.</li>
+      {% endfor %}
+    </ul>
+  </div>
+
+  <div id="bo-cg-detail">
+    <div class="bo-card" id="bo-cg-empty">
+      <div class="bo-table-empty">좌측에서 코드 그룹을 선택해 주세요.</div>
+    </div>
+
+    <div id="bo-cg-info-card" class="bo-card" style="display:none;">
+      <div class="bo-flex-between">
+        <h3 class="bo-mt-0" id="bo-cg-name" style="font-size:15px;font-weight:600;margin:0;"></h3>
+        <div class="bo-flex bo-gap-8">
+          <button type="button" class="bo-btn bo-btn-sm" id="bo-cg-edit">수정</button>
+          <button type="button" class="bo-btn bo-btn-sm bo-btn-danger" id="bo-cg-delete">그룹 삭제</button>
+        </div>
+      </div>
+      <dl class="bo-info-grid">
+        <div><dt>그룹 코드</dt><dd id="bo-cg-code">-</dd></div>
+        <div><dt>코드 수</dt><dd id="bo-cg-count">-</dd></div>
+        <div><dt>최근 수정</dt><dd id="bo-cg-updated">-</dd></div>
+        <div><dt>사용 여부</dt><dd id="bo-cg-active">-</dd></div>
+      </dl>
+      <div id="bo-cg-desc" class="bo-text-muted bo-mt-16" style="font-size:12.5px;"></div>
+    </div>
+
+    <div id="bo-code-card" class="bo-card bo-mt-16" style="display:none;">
+      <div class="bo-table-toolbar">
+        <div class="bo-table-toolbar-left">
+          <span>코드 목록 <strong id="bo-code-count">0</strong></span>
+          <button type="button" class="bo-btn bo-btn-sm bo-btn-warning" id="bo-code-toggle-off" disabled>미사용 전환</button>
+          <button type="button" class="bo-btn bo-btn-sm" id="bo-code-toggle-on" disabled>사용 전환</button>
+          <button type="button" class="bo-btn bo-btn-sm bo-btn-danger" id="bo-code-bulk-delete" disabled>삭제</button>
+        </div>
+        <button type="button" class="bo-btn bo-btn-sm bo-btn-primary" id="bo-code-add">+ 코드 등록</button>
+      </div>
+
+      <table class="bo-table" id="bo-code-table">
+        <colgroup>
+          <col style="width:38px;"><col style="width:140px;"><col><col style="width:90px;"><col style="width:90px;"><col style="width:140px;"><col style="width:80px;">
+        </colgroup>
+        <thead>
+          <tr>
+            <th><input type="checkbox" class="bo-checkbox" id="bo-code-check-all"></th>
+            <th>코드</th>
+            <th>코드명</th>
+            <th>정렬</th>
+            <th>사용 여부</th>
+            <th>최근 수정</th>
+            <th>관리</th>
+          </tr>
+        </thead>
+        <tbody id="bo-code-body"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+{# ── 코드 그룹 등록/수정 모달 ── #}
+<div class="bo-modal-backdrop" id="bo-cg-modal" data-mode="create">
+  <div class="bo-modal">
+    <div class="bo-modal-header">
+      <h2 class="bo-modal-title" data-create-only>코드 그룹 등록</h2>
+      <h2 class="bo-modal-title" data-edit-only style="display:none;">코드 그룹 수정</h2>
+      <p class="bo-modal-desc">코드 그룹 정보를 입력해 주세요.</p>
+    </div>
+    <form id="bo-cg-form" novalidate>
+      <input type="hidden" name="id" value="">
+      <div class="bo-modal-body">
+        <div class="bo-modal-grid">
+          <div class="bo-field" data-field="code">
+            <label>그룹 코드 <span class="bo-required">*</span></label>
+            <input type="text" name="code" maxlength="50" placeholder="예: GAS_TYPE">
+            <div class="bo-field-error"></div>
+          </div>
+          <div class="bo-field" data-field="name">
+            <label>그룹명 <span class="bo-required">*</span></label>
+            <input type="text" name="name" maxlength="50" placeholder="예: 가스 종류">
+            <div class="bo-field-error"></div>
+          </div>
+          <div class="bo-field" data-field="sort_order">
+            <label>정렬 순서</label>
+            <input type="number" name="sort_order" min="1" max="99999">
+            <div class="bo-field-error"></div>
+          </div>
+          <div class="bo-field" data-field="is_active">
+            <label style="display:flex;align-items:center;gap:8px;">
+              <input type="checkbox" name="is_active" class="bo-checkbox" checked>
+              <span>사용</span>
+            </label>
+          </div>
+          <div class="bo-field bo-field-full" data-field="description">
+            <label>설명</label>
+            <textarea name="description" maxlength="500"></textarea>
+            <div class="bo-field-error"></div>
+          </div>
+        </div>
+      </div>
+      <div class="bo-modal-footer">
+        <button type="button" class="bo-btn" data-close-modal>취소</button>
+        <button type="submit" class="bo-btn bo-btn-primary">저장</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+{# ── 코드 등록/수정 모달 ── #}
+<div class="bo-modal-backdrop" id="bo-code-modal" data-mode="create">
+  <div class="bo-modal">
+    <div class="bo-modal-header">
+      <h2 class="bo-modal-title" data-create-only>코드 등록</h2>
+      <h2 class="bo-modal-title" data-edit-only style="display:none;">코드 수정</h2>
+      <p class="bo-modal-desc">선택된 그룹 안에 코드를 등록합니다.</p>
+    </div>
+    <form id="bo-code-form" novalidate>
+      <input type="hidden" name="id" value="">
+      <input type="hidden" name="group_id" value="">
+      <div class="bo-modal-body">
+        <div class="bo-modal-grid">
+          <div class="bo-field" data-field="code">
+            <label>코드 <span class="bo-required">*</span></label>
+            <input type="text" name="code" maxlength="50" placeholder="예: CO">
+            <div class="bo-field-error"></div>
+          </div>
+          <div class="bo-field" data-field="name">
+            <label>코드명 <span class="bo-required">*</span></label>
+            <input type="text" name="name" maxlength="100" placeholder="예: 일산화탄소">
+            <div class="bo-field-error"></div>
+          </div>
+          <div class="bo-field" data-field="sort_order">
+            <label>정렬 순서</label>
+            <input type="number" name="sort_order" min="1" max="99999">
+            <div class="bo-field-error"></div>
+          </div>
+          <div class="bo-field" data-field="is_active">
+            <label style="display:flex;align-items:center;gap:8px;">
+              <input type="checkbox" name="is_active" class="bo-checkbox" checked>
+              <span>사용</span>
+            </label>
+          </div>
+          <div class="bo-field bo-field-full" data-field="description">
+            <label>설명</label>
+            <textarea name="description" maxlength="500"></textarea>
+            <div class="bo-field-error"></div>
+          </div>
+        </div>
+      </div>
+      <div class="bo-modal-footer">
+        <button type="button" class="bo-btn" data-close-modal>취소</button>
+        <button type="submit" class="bo-btn bo-btn-primary">저장</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'js/backoffice/codes.js' %}"></script>
+{% endblock %}

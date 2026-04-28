@@ -1,0 +1,234 @@
+{% extends "backoffice/base.html" %}
+{% load static %}
+{% block title %}이벤트 이력 — 백오피스{% endblock %}
+
+{% block content %}
+<div class="bo-breadcrumb">
+    <span>알림/이벤트 관리</span>
+    <span class="bo-breadcrumb-sep">/</span>
+    <span>이벤트 이력</span>
+</div>
+
+<div class="bo-flex-between" style="margin-bottom:8px;">
+    <div>
+        <h1 class="bo-page-title">이벤트 이력</h1>
+        <p class="bo-page-desc">시스템에서 발생한 알람 이벤트를 조회하고 다운로드합니다.</p>
+    </div>
+    <a href="{% url 'backoffice:event-history-csv' %}?{{ request.GET.urlencode }}" class="bo-btn bo-btn-dark">CSV 다운로드</a>
+</div>
+
+<form method="get" class="bo-card" style="display:grid;grid-template-columns:1fr 1fr 1fr 140px 140px auto;gap:12px 16px;align-items:end;">
+    <div class="bo-field" style="margin:0;">
+        <label>키워드</label>
+        <input type="text" name="keyword" value="{{ q.keyword }}" placeholder="작업자/장비/메시지">
+    </div>
+    <div class="bo-field" style="margin:0;">
+        <label>레벨</label>
+        <select name="level">
+            <option value="">전체</option>
+            {% for code, label in levels %}
+            <option value="{{ code }}" {% if q.level == code %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div class="bo-field" style="margin:0;">
+        <label>유형</label>
+        <select name="type">
+            <option value="">전체</option>
+            {% for code, label in types %}
+            <option value="{{ code }}" {% if q.type == code %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div class="bo-field" style="margin:0;">
+        <label>시작일</label>
+        <input type="date" name="from" value="{{ q.from }}">
+    </div>
+    <div class="bo-field" style="margin:0;">
+        <label>종료일</label>
+        <input type="date" name="to" value="{{ q.to }}">
+    </div>
+    <div style="display:flex;gap:8px;">
+        <a href="{% url 'backoffice:event-history' %}" class="bo-btn">초기화</a>
+        <button type="submit" class="bo-btn bo-btn-dark">검색</button>
+    </div>
+    <label style="grid-column:1/-1;display:inline-flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;">
+        <input type="checkbox" name="unread" value="1" class="bo-checkbox" {% if q.unread == '1' %}checked{% endif %}>
+        안읽은 이벤트만 보기
+    </label>
+</form>
+
+<div class="bo-card bo-mt-16">
+    <div class="bo-table-toolbar">
+        <div class="bo-table-toolbar-left">
+            <span>전체 이벤트 <strong>{{ total }}건</strong></span>
+            <button type="button" class="bo-btn bo-btn-sm" id="bo-bulk-read" disabled>읽음 처리</button>
+        </div>
+    </div>
+
+    <table class="bo-table" id="bo-event-table">
+        <colgroup>
+            <col style="width:38px;"><col style="width:160px;"><col style="width:90px;"><col style="width:130px;"><col style="width:120px;"><col style="width:130px;"><col><col style="width:70px;"><col style="width:80px;">
+        </colgroup>
+        <thead>
+            <tr>
+                <th><input type="checkbox" class="bo-checkbox" id="bo-check-all"></th>
+                <th>발생일시</th>
+                <th>레벨</th>
+                <th>유형</th>
+                <th>작업자</th>
+                <th>장비</th>
+                <th>메시지</th>
+                <th>읽음</th>
+                <th>관리</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for a in rows %}
+            <tr data-id="{{ a.id }}">
+                <td><input type="checkbox" class="bo-checkbox bo-row-check" value="{{ a.id }}"></td>
+                <td>{{ a.created_at|date:"Y-m-d H:i:s" }}</td>
+                <td>
+                    {% if a.alarm_level == 'critical' or a.alarm_level == 'danger' %}
+                        <span class="bo-badge" style="background:#fee2e2;color:#b91c1c;">{{ a.get_alarm_level_display }}</span>
+                    {% elif a.alarm_level == 'caution' %}
+                        <span class="bo-badge bo-badge-status-locked">{{ a.get_alarm_level_display }}</span>
+                    {% else %}
+                        <span class="bo-badge bo-badge-status-disabled">{{ a.get_alarm_level_display }}</span>
+                    {% endif %}
+                </td>
+                <td>{{ a.get_alarm_type_display }}</td>
+                <td>{{ a.worker_name|default:a.worker_id|default:"-" }}</td>
+                <td><code style="font-size:11.5px;">{{ a.device_id|default:"-" }}</code></td>
+                <td style="max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="{{ a.message }}">{{ a.message }}</td>
+                <td>{% if a.is_read %}<span class="bo-text-muted">읽음</span>{% else %}<span style="color:var(--bo-primary);">●</span>{% endif %}</td>
+                <td><button type="button" class="bo-btn bo-btn-sm" data-detail="{{ a.id }}">상세</button></td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="9" class="bo-table-empty">조건에 맞는 이벤트가 없습니다.</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <div class="bo-pagination">
+        <div class="bo-pagination-info">{{ page_start }} - {{ page_end }} / {{ total }}</div>
+        <div class="bo-pagination-pages">
+            {% if page > 1 %}
+                <a href="?{% for k,v in q.items %}{{ k }}={{ v|urlencode }}&{% endfor %}page={{ page|add:'-1' }}">‹</a>
+            {% else %}<span class="is-disabled">‹</span>{% endif %}
+            {% for p in page_range %}
+                {% if p == page %}<span class="is-current">{{ p }}</span>
+                {% else %}<a href="?{% for k,v in q.items %}{{ k }}={{ v|urlencode }}&{% endfor %}page={{ p }}">{{ p }}</a>{% endif %}
+            {% endfor %}
+            {% if page < last_page %}
+                <a href="?{% for k,v in q.items %}{{ k }}={{ v|urlencode }}&{% endfor %}page={{ page|add:'1' }}">›</a>
+            {% else %}<span class="is-disabled">›</span>{% endif %}
+        </div>
+    </div>
+</div>
+
+{# 상세 모달 #}
+<div class="bo-modal-backdrop" id="bo-event-modal">
+    <div class="bo-modal">
+        <div class="bo-modal-header">
+            <h2 class="bo-modal-title">이벤트 상세</h2>
+        </div>
+        <div class="bo-modal-body">
+            <dl class="bo-info-grid" id="bo-event-detail">
+                <!-- JS 가 채움 -->
+            </dl>
+            <div class="bo-mt-16">
+                <div style="font-size:12px;color:var(--bo-text-muted);margin-bottom:4px;">메시지</div>
+                <div id="bo-event-message" style="font-size:13.5px;padding:12px;background:var(--bo-bg);border-radius:var(--bo-radius-sm);"></div>
+            </div>
+        </div>
+        <div class="bo-modal-footer">
+            <button type="button" class="bo-btn" data-close-modal>닫기</button>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function() {
+    'use strict';
+    const tbody = document.querySelector('#bo-event-table tbody');
+    const checkAll = document.getElementById('bo-check-all');
+    const btnBulkRead = document.getElementById('bo-bulk-read');
+    const modal = document.getElementById('bo-event-modal');
+    const detailEl = document.getElementById('bo-event-detail');
+    const messageEl = document.getElementById('bo-event-message');
+
+    function selectedIds() {
+        return Array.from(tbody.querySelectorAll('.bo-row-check:checked')).map(c => parseInt(c.value, 10));
+    }
+    function refresh() {
+        btnBulkRead.disabled = selectedIds().length === 0;
+        tbody.querySelectorAll('tr').forEach(tr => {
+            const c = tr.querySelector('.bo-row-check');
+            tr.classList.toggle('is-selected', c && c.checked);
+        });
+    }
+    tbody.addEventListener('change', e => {
+        if (e.target.classList.contains('bo-row-check')) refresh();
+    });
+    checkAll.addEventListener('change', () => {
+        tbody.querySelectorAll('.bo-row-check').forEach(c => c.checked = checkAll.checked);
+        refresh();
+    });
+
+    btnBulkRead.addEventListener('click', async () => {
+        const ids = selectedIds();
+        if (!ids.length) return;
+        const res = await BO.fetchJSON('/backoffice/api/events/bulk-read/', {
+            method:'POST', body: JSON.stringify({ ids })
+        });
+        if (!res.ok) { BO.toast(res.data.error || '실패', 'error'); return; }
+        BO.toast('읽음 처리되었습니다.', 'success');
+        setTimeout(() => location.reload(), 400);
+    });
+
+    // 상세
+    tbody.addEventListener('click', async e => {
+        const btn = e.target.closest('[data-detail]');
+        if (!btn) return;
+        const { ok, data } = await BO.fetchJSON(`/backoffice/api/events/${btn.dataset.detail}/`);
+        if (!ok) { BO.toast('상세를 불러오지 못했습니다.', 'error'); return; }
+        const ev = data.event;
+        const fields = [
+            ['발생일시', ev.created_at],
+            ['레벨', ev.alarm_level_display],
+            ['유형', ev.alarm_type_display],
+            ['작업자', ev.worker_name + ' (' + (ev.worker_id || '-') + ')'],
+            ['장비', ev.device_id || '-'],
+            ['센서타입', ev.sensor_type || '-'],
+            ['지오펜스', ev.geofence_name || '-'],
+            ['좌표', ev.worker_x ? `(${ev.worker_x.toFixed(0)}, ${ev.worker_y.toFixed(0)})` : '-'],
+        ];
+        detailEl.innerHTML = fields.map(([k,v]) =>
+            `<div><dt>${k}</dt><dd>${v}</dd></div>`
+        ).join('');
+        messageEl.textContent = ev.message;
+        modal.classList.add('is-open');
+        document.body.style.overflow = 'hidden';
+    });
+
+    modal.addEventListener('click', e => {
+        if (e.target === modal || e.target.matches('[data-close-modal]')) {
+            modal.classList.remove('is-open');
+            document.body.style.overflow = '';
+        }
+    });
+    document.addEventListener('keydown', e => {
+        if (e.key === 'Escape') {
+            modal.classList.remove('is-open');
+            document.body.style.overflow = '';
+        }
+    });
+
+    refresh();
+})();
+</script>
+{% endblock %}

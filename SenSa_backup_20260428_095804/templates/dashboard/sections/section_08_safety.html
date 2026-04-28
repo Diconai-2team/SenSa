@@ -1,0 +1,37 @@
+<!-- section_08_safety.html — ⑧ 나의 안전확인 -->
+<!--
+  [변경 이력]
+    v1: PPE / 체크리스트 / VR 교육 3항목, 전부 정적 뱃지
+    v2: 체크리스트 완료 여부 동적
+    v3: PPE 항목 제거 (→ 체크리스트 카테고리 0번으로 이동)
+        VR 교육 뱃지 동적화
+
+  [컨텍스트]
+    safety_checklist_done_today (bool) — dashboard/views.py 에서 주입
+    vr_training_done_today      (bool) — dashboard/views.py 에서 주입
+-->
+<div id="section-08-safety" class="panel-section">
+  <div class="panel-title">나의 안전확인</div>
+
+  <div class="safety-item">
+    <span class="label">안전 확인 체크리스트</span>
+    {% if safety_checklist_done_today %}
+      <span class="safety-badge done">완료</span>
+    {% else %}
+      <span class="safety-badge pending">미완료</span>
+    {% endif %}
+  </div>
+
+  <div class="safety-item">
+    <span class="label">VR 교육</span>
+    {% if vr_training_done_today %}
+      <span class="safety-badge done">완료</span>
+    {% else %}
+      <span class="safety-badge pending">미완료</span>
+    {% endif %}
+  </div>
+
+  <a href="{% url 'safety:checklist' %}" class="safety-action">
+    나의 안전 확인 바로가기
+  </a>
+</div>

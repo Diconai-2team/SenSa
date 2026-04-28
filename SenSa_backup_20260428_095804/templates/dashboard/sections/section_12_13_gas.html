@@ -1,0 +1,41 @@
+<!-- section_12_13_gas.html — ⑫ 가스 테이블(9종) + ⑬ 가스 차트
+     Step 1A: 하드코딩 탭(가스1/2/3) → DB 기반 동적 페이지네이션
+              ‹ / › 버튼으로 가스 센서를 순회. 디바이스 이름은 제목에 동적 표시. -->
+
+<!-- ⑫ 유해가스 위험 현황 -->
+<div id="section-12-gas-table" class="bottom-panel">
+  <div class="bottom-panel-title">
+    <span>유해가스 위험 현황 — <span id="gas-current-name" class="sensor-pager-name">…</span></span>
+    <div class="sensor-pager">
+      <button class="sensor-pager-btn" id="gas-pager-prev" type="button" aria-label="이전 센서" disabled>‹</button>
+      <span class="sensor-pager-index"><span id="gas-pager-cur">0</span> / <span id="gas-pager-total">0</span></span>
+      <button class="sensor-pager-btn" id="gas-pager-next" type="button" aria-label="다음 센서" disabled>›</button>
+    </div>
+  </div>
+  <table class="data-table" id="gas-status-table">
+    <colgroup>
+      <col style="width: 35%;">  <!-- 가스 종류 -->
+      <col style="width: 25%;">  <!-- 현재 농도 -->
+      <col style="width: 15%;">  <!-- 단위 -->
+      <col style="width: 25%;">  <!-- 위험도 -->
+    </colgroup>
+    <thead><tr><th>가스 종류</th><th>현재 농도</th><th>단위</th><th>위험도</th></tr></thead>
+    <tbody>
+      <tr><td class="gas-name">O₂<span class="gas-ko">산소</span></td><td class="gas-value" id="val-o2">20.9</td><td class="gas-unit">%</td><td><span class="status-badge status-normal" id="badge-o2">정상</span></td></tr>
+      <tr><td class="gas-name">CO<span class="gas-ko">일산화탄소</span></td><td class="gas-value" id="val-co">12</td><td class="gas-unit">ppm</td><td><span class="status-badge status-normal" id="badge-co">정상</span></td></tr>
+      <tr><td class="gas-name">CO₂<span class="gas-ko">이산화탄소</span></td><td class="gas-value" id="val-co2">600</td><td class="gas-unit">ppm</td><td><span class="status-badge status-normal" id="badge-co2">정상</span></td></tr>
+      <tr><td class="gas-name">H₂S<span class="gas-ko">황화수소</span></td><td class="gas-value" id="val-h2s">0.3</td><td class="gas-unit">ppm</td><td><span class="status-badge status-normal" id="badge-h2s">정상</span></td></tr>
+      <tr><td class="gas-name">NO₂<span class="gas-ko">이산화질소</span></td><td class="gas-value" id="val-no2">0.04</td><td class="gas-unit">ppm</td><td><span class="status-badge status-normal" id="badge-no2">정상</span></td></tr>
+      <tr><td class="gas-name">SO₂<span class="gas-ko">이산화황</span></td><td class="gas-value" id="val-so2">0.2</td><td class="gas-unit">ppm</td><td><span class="status-badge status-normal" id="badge-so2">정상</span></td></tr>
+      <tr><td class="gas-name">O₃<span class="gas-ko">오존</span></td><td class="gas-value" id="val-o3">0.02</td><td class="gas-unit">ppm</td><td><span class="status-badge status-normal" id="badge-o3">정상</span></td></tr>
+      <tr><td class="gas-name">NH₃<span class="gas-ko">암모니아</span></td><td class="gas-value" id="val-nh3">8</td><td class="gas-unit">ppm</td><td><span class="status-badge status-normal" id="badge-nh3">정상</span></td></tr>
+      <tr><td class="gas-name">VOC<span class="gas-ko">휘발성유기</span></td><td class="gas-value" id="val-voc">0.15</td><td class="gas-unit">ppm</td><td><span class="status-badge status-normal" id="badge-voc">정상</span></td></tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- ⑬ AI 예측 - 유해가스 -->
+<div id="section-13-gas-chart" class="bottom-panel">
+  <div class="bottom-panel-title">AI 예측 - 유해가스 위험<a class="detail-link" style="font-size:10px;">+ 상세보기</a></div>
+  <div class="chart-area"><canvas id="chart-gas"></canvas></div>
+</div>

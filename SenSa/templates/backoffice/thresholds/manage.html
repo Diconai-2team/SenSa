@@ -1,0 +1,223 @@
+{% extends "backoffice/base.html" %}
+{% load static %}
+{% block title %}임계치 기준 관리 — 백오피스{% endblock %}
+
+{% block content %}
+<div class="bo-breadcrumb">
+    <span>기준정보 관리</span>
+    <span class="bo-breadcrumb-sep">/</span>
+    <span>임계치 기준 관리</span>
+</div>
+<h1 class="bo-page-title">임계치 기준 관리</h1>
+<p class="bo-page-desc">실시간 관제, AI 예측, 알림에 사용되는 측정 항목별 임계치를 관리합니다. 변경 사항은 데이터 생성기에 자동 반영됩니다.</p>
+
+<div class="bo-master-layout">
+
+  <div class="bo-card">
+    <div class="bo-flex-between" style="margin-bottom:12px;">
+      <h3 class="bo-mt-0" style="font-size:14px;font-weight:600;margin:0;">임계치 분류</h3>
+      <button type="button" class="bo-btn bo-btn-sm bo-btn-primary" id="bo-tc-add">+ 분류</button>
+    </div>
+    <ul class="bo-master-tree" id="bo-tc-tree">
+      {% for c in categories %}
+      <li data-tc-id="{{ c.id }}" data-tc-name="{{ c.name }}" {% if c.is_system %}class="is-system"{% endif %}>
+        <span>{{ c.name }}</span>
+        <span class="bo-tree-code">{{ c.code }}</span>
+      </li>
+      {% empty %}
+      <li class="bo-text-subtle" style="cursor:default;">등록된 분류가 없습니다.</li>
+      {% endfor %}
+    </ul>
+  </div>
+
+  <div id="bo-tc-detail">
+    <div class="bo-card" id="bo-tc-empty">
+      <div class="bo-table-empty">좌측에서 분류를 선택해 주세요.</div>
+    </div>
+
+    <div id="bo-tc-info-card" class="bo-card" style="display:none;">
+      <div class="bo-flex-between">
+        <h3 class="bo-mt-0" id="bo-tc-name" style="font-size:15px;font-weight:600;margin:0;"></h3>
+        <button type="button" class="bo-btn bo-btn-sm" id="bo-tc-edit">분류 수정</button>
+      </div>
+      <dl class="bo-info-grid">
+        <div><dt>분류 코드</dt><dd id="bo-tc-code">-</dd></div>
+        <div><dt>등록 항목 수</dt><dd id="bo-tc-count">-</dd></div>
+        <div><dt>반영 범위</dt><dd id="bo-tc-applies">-</dd></div>
+        <div><dt>최근 수정</dt><dd id="bo-tc-updated">-</dd></div>
+      </dl>
+    </div>
+
+    <div id="bo-th-card" class="bo-card bo-mt-16" style="display:none;">
+      <div class="bo-table-toolbar">
+        <div class="bo-table-toolbar-left">
+          <span>임계치 항목 <strong id="bo-th-count">0</strong></span>
+          <button type="button" class="bo-btn bo-btn-sm bo-btn-warning" id="bo-th-toggle-off" disabled>미사용 전환</button>
+          <button type="button" class="bo-btn bo-btn-sm" id="bo-th-toggle-on" disabled>사용 전환</button>
+          <button type="button" class="bo-btn bo-btn-sm bo-btn-danger" id="bo-th-bulk-delete" disabled>삭제</button>
+        </div>
+        <button type="button" class="bo-btn bo-btn-sm bo-btn-primary" id="bo-th-add">+ 항목 등록</button>
+      </div>
+
+      <table class="bo-table" id="bo-th-table">
+        <colgroup>
+          <col style="width:38px;"><col style="width:120px;"><col style="width:140px;"><col style="width:80px;"><col style="width:80px;"><col style="width:90px;"><col style="width:90px;"><col><col style="width:80px;"><col style="width:80px;">
+        </colgroup>
+        <thead>
+          <tr>
+            <th><input type="checkbox" class="bo-checkbox" id="bo-th-check-all"></th>
+            <th>항목 코드</th>
+            <th>항목명</th>
+            <th>단위</th>
+            <th>조건</th>
+            <th>주의값</th>
+            <th>위험값</th>
+            <th>반영 범위</th>
+            <th>사용 여부</th>
+            <th>관리</th>
+          </tr>
+        </thead>
+        <tbody id="bo-th-body"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+{# ── 분류 등록/수정 모달 ── #}
+<div class="bo-modal-backdrop" id="bo-tc-modal" data-mode="create">
+  <div class="bo-modal">
+    <div class="bo-modal-header">
+      <h2 class="bo-modal-title" data-create-only>임계치 분류 등록</h2>
+      <h2 class="bo-modal-title" data-edit-only style="display:none;">임계치 분류 수정</h2>
+    </div>
+    <form id="bo-tc-form" novalidate>
+      <input type="hidden" name="id" value="">
+      <div class="bo-modal-body">
+        <div class="bo-modal-grid">
+          <div class="bo-field" data-field="code">
+            <label>분류 코드 <span class="bo-required">*</span></label>
+            <input type="text" name="code" maxlength="50" placeholder="예: TH_GAS">
+            <div class="bo-field-error"></div>
+          </div>
+          <div class="bo-field" data-field="name">
+            <label>분류명 <span class="bo-required">*</span></label>
+            <input type="text" name="name" maxlength="50" placeholder="예: 유해가스">
+            <div class="bo-field-error"></div>
+          </div>
+          <div class="bo-field" data-field="sort_order">
+            <label>정렬 순서</label>
+            <input type="number" name="sort_order" min="1" max="99999">
+            <div class="bo-field-error"></div>
+          </div>
+          <div class="bo-field" data-field="is_active">
+            <label style="display:flex;align-items:center;gap:8px;">
+              <input type="checkbox" name="is_active" class="bo-checkbox" checked>
+              <span>사용</span>
+            </label>
+          </div>
+          <div class="bo-field bo-field-full" data-field="applies_to">
+            <label>반영 범위</label>
+            <div class="bo-checkgroup">
+              <label><input type="checkbox" class="bo-checkbox" name="applies_to_realtime" value="realtime"> 실시간 관제</label>
+              <label><input type="checkbox" class="bo-checkbox" name="applies_to_ai_predict" value="ai_predict"> AI 예측</label>
+              <label><input type="checkbox" class="bo-checkbox" name="applies_to_alarm" value="alarm"> 알림</label>
+            </div>
+            <div class="bo-field-error"></div>
+          </div>
+          <div class="bo-field bo-field-full" data-field="description">
+            <label>설명</label>
+            <textarea name="description" maxlength="500"></textarea>
+            <div class="bo-field-error"></div>
+          </div>
+        </div>
+      </div>
+      <div class="bo-modal-footer">
+        <button type="button" class="bo-btn" data-close-modal>취소</button>
+        <button type="submit" class="bo-btn bo-btn-primary">저장</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+{# ── 임계치 항목 등록/수정 모달 ── #}
+<div class="bo-modal-backdrop" id="bo-th-modal" data-mode="create">
+  <div class="bo-modal">
+    <div class="bo-modal-header">
+      <h2 class="bo-modal-title" data-create-only>임계치 항목 등록</h2>
+      <h2 class="bo-modal-title" data-edit-only style="display:none;">임계치 항목 수정</h2>
+      <p class="bo-modal-desc">측정 항목 코드는 데이터 생성기의 키와 일치해야 합니다 (예: co, h2s, current).</p>
+    </div>
+    <form id="bo-th-form" novalidate>
+      <input type="hidden" name="id" value="">
+      <input type="hidden" name="category_id" value="">
+      <div class="bo-modal-body">
+        <div class="bo-modal-grid">
+          <div class="bo-field" data-field="item_code">
+            <label>항목 코드 <span class="bo-required">*</span></label>
+            <input type="text" name="item_code" maxlength="50" placeholder="예: co">
+            <div class="bo-field-error"></div>
+          </div>
+          <div class="bo-field" data-field="item_name">
+            <label>항목명 <span class="bo-required">*</span></label>
+            <input type="text" name="item_name" maxlength="50" placeholder="예: 일산화탄소">
+            <div class="bo-field-error"></div>
+          </div>
+          <div class="bo-field" data-field="unit">
+            <label>단위 <span class="bo-required">*</span></label>
+            <input type="text" name="unit" maxlength="20" placeholder="예: ppm">
+            <div class="bo-field-error"></div>
+          </div>
+          <div class="bo-field" data-field="operator">
+            <label>판단 조건 <span class="bo-required">*</span></label>
+            <select name="operator">
+              <option value="">선택하세요</option>
+              <option value="over">초과 (값이 클 때 위험)</option>
+              <option value="under">이하 (값이 작을 때 위험)</option>
+            </select>
+            <div class="bo-field-error"></div>
+          </div>
+          <div class="bo-field" data-field="caution_value">
+            <label>주의값 <span class="bo-required">*</span></label>
+            <input type="number" step="any" name="caution_value">
+            <div class="bo-field-error"></div>
+          </div>
+          <div class="bo-field" data-field="danger_value">
+            <label>위험값 <span class="bo-required">*</span></label>
+            <input type="number" step="any" name="danger_value">
+            <div class="bo-field-error"></div>
+          </div>
+          <div class="bo-field bo-field-full" data-field="applies_to">
+            <label>반영 범위 <span class="bo-required">*</span></label>
+            <div class="bo-checkgroup">
+              <label><input type="checkbox" class="bo-checkbox" name="applies_to_realtime" value="realtime" checked> 실시간 관제</label>
+              <label><input type="checkbox" class="bo-checkbox" name="applies_to_ai_predict" value="ai_predict"> AI 예측</label>
+              <label><input type="checkbox" class="bo-checkbox" name="applies_to_alarm" value="alarm" checked> 알림</label>
+            </div>
+            <div class="bo-field-error"></div>
+          </div>
+          <div class="bo-field" data-field="is_active">
+            <label style="display:flex;align-items:center;gap:8px;">
+              <input type="checkbox" name="is_active" class="bo-checkbox" checked>
+              <span>사용</span>
+            </label>
+          </div>
+          <div class="bo-field bo-field-full" data-field="description">
+            <label>설명</label>
+            <textarea name="description" maxlength="500"></textarea>
+            <div class="bo-field-error"></div>
+          </div>
+        </div>
+      </div>
+      <div class="bo-modal-footer">
+        <button type="button" class="bo-btn" data-close-modal>취소</button>
+        <button type="submit" class="bo-btn bo-btn-primary">저장</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'js/backoffice/thresholds.js' %}"></script>
+{% endblock %}
