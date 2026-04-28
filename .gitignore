@@ -42,3 +42,44 @@ docker-compose.override.yml
 
 # Mac 시스템 파일
 .DS_Store
+# 백업 폴더 (절대 푸쉬 금지)
+SenSa_backup_*/
+fastapi_generator_backup_*/
+
+# 배포 zip 및 스크립트 (개인 환경용)
+backoffice_v*.zip
+backoffice_all.zip
+apply.sh
+apply.sh.*
+apply.bat
+README_v*.md
+
+# 템플릿 백업
+*.before_fix
+*.broken
+*.original
+
+# git 임시
+FETCH_HEAD
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Django DB (절대 푸쉬 금지)
+*.sqlite3
+*.sqlite3.backup*
+*.db
+
+# 가상환경
+venv/
+.venv/
+
+# 미디어/정적
+media/
+staticfiles/
+
+# 환경변수
+.env
+.env.local
