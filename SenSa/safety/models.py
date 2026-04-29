@@ -26,44 +26,63 @@ safety/models.py — 작업 전 안전 확인 체크리스트 기록
   - 항목 정의가 나중에 바뀌어도 과거 기록은 해당 날짜의 key 목록 그대로 남음
 """
 
+# Django 설정 파일(settings.py)에서 값을 참조하기 위한 모듈 — AUTH_USER_MODEL 등에 사용
 from django.conf import settings
+
+# Django ORM 모델을 정의하기 위한 기반 모듈
 from django.db import models
 
 
+# 작업 전 안전 확인 체크리스트 제출 기록을 저장하는 모델
+# 사용자(user)와 날짜(check_date) 조합 하나당 DB에 1개의 레코드만 존재함
 class SafetyChecklist(models.Model):
     """작업 전 안전 확인 체크리스트 — 사용자 × 날짜 단위 1건"""
 
+    # 어떤 사용자가 체크리스트를 제출했는지 연결하는 외래키(FK)
+    # 사용자가 삭제되면 해당 사용자의 체크리스트 기록도 함께 삭제(CASCADE)
+    # settings.AUTH_USER_MODEL을 참조해 커스텀 유저 모델과도 호환 가능
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
         related_name="safety_checklists",
         verbose_name="사용자",
     )
+    # 어느 날짜의 작업 전 점검인지를 나타내는 날짜 필드 (YYYY-MM-DD)
+    # auto_now_add를 쓰지 않고 명시적으로 저장해서, 제출 시각과 점검 날짜를 분리함
     check_date = models.DateField(
         verbose_name="점검 날짜",
         help_text="YYYY-MM-DD. 해당 날짜의 작업 전 점검 1회 기록",
     )
+    # 사용자가 체크한 항목들의 key 값을 JSON 배열로 저장하는 필드
+    # 예: ["1_1", "1_2", "2_1"] — checklist_data.py에 정의된 항목 key와 대응
+    # 기본값은 빈 리스트이며, 항목 정의가 변경되어도 과거 기록은 영향받지 않음
     checked_items = models.JSONField(
         default=list,
         verbose_name="체크된 항목 목록",
         help_text='["1_1", "1_2", ...] 형태. checklist_data.CHECKLIST_ITEMS 의 item.key',
     )
+    # 레코드가 처음 생성된 시각을 자동으로 기록하는 필드 (이후 수정 불가)
     completed_at = models.DateTimeField(
         auto_now_add=True,
         verbose_name="최초 완료 시각",
     )
+    # 레코드가 저장될 때마다 현재 시각으로 자동 갱신되는 필드
     updated_at = models.DateTimeField(
         auto_now=True,
         verbose_name="최근 수정 시각",
     )
 
     class Meta:
+        # 데이터베이스에서 실제로 사용될 테이블 이름을 명시적으로 지정
         db_table = "safety_checklist"
+        # 관리자 페이지 등에서 표시될 단수/복수 이름
         verbose_name = "안전 확인 체크리스트"
         verbose_name_plural = "안전 확인 체크리스트 목록"
+        # 기본 정렬: 최신 날짜 우선, 같은 날짜 안에서는 완료 시각 최신순
         ordering = ["-check_date", "-completed_at"]
         constraints = [
             # 사용자 1명이 같은 날짜에 여러 건 만들지 못하도록
+            # (user, check_date) 쌍에 UNIQUE 제약 조건을 걸어 중복 insert를 DB 레벨에서 차단
             models.UniqueConstraint(
                 fields=["user", "check_date"],
                 name="uniq_safety_checklist_per_user_per_day",
@@ -71,8 +90,11 @@ class SafetyChecklist(models.Model):
         ]
         indexes = [
             # 대시보드에서 "오늘 완료했나?" 조회 최적화
+            # user 기준 필터 + check_date 최신순 정렬 쿼리를 빠르게 처리하기 위한 복합 인덱스
             models.Index(fields=["user", "-check_date"]),
         ]
 
     def __str__(self):
+        # 관리자 페이지나 쉘에서 객체를 출력할 때 보여줄 문자열 표현
+        # 예: "홍길동 — 2026-04-29 (12개 체크)"
         return f"{self.user.username} — {self.check_date} ({len(self.checked_items)}개 체크)"
