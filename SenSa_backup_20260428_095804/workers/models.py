@@ -16,13 +16,14 @@ workers/models.py — 현장 작업자 + 위치 시계열 + 알림 로그
        - Worker: position, email, phone, last_seen_at 필드 추가
        - NotificationLog 모델 신규 (관리자 → 작업자 푸시 이력)
 """
+
 from django.conf import settings
 from django.db import models
 
 
 MOVEMENT_STATUS_CHOICES = [
-    ('moving', '이동'),
-    ('stationary', '정지'),
+    ("moving", "이동"),
+    ("stationary", "정지"),
 ]
 
 
@@ -43,25 +44,25 @@ class Worker(models.Model):
     department = models.CharField(
         max_length=100,
         blank=True,
-        default='',
+        default="",
         help_text="소속 부서",
     )
     # ─── Phase 4A 신규 ───
     position = models.CharField(
         max_length=50,
         blank=True,
-        default='',
+        default="",
         help_text="직급 (사원/대리/과장 등)",
     )
     email = models.EmailField(
         blank=True,
-        default='',
+        default="",
         help_text="이메일",
     )
     phone = models.CharField(
         max_length=20,
         blank=True,
-        default='',
+        default="",
         help_text="연락처",
     )
     last_seen_at = models.DateTimeField(
@@ -81,9 +82,9 @@ class Worker(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        ordering = ['worker_id']
-        verbose_name = '작업자'
-        verbose_name_plural = '작업자 목록'
+        ordering = ["worker_id"]
+        verbose_name = "작업자"
+        verbose_name_plural = "작업자 목록"
 
     def __str__(self):
         return f"{self.name} ({self.worker_id})"
@@ -95,7 +96,7 @@ class WorkerLocation(models.Model):
     worker = models.ForeignKey(
         Worker,
         on_delete=models.CASCADE,
-        related_name='locations',
+        related_name="locations",
         help_text="소속 작업자",
     )
     x = models.FloatField(help_text="평면도 X 좌표")
@@ -103,16 +104,16 @@ class WorkerLocation(models.Model):
     movement_status = models.CharField(
         max_length=20,
         choices=MOVEMENT_STATUS_CHOICES,
-        default='moving',
+        default="moving",
     )
     timestamp = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        ordering = ['-timestamp']
-        verbose_name = '작업자 위치'
-        verbose_name_plural = '작업자 위치 이력'
+        ordering = ["-timestamp"]
+        verbose_name = "작업자 위치"
+        verbose_name_plural = "작업자 위치 이력"
         indexes = [
-            models.Index(fields=['worker', '-timestamp']),
+            models.Index(fields=["worker", "-timestamp"]),
         ]
 
     def __str__(self):
@@ -122,6 +123,7 @@ class WorkerLocation(models.Model):
 # ═══════════════════════════════════════════════════════════
 # Phase 4A 신규 — 관리자 → 작업자 푸시 알림 로그
 # ═══════════════════════════════════════════════════════════
+
 
 class NotificationLog(models.Model):
     """
@@ -136,16 +138,16 @@ class NotificationLog(models.Model):
     """
 
     SEND_TYPE_CHOICES = [
-        ('single', '개별'),
-        ('selected', '선택'),
-        ('all', '전체'),
+        ("single", "개별"),
+        ("selected", "선택"),
+        ("all", "전체"),
     ]
 
     sender = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
         null=True,
-        related_name='sent_notifications',
+        related_name="sent_notifications",
         help_text="알림을 보낸 관리자 (로그인 사용자)",
     )
     send_type = models.CharField(
@@ -155,7 +157,7 @@ class NotificationLog(models.Model):
     )
     recipients = models.ManyToManyField(
         Worker,
-        related_name='received_notifications',
+        related_name="received_notifications",
         help_text="수신 대상 작업자 (스냅샷)",
     )
     message = models.TextField(
@@ -165,12 +167,12 @@ class NotificationLog(models.Model):
     sent_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        ordering = ['-sent_at']
-        verbose_name = '알림 전송 이력'
-        verbose_name_plural = '알림 전송 이력 목록'
+        ordering = ["-sent_at"]
+        verbose_name = "알림 전송 이력"
+        verbose_name_plural = "알림 전송 이력 목록"
         indexes = [
-            models.Index(fields=['-sent_at']),
+            models.Index(fields=["-sent_at"]),
         ]
 
     def __str__(self):
-        return f'[{self.get_send_type_display()}] {self.message[:30]}'
+        return f"[{self.get_send_type_display()}] {self.message[:30]}"

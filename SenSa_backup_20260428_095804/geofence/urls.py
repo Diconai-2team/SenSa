@@ -3,8 +3,8 @@ from rest_framework.routers import DefaultRouter
 from . import views
 
 router = DefaultRouter()
-router.register(r'geofence', views.GeoFenceViewSet, basename='geofence')
+router.register(r"geofence", views.GeoFenceViewSet, basename="geofence")
 
 urlpatterns = [
-    path('', include(router.urls)),
+    path("", include(router.urls)),
 ]

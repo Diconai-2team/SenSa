@@ -22,6 +22,7 @@ main.py — FastAPI 애플리케이션 진입점
   source .venv/bin/activate
   uvicorn main:app --host 127.0.0.1 --port 8001
 """
+
 import asyncio
 from contextlib import asynccontextmanager
 
@@ -35,6 +36,7 @@ from scheduler import run_simulation_loop
 # ═══════════════════════════════════════════════════════════
 # Lifespan — 기동/종료 시점 훅
 # ═══════════════════════════════════════════════════════════
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -54,7 +56,9 @@ async def lifespan(app: FastAPI):
         run_simulation_loop(app.state),
         name="sim_loop",
     )
-    print(f"[main] FastAPI 기동 완료 (scenario={app.state.scenario}, tick={TICK_INTERVAL}s)")
+    print(
+        f"[main] FastAPI 기동 완료 (scenario={app.state.scenario}, tick={TICK_INTERVAL}s)"
+    )
 
     try:
         yield
@@ -78,7 +82,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="SenSa Simulation Generator",
     description="1초 주기로 센서/작업자 데이터를 생성해 Django 로 POST",
-    version="0.7.0",   # Phase E7
+    version="0.7.0",  # Phase E7
     lifespan=lifespan,
 )
 
@@ -108,6 +112,7 @@ app.add_middleware(
 # ═══════════════════════════════════════════════════════════
 # HTTP 엔드포인트
 # ═══════════════════════════════════════════════════════════
+
 
 @app.get("/")
 async def root():

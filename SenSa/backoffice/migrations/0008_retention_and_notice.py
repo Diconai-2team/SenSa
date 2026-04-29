@@ -9,51 +9,168 @@ class Migration(migrations.Migration):
 
     dependencies = [
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
-        ('backoffice', '0007_seed_notification_and_menu'),
+        ("backoffice", "0007_seed_notification_and_menu"),
     ]
 
     operations = [
         migrations.CreateModel(
-            name='DataRetentionPolicy',
+            name="DataRetentionPolicy",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('target', models.CharField(choices=[('sensor_data', '센서 측정값 (devices.SensorData)'), ('worker_location', '작업자 위치 (workers.WorkerLocation)'), ('alarms', '알람 (alerts.Alarm)'), ('notification_logs', '알림 발송 이력 (backoffice.NotificationLog)'), ('audit_logs', '감사 로그 (예정)')], max_length=30, unique=True, verbose_name='대상 데이터')),
-                ('retention_days', models.IntegerField(default=90, help_text='이 기간 이전 데이터는 삭제 대상', verbose_name='보관 기간 (일)')),
-                ('is_active', models.BooleanField(default=True, verbose_name='정책 활성화')),
-                ('last_run_at', models.DateTimeField(blank=True, null=True, verbose_name='최근 정리 일시')),
-                ('last_run_deleted', models.IntegerField(default=0, verbose_name='최근 삭제 건수')),
-                ('description', models.TextField(blank=True, default='')),
-                ('updated_at', models.DateTimeField(auto_now=True)),
-                ('updated_by', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='updated_retention_policies', to=settings.AUTH_USER_MODEL)),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                (
+                    "target",
+                    models.CharField(
+                        choices=[
+                            ("sensor_data", "센서 측정값 (devices.SensorData)"),
+                            ("worker_location", "작업자 위치 (workers.WorkerLocation)"),
+                            ("alarms", "알람 (alerts.Alarm)"),
+                            (
+                                "notification_logs",
+                                "알림 발송 이력 (backoffice.NotificationLog)",
+                            ),
+                            ("audit_logs", "감사 로그 (예정)"),
+                        ],
+                        max_length=30,
+                        unique=True,
+                        verbose_name="대상 데이터",
+                    ),
+                ),
+                (
+                    "retention_days",
+                    models.IntegerField(
+                        default=90,
+                        help_text="이 기간 이전 데이터는 삭제 대상",
+                        verbose_name="보관 기간 (일)",
+                    ),
+                ),
+                (
+                    "is_active",
+                    models.BooleanField(default=True, verbose_name="정책 활성화"),
+                ),
+                (
+                    "last_run_at",
+                    models.DateTimeField(
+                        blank=True, null=True, verbose_name="최근 정리 일시"
+                    ),
+                ),
+                (
+                    "last_run_deleted",
+                    models.IntegerField(default=0, verbose_name="최근 삭제 건수"),
+                ),
+                ("description", models.TextField(blank=True, default="")),
+                ("updated_at", models.DateTimeField(auto_now=True)),
+                (
+                    "updated_by",
+                    models.ForeignKey(
+                        blank=True,
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="updated_retention_policies",
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
             ],
             options={
-                'verbose_name': '운영 데이터 보관 정책',
-                'verbose_name_plural': '운영 데이터 보관 정책',
-                'ordering': ['target'],
+                "verbose_name": "운영 데이터 보관 정책",
+                "verbose_name_plural": "운영 데이터 보관 정책",
+                "ordering": ["target"],
             },
         ),
         migrations.CreateModel(
-            name='Notice',
+            name="Notice",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('title', models.CharField(max_length=200, verbose_name='제목')),
-                ('category', models.CharField(choices=[('system', '시스템 공지'), ('safety', '안전 안내'), ('event', '이벤트/행사'), ('maintenance', '정기 점검'), ('other', '기타')], default='system', max_length=20, verbose_name='카테고리')),
-                ('content', models.TextField(verbose_name='내용')),
-                ('is_pinned', models.BooleanField(default=False, verbose_name='상단 고정')),
-                ('is_published', models.BooleanField(default=True, verbose_name='게시 중')),
-                ('published_from', models.DateTimeField(blank=True, null=True, verbose_name='게시 시작일시')),
-                ('published_to', models.DateTimeField(blank=True, null=True, verbose_name='게시 종료일시')),
-                ('view_count', models.IntegerField(default=0, verbose_name='조회수')),
-                ('created_at', models.DateTimeField(auto_now_add=True)),
-                ('updated_at', models.DateTimeField(auto_now=True)),
-                ('created_by', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='created_notices', to=settings.AUTH_USER_MODEL)),
-                ('updated_by', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='updated_notices', to=settings.AUTH_USER_MODEL)),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                ("title", models.CharField(max_length=200, verbose_name="제목")),
+                (
+                    "category",
+                    models.CharField(
+                        choices=[
+                            ("system", "시스템 공지"),
+                            ("safety", "안전 안내"),
+                            ("event", "이벤트/행사"),
+                            ("maintenance", "정기 점검"),
+                            ("other", "기타"),
+                        ],
+                        default="system",
+                        max_length=20,
+                        verbose_name="카테고리",
+                    ),
+                ),
+                ("content", models.TextField(verbose_name="내용")),
+                (
+                    "is_pinned",
+                    models.BooleanField(default=False, verbose_name="상단 고정"),
+                ),
+                (
+                    "is_published",
+                    models.BooleanField(default=True, verbose_name="게시 중"),
+                ),
+                (
+                    "published_from",
+                    models.DateTimeField(
+                        blank=True, null=True, verbose_name="게시 시작일시"
+                    ),
+                ),
+                (
+                    "published_to",
+                    models.DateTimeField(
+                        blank=True, null=True, verbose_name="게시 종료일시"
+                    ),
+                ),
+                ("view_count", models.IntegerField(default=0, verbose_name="조회수")),
+                ("created_at", models.DateTimeField(auto_now_add=True)),
+                ("updated_at", models.DateTimeField(auto_now=True)),
+                (
+                    "created_by",
+                    models.ForeignKey(
+                        blank=True,
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="created_notices",
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
+                (
+                    "updated_by",
+                    models.ForeignKey(
+                        blank=True,
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="updated_notices",
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
             ],
             options={
-                'verbose_name': '공지사항',
-                'verbose_name_plural': '공지사항 목록',
-                'ordering': ['-is_pinned', '-created_at'],
-                'indexes': [models.Index(fields=['-is_pinned', '-created_at'], name='backoffice__is_pinn_4d412c_idx'), models.Index(fields=['category', '-created_at'], name='backoffice__categor_41bbff_idx')],
+                "verbose_name": "공지사항",
+                "verbose_name_plural": "공지사항 목록",
+                "ordering": ["-is_pinned", "-created_at"],
+                "indexes": [
+                    models.Index(
+                        fields=["-is_pinned", "-created_at"],
+                        name="backoffice__is_pinn_4d412c_idx",
+                    ),
+                    models.Index(
+                        fields=["category", "-created_at"],
+                        name="backoffice__categor_41bbff_idx",
+                    ),
+                ],
             },
         ),
     ]

@@ -14,6 +14,7 @@ mysite/middleware.py — 미들웨어 모음
   - InternalAPIKeyMiddleware 는 AuthenticationMiddleware 뒤에 위치해야 request.user 를 덮어쓸 수 있음
   - DevStaticNoCacheMiddleware 는 응답 단계에서 헤더만 추가하므로 위치 영향 적음
 """
+
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.utils.deprecation import MiddlewareMixin
@@ -22,13 +23,15 @@ from django.utils.deprecation import MiddlewareMixin
 class InternalAPIKeyMiddleware(MiddlewareMixin):
     """내부 서비스 전용 API 키 인증"""
 
-    HEADER_NAME = 'HTTP_X_INTERNAL_API_KEY'  # Django는 헤더 HTTP_ 프리픽스 + 대문자 변환
-    SERVICE_USERNAME = '__internal_fastapi__'
+    HEADER_NAME = (
+        "HTTP_X_INTERNAL_API_KEY"  # Django는 헤더 HTTP_ 프리픽스 + 대문자 변환
+    )
+    SERVICE_USERNAME = "__internal_fastapi__"
 
     def process_request(self, request):
         # 설정 확인
-        expected = getattr(settings, 'INTERNAL_API_KEY', '')
-        allowed_paths = getattr(settings, 'INTERNAL_API_ALLOWED_PATHS', [])
+        expected = getattr(settings, "INTERNAL_API_KEY", "")
+        allowed_paths = getattr(settings, "INTERNAL_API_ALLOWED_PATHS", [])
         if not expected or not allowed_paths:
             return None
 
@@ -37,7 +40,7 @@ class InternalAPIKeyMiddleware(MiddlewareMixin):
             return None
 
         # 2. 키 검사
-        provided = request.META.get(self.HEADER_NAME, '')
+        provided = request.META.get(self.HEADER_NAME, "")
         if not provided or provided != expected:
             return None
 
@@ -46,8 +49,8 @@ class InternalAPIKeyMiddleware(MiddlewareMixin):
         service_user, _ = User.objects.get_or_create(
             username=self.SERVICE_USERNAME,
             defaults={
-                'is_active': True,
-                'is_staff': False,
+                "is_active": True,
+                "is_staff": False,
             },
         )
         request.user = service_user
@@ -94,11 +97,11 @@ class DevStaticNoCacheMiddleware(MiddlewareMixin):
             return response
 
         path = request.path
-        static_url = getattr(settings, 'STATIC_URL', '/static/') or '/static/'
-        media_url  = getattr(settings, 'MEDIA_URL',  '/media/')  or '/media/'
+        static_url = getattr(settings, "STATIC_URL", "/static/") or "/static/"
+        media_url = getattr(settings, "MEDIA_URL", "/media/") or "/media/"
 
         if path.startswith(static_url) or path.startswith(media_url):
-            response['Cache-Control'] = 'no-cache, no-store, must-revalidate, max-age=0'
-            response['Pragma'] = 'no-cache'
-            response['Expires'] = '0'
+            response["Cache-Control"] = "no-cache, no-store, must-revalidate, max-age=0"
+            response["Pragma"] = "no-cache"
+            response["Expires"] = "0"
         return response

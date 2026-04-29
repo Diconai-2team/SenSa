@@ -14,13 +14,19 @@ backoffice/models.py — 백오피스 마스터 모델
   accounts.User.organization  → Organization (FK, nullable)
   accounts.User.position_obj  → Position (FK, nullable)
 """
+
 from django.conf import settings
+
+# AUTH_USER_MODEL 등 Django 설정을 참조할 때 사용.
 from django.db import models
+
+# Django ORM의 기본 모델 클래스 및 필드 타입 모음.
 
 
 # ═══════════════════════════════════════════════════════════
 # 조직 (회사 + 부서)
 # ═══════════════════════════════════════════════════════════
+
 
 class Organization(models.Model):
     """
@@ -32,73 +38,100 @@ class Organization(models.Model):
 
     name 은 unique 가 아님 — 같은 회사 안의 부서끼리만 unique 권장(unique_together).
     """
+
+    # 조직/부서 노드 하나를 표현하는 모델. parent가 None이면 최상위(회사), 있으면 부서.
     name = models.CharField(
         max_length=100,
-        verbose_name='조직명',
-        help_text='회사명 또는 부서명',
+        verbose_name="조직명",
+        help_text="회사명 또는 부서명",
     )
+    # 조직의 이름. 회사명 또는 부서명. 같은 부모 아래에서만 unique 제약(Meta.constraints 참고).
+
     code = models.CharField(
         max_length=50,
         blank=True,
-        default='',
-        verbose_name='부서 코드',
-        help_text='001, 002 ... 같은 식별 코드 (피그마 디자인)',
+        default="",
+        verbose_name="부서 코드",
+        help_text="001, 002 ... 같은 식별 코드 (피그마 디자인)",
     )
+    # 부서 식별 코드 (예: '001', '002'). 없어도 됨(blank=True).
+
     parent = models.ForeignKey(
-        'self',
+        "self",
         on_delete=models.CASCADE,
-        null=True, blank=True,
-        related_name='children',
-        verbose_name='상위 조직',
-        help_text='None 이면 회사(root)',
+        null=True,
+        blank=True,
+        related_name="children",
+        verbose_name="상위 조직",
+        help_text="None 이면 회사(root)",
     )
+    # 부모 조직을 가리키는 자기 참조 FK. None이면 루트(회사). CASCADE이므로 부모 삭제 시 자식도 삭제됨.
+    # children 역참조로 company.children.all() → 소속 부서 목록 조회 가능.
+
     description = models.TextField(
         blank=True,
-        default='',
-        verbose_name='설명',
+        default="",
+        verbose_name="설명",
     )
+    # 조직 설명. 빈 문자열 허용.
+
     leader = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
-        null=True, blank=True,
-        related_name='leading_organizations',
-        verbose_name='조직장',
-        help_text='해당 부서의 조직장 (구성원 중 1명)',
+        null=True,
+        blank=True,
+        related_name="leading_organizations",
+        verbose_name="조직장",
+        help_text="해당 부서의 조직장 (구성원 중 1명)",
     )
+    # 이 조직의 조직장 사용자. 없어도 되며, 조직장이 탈퇴해도 부서는 남음(SET_NULL).
+
     is_unassigned_bucket = models.BooleanField(
         default=False,
-        verbose_name='조직 없음 버킷 여부',
-        help_text='True 인 단일 노드가 부서 미지정 사용자의 자동 소속처',
+        verbose_name="조직 없음 버킷 여부",
+        help_text="True 인 단일 노드가 부서 미지정 사용자의 자동 소속처",
     )
+    # True인 특수 부서. 새 사용자나 부서 삭제로 이동된 사용자가 자동 배정되는 가상 부서.
+    # 전체 시스템에 1건만 존재해야 하며, 삭제/수정이 제한됨.
+
     sort_order = models.IntegerField(
         default=100,
-        verbose_name='정렬 순서',
+        verbose_name="정렬 순서",
     )
+    # 조직 목록 표시 순서. 숫자가 작을수록 위에 표시됨.
+
     created_at = models.DateTimeField(auto_now_add=True)
+    # 조직 생성 일시. 최초 저장 시 자동으로 현재 시각 설정.
     updated_at = models.DateTimeField(auto_now=True)
+    # 조직 수정 일시. 저장할 때마다 자동으로 현재 시각 갱신.
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
-        null=True, blank=True,
-        related_name='created_organizations',
+        null=True,
+        blank=True,
+        related_name="created_organizations",
     )
+    # 조직 생성자. 탈퇴해도 조직은 남음(SET_NULL).
     updated_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
-        null=True, blank=True,
-        related_name='updated_organizations',
+        null=True,
+        blank=True,
+        related_name="updated_organizations",
     )
+    # 마지막 수정자. 탈퇴해도 조직은 남음(SET_NULL).
 
     class Meta:
-        ordering = ['sort_order', 'name']
-        verbose_name = '조직'
-        verbose_name_plural = '조직 목록'
-        # 같은 부모 아래 같은 이름 금지 (회사 트리 안에서 부서명 중복 방지)
+        ordering = ["sort_order", "name"]
+        # 기본 정렬: 정렬 순서 → 이름 순.
+        verbose_name = "조직"
+        verbose_name_plural = "조직 목록"
         constraints = [
             models.UniqueConstraint(
-                fields=['parent', 'name'],
-                name='org_unique_name_per_parent',
+                fields=["parent", "name"],
+                name="org_unique_name_per_parent",
             ),
+            # 같은 부모 조직 아래에서 같은 이름의 부서가 중복되지 않도록 제약.
         ]
 
     def __str__(self):
@@ -107,16 +140,20 @@ class Organization(models.Model):
     @property
     def is_root(self) -> bool:
         return self.parent_id is None
+        # parent_id가 None이면 루트 노드(회사). DB 조회 없이 확인 가능(FK ID 직접 비교).
 
     @property
     def member_count(self) -> int:
         """현재 소속 사용자 수"""
         return self.users.count()
+        # accounts.User.organization의 역참조 'users'로 소속 사용자 수를 반환.
+        # 매 호출마다 DB 쿼리 발생. 목록 화면에서는 annotate로 최적화 권장.
 
 
 # ═══════════════════════════════════════════════════════════
 # 직위
 # ═══════════════════════════════════════════════════════════
+
 
 class Position(models.Model):
     """
@@ -125,45 +162,58 @@ class Position(models.Model):
     피그마 디자인: 대표이사 / 이사 / 부장 / 차장 / 과장 / 대리 / 사원 등
     sort_order 1=최상위 (대표이사), 큰 숫자일수록 하위 직위.
     """
+
+    # 직위(직급) 마스터 테이블. accounts.User.position_obj FK로 참조됨.
     name = models.CharField(
         max_length=50,
         unique=True,
-        verbose_name='직위명',
+        verbose_name="직위명",
     )
+    # 직위 이름. 시스템 전체에서 유일해야 함(unique=True).
+
     sort_order = models.IntegerField(
         default=100,
-        verbose_name='정렬 순서',
-        help_text='작을수록 상위 직위 (대표이사=1)',
+        verbose_name="정렬 순서",
+        help_text="작을수록 상위 직위 (대표이사=1)",
     )
+    # 직위 계층 순서. 숫자가 작을수록 높은 직위 (대표이사=1, 사원=100 등).
+
     is_active = models.BooleanField(
         default=True,
-        verbose_name='사용 여부',
-        help_text='False 면 신규 사용자 등록 시 선택 목록에서 제외',
+        verbose_name="사용 여부",
+        help_text="False 면 신규 사용자 등록 시 선택 목록에서 제외",
     )
+    # False이면 사용자 등록/수정 시 이 직위를 선택할 수 없음. 기존 사용자 소속은 유지.
+
     description = models.TextField(
         blank=True,
-        default='',
-        verbose_name='설명',
+        default="",
+        verbose_name="설명",
     )
+    # 직위 설명. 빈 문자열 허용.
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
-        null=True, blank=True,
-        related_name='created_positions',
+        null=True,
+        blank=True,
+        related_name="created_positions",
     )
     updated_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
-        null=True, blank=True,
-        related_name='updated_positions',
+        null=True,
+        blank=True,
+        related_name="updated_positions",
     )
+    # 생성자/수정자 추적 필드. 탈퇴 시 SET_NULL.
 
     class Meta:
-        ordering = ['sort_order', 'name']
-        verbose_name = '직위'
-        verbose_name_plural = '직위 목록'
+        ordering = ["sort_order", "name"]
+        verbose_name = "직위"
+        verbose_name_plural = "직위 목록"
 
     def __str__(self):
         return self.name
@@ -179,59 +229,111 @@ class Position(models.Model):
 #
 # 다른 도메인(임계치/위험유형/장비)이 단위·종류 등을 참조할 때 활용.
 
+
 class CodeGroup(models.Model):
+    # 공통 코드 그룹. 시스템 전반에서 쓰이는 분류 코드 묶음 (예: GAS_TYPE, DEVICE_TYPE).
     code = models.CharField(
-        max_length=50, unique=True,
-        verbose_name='코드 그룹', help_text='UPPER_SNAKE_CASE (예: DEVICE_TYPE)',
+        max_length=50,
+        unique=True,
+        verbose_name="코드 그룹",
+        help_text="UPPER_SNAKE_CASE (예: DEVICE_TYPE)",
     )
-    name = models.CharField(max_length=50, verbose_name='그룹명')
-    description = models.TextField(blank=True, default='', verbose_name='설명')
-    sort_order = models.IntegerField(default=100, verbose_name='정렬 순서')
-    is_active = models.BooleanField(default=True, verbose_name='사용 여부')
+    # 그룹 식별 코드. 대문자+언더스코어 형식. 프로그램에서 이 값으로 그룹을 찾음.
+
+    name = models.CharField(max_length=50, verbose_name="그룹명")
+    # 사람이 읽는 그룹 이름 (예: '장비 유형', '가스 종류').
+
+    description = models.TextField(blank=True, default="", verbose_name="설명")
+    sort_order = models.IntegerField(default=100, verbose_name="정렬 순서")
+    is_active = models.BooleanField(default=True, verbose_name="사용 여부")
     is_system = models.BooleanField(
-        default=False, verbose_name='시스템 그룹 여부',
-        help_text='True 면 그룹 자체 삭제 불가 (시드된 핵심 그룹 보호)',
+        default=False,
+        verbose_name="시스템 그룹 여부",
+        help_text="True 면 그룹 자체 삭제 불가 (시드된 핵심 그룹 보호)",
     )
+    # True이면 백오피스에서 이 그룹을 삭제할 수 없음. 시스템 핵심 코드 그룹 보호용.
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
-    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='created_codegroups')
-    updated_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='updated_codegroups')
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="created_codegroups",
+    )
+    updated_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="updated_codegroups",
+    )
 
     class Meta:
-        ordering = ['sort_order', 'code']
-        verbose_name = '코드 그룹'
-        verbose_name_plural = '코드 그룹 목록'
+        ordering = ["sort_order", "code"]
+        verbose_name = "코드 그룹"
+        verbose_name_plural = "코드 그룹 목록"
 
     def __str__(self):
-        return f'{self.name} ({self.code})'
+        return f"{self.name} ({self.code})"
 
     @property
     def code_count(self):
         return self.codes.count()
+        # 이 그룹에 속한 Code 항목 수. 역참조 'codes'는 Code.group FK의 related_name.
 
 
 class Code(models.Model):
-    group = models.ForeignKey(CodeGroup, on_delete=models.CASCADE, related_name='codes', verbose_name='코드 그룹')
-    code = models.CharField(max_length=50, verbose_name='코드')
-    name = models.CharField(max_length=100, verbose_name='코드명')
-    description = models.TextField(blank=True, default='', verbose_name='설명')
-    sort_order = models.IntegerField(default=100, verbose_name='정렬 순서')
-    is_active = models.BooleanField(default=True, verbose_name='사용 여부')
+    # 공통 코드 개별 항목. CodeGroup에 속하는 하나의 코드 값.
+    group = models.ForeignKey(
+        CodeGroup,
+        on_delete=models.CASCADE,
+        related_name="codes",
+        verbose_name="코드 그룹",
+    )
+    # 소속 그룹 FK. 그룹 삭제 시 하위 코드도 모두 삭제됨(CASCADE).
+
+    code = models.CharField(max_length=50, verbose_name="코드")
+    # 코드 값 (예: GAS_TYPE 그룹의 'CO', 'H2S', 'CH4').
+
+    name = models.CharField(max_length=100, verbose_name="코드명")
+    # 코드 표시 이름 (예: '일산화탄소', '황화수소', '메탄').
+
+    description = models.TextField(blank=True, default="", verbose_name="설명")
+    sort_order = models.IntegerField(default=100, verbose_name="정렬 순서")
+    is_active = models.BooleanField(default=True, verbose_name="사용 여부")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
-    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='created_codes')
-    updated_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='updated_codes')
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="created_codes",
+    )
+    updated_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="updated_codes",
+    )
 
     class Meta:
-        ordering = ['sort_order', 'code']
-        verbose_name = '코드'
-        verbose_name_plural = '코드 목록'
+        ordering = ["sort_order", "code"]
+        verbose_name = "코드"
+        verbose_name_plural = "코드 목록"
         constraints = [
-            models.UniqueConstraint(fields=['group', 'code'], name='code_unique_per_group'),
+            models.UniqueConstraint(
+                fields=["group", "code"], name="code_unique_per_group"
+            ),
+            # 같은 그룹 안에서 코드 값이 중복되지 않도록 제약.
         ]
 
     def __str__(self):
-        return f'{self.group.code}.{self.code}'
+        return f"{self.group.code}.{self.code}"
+        # 예: 'GAS_TYPE.CO'. 어떤 그룹의 코드인지 한눈에 파악 가능.
 
 
 # ═══════════════════════════════════════════════════════════
@@ -247,68 +349,121 @@ class Code(models.Model):
 # applies_to 는 사용 패턴이 많아 별도 테이블 대신 CSV 문자열로 저장 (단순화).
 # 화면에서는 'realtime,event,alarm' → ['실시간 관제','이벤트 이력','알림'] 변환.
 APPLIES_TO_CHOICES_RISK = [
-    ('realtime', '실시간 관제'),
-    ('event',    '이벤트 이력'),
-    ('alarm',    '알림'),
+    # 위험 분류가 어떤 기능에 반영되는지 나타내는 선택지. CSV 문자열 파싱에 사용.
+    ("realtime", "실시간 관제"),
+    ("event", "이벤트 이력"),
+    ("alarm", "알림"),
 ]
 
+
 class RiskCategory(models.Model):
-    code = models.CharField(max_length=50, unique=True, verbose_name='분류 코드')
-    name = models.CharField(max_length=50, verbose_name='분류명')
-    description = models.TextField(blank=True, default='', verbose_name='설명')
+    # 위험 분류 그룹. 가스/전력/위치/작업 등 위험의 대분류.
+    code = models.CharField(max_length=50, unique=True, verbose_name="분류 코드")
+    # 위험 분류 고유 코드 (예: RISK_GAS, RISK_POWER). notification_dispatcher에서 알람 매핑에 사용.
+
+    name = models.CharField(max_length=50, verbose_name="분류명")
+    description = models.TextField(blank=True, default="", verbose_name="설명")
     applies_to = models.CharField(
-        max_length=100, blank=True, default='',
-        verbose_name='반영 범위',
-        help_text='CSV: realtime,event,alarm',
+        max_length=100,
+        blank=True,
+        default="",
+        verbose_name="반영 범위",
+        help_text="CSV: realtime,event,alarm",
     )
-    sort_order = models.IntegerField(default=100, verbose_name='정렬 순서')
-    is_active = models.BooleanField(default=True, verbose_name='사용 여부')
-    is_system = models.BooleanField(default=False, verbose_name='시스템 분류 여부')
+    # 이 위험 분류가 적용되는 기능 범위를 CSV로 저장. applies_to_list 프로퍼티로 파싱.
+
+    sort_order = models.IntegerField(default=100, verbose_name="정렬 순서")
+    is_active = models.BooleanField(default=True, verbose_name="사용 여부")
+    is_system = models.BooleanField(default=False, verbose_name="시스템 분류 여부")
+    # True이면 삭제 불가. 시스템 핵심 위험 분류 보호용.
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
-    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='created_risk_categories')
-    updated_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='updated_risk_categories')
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="created_risk_categories",
+    )
+    updated_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="updated_risk_categories",
+    )
 
     class Meta:
-        ordering = ['sort_order', 'code']
-        verbose_name = '위험 분류'
-        verbose_name_plural = '위험 분류 목록'
+        ordering = ["sort_order", "code"]
+        verbose_name = "위험 분류"
+        verbose_name_plural = "위험 분류 목록"
 
     def __str__(self):
-        return f'{self.name} ({self.code})'
+        return f"{self.name} ({self.code})"
 
     @property
     def applies_to_list(self):
-        return [s for s in (self.applies_to or '').split(',') if s]
+        return [s for s in (self.applies_to or "").split(",") if s]
+        # CSV 문자열을 리스트로 파싱. 예: 'realtime,alarm' → ['realtime', 'alarm'].
 
     @property
     def type_count(self):
         return self.types.count()
+        # 하위 RiskType 개수. 역참조 'types'는 RiskType.category FK의 related_name.
 
 
 class RiskType(models.Model):
-    category = models.ForeignKey(RiskCategory, on_delete=models.CASCADE, related_name='types', verbose_name='위험 분류')
-    code = models.CharField(max_length=50, verbose_name='유형 코드')
-    name = models.CharField(max_length=100, verbose_name='유형명')
-    description = models.TextField(blank=True, default='', verbose_name='설명')
-    show_on_map = models.BooleanField(default=True, verbose_name='지도 반영 여부')
-    sort_order = models.IntegerField(default=100, verbose_name='정렬 순서')
-    is_active = models.BooleanField(default=True, verbose_name='사용 여부')
+    # 위험 유형 개별 항목. RiskCategory에 속하는 구체적 위험 유형.
+    category = models.ForeignKey(
+        RiskCategory,
+        on_delete=models.CASCADE,
+        related_name="types",
+        verbose_name="위험 분류",
+    )
+    # 소속 위험 분류. 분류 삭제 시 하위 유형도 모두 삭제됨(CASCADE).
+
+    code = models.CharField(max_length=50, verbose_name="유형 코드")
+    # 위험 유형 코드 (예: GAS_LEAK, POWER_OVERLOAD).
+
+    name = models.CharField(max_length=100, verbose_name="유형명")
+    description = models.TextField(blank=True, default="", verbose_name="설명")
+    show_on_map = models.BooleanField(default=True, verbose_name="지도 반영 여부")
+    # True이면 이 유형의 알람 발생 시 지도에 위험 표시가 나타남.
+
+    sort_order = models.IntegerField(default=100, verbose_name="정렬 순서")
+    is_active = models.BooleanField(default=True, verbose_name="사용 여부")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
-    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='created_risk_types')
-    updated_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='updated_risk_types')
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="created_risk_types",
+    )
+    updated_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="updated_risk_types",
+    )
 
     class Meta:
-        ordering = ['sort_order', 'code']
-        verbose_name = '위험 유형'
-        verbose_name_plural = '위험 유형 목록'
+        ordering = ["sort_order", "code"]
+        verbose_name = "위험 유형"
+        verbose_name_plural = "위험 유형 목록"
         constraints = [
-            models.UniqueConstraint(fields=['category', 'code'], name='risk_type_unique_per_category'),
+            models.UniqueConstraint(
+                fields=["category", "code"], name="risk_type_unique_per_category"
+            ),
+            # 같은 분류 안에서 유형 코드가 중복되지 않도록 제약.
         ]
 
     def __str__(self):
-        return f'{self.category.code}.{self.code}'
+        return f"{self.category.code}.{self.code}"
+        # 예: 'RISK_GAS.GAS_LEAK'. 어떤 분류의 유형인지 한눈에 파악 가능.
 
 
 # ═══════════════════════════════════════════════════════════
@@ -319,49 +474,85 @@ class RiskType(models.Model):
 # alerts.Alarm 의 level CharField 와 향후 연동.
 
 ALARM_COLOR_CHOICES = [
-    ('gray',   '회색'),
-    ('green',  '녹색'),
-    ('yellow', '황색'),
-    ('orange', '주황색'),
-    ('red',    '적색'),
-    ('black',  '검정색'),
+    # 알람 단계별 UI 표시 색상 선택지.
+    ("gray", "회색"),
+    ("green", "녹색"),
+    ("yellow", "황색"),
+    ("orange", "주황색"),
+    ("red", "적색"),
+    ("black", "검정색"),
 ]
 
 ALARM_INTENSITY_CHOICES = [
-    ('normal',  '정상'),
-    ('caution', '주의'),
-    ('warning', '경고'),
-    ('danger',  '위험'),
+    # 알람 강도(심각도) 선택지. 알림 발송 우선순위 결정에 활용.
+    ("normal", "정상"),
+    ("caution", "주의"),
+    ("warning", "경고"),
+    ("danger", "위험"),
 ]
 
+
 class AlarmLevel(models.Model):
+    # 알람 단계(레벨) 마스터. 경보 시스템의 위험 등급 정의.
     code = models.CharField(
-        max_length=50, unique=True,
-        verbose_name='단계 코드',
-        help_text='UPPER 영문/숫자/언더스코어 (예: WARNING)',
+        max_length=50,
+        unique=True,
+        verbose_name="단계 코드",
+        help_text="UPPER 영문/숫자/언더스코어 (예: WARNING)",
     )
-    name = models.CharField(max_length=20, verbose_name='단계명')
-    color = models.CharField(max_length=20, choices=ALARM_COLOR_CHOICES, verbose_name='표시 색상')
-    intensity = models.CharField(max_length=20, choices=ALARM_INTENSITY_CHOICES, verbose_name='알림 강도')
+    # 레벨 코드 (예: NORMAL, CAUTION, DANGER). notification_dispatcher에서 정책 매핑에 사용.
+
+    name = models.CharField(max_length=20, verbose_name="단계명")
+    # 사람이 읽는 레벨 이름 (예: '정상', '주의', '위험').
+
+    color = models.CharField(
+        max_length=20, choices=ALARM_COLOR_CHOICES, verbose_name="표시 색상"
+    )
+    # 대시보드에서 이 레벨의 알람을 어떤 색으로 표시할지 설정.
+
+    intensity = models.CharField(
+        max_length=20, choices=ALARM_INTENSITY_CHOICES, verbose_name="알림 강도"
+    )
+    # 알람 강도 (normal/caution/warning/danger). UI에서 경보음, 깜빡임 등에 활용 가능.
+
     priority = models.IntegerField(
-        default=100, verbose_name='이벤트 우선순위',
-        help_text='작을수록 높은 우선순위 (정상=10, 위험=90 같은 식)',
+        default=100,
+        verbose_name="이벤트 우선순위",
+        help_text="작을수록 높은 우선순위 (정상=10, 위험=90 같은 식)",
     )
-    description = models.TextField(blank=True, default='', verbose_name='설명')
-    is_active = models.BooleanField(default=True, verbose_name='사용 여부')
-    is_system = models.BooleanField(default=False, verbose_name='시스템 단계 여부')
+    # 우선순위 숫자. 작을수록 높은 우선순위(더 심각).
+    # notification_dispatcher에서 "이 알람보다 낮은 우선순위까지 적용되는 정책" 을 쿼리하는 데 사용.
+
+    description = models.TextField(blank=True, default="", verbose_name="설명")
+    is_active = models.BooleanField(default=True, verbose_name="사용 여부")
+    is_system = models.BooleanField(default=False, verbose_name="시스템 단계 여부")
+    # True이면 삭제 불가. 기본 단계(NORMAL, DANGER 등) 보호용.
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
-    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='created_alarm_levels')
-    updated_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='updated_alarm_levels')
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="created_alarm_levels",
+    )
+    updated_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="updated_alarm_levels",
+    )
 
     class Meta:
-        ordering = ['priority', 'code']
-        verbose_name = '위험 기준'
-        verbose_name_plural = '위험 기준 목록'
+        ordering = ["priority", "code"]
+        # 기본 정렬: 우선순위(낮은 숫자 = 덜 심각) → 코드 순.
+        verbose_name = "위험 기준"
+        verbose_name_plural = "위험 기준 목록"
 
     def __str__(self):
-        return f'{self.name} ({self.code})'
+        return f"{self.name} ({self.code})"
 
 
 # ═══════════════════════════════════════════════════════════
@@ -382,90 +573,158 @@ class AlarmLevel(models.Model):
 # 반영 범위 (applies_to): realtime / ai_predict / alarm — CSV.
 
 THRESHOLD_OPERATOR_CHOICES = [
-    ('over',  '초과'),
-    ('under', '이하'),
+    # 임계치 판단 방향. 'over'는 값이 기준 이상이면 위험, 'under'는 기준 미만이면 위험(산소 등).
+    ("over", "초과"),
+    ("under", "이하"),
 ]
 
 APPLIES_TO_CHOICES_THRESHOLD = [
-    ('realtime',   '실시간 관제'),
-    ('ai_predict', 'AI 예측'),
-    ('alarm',      '알림'),
+    # 임계치 기준이 어떤 기능에 반영되는지 선택지.
+    ("realtime", "실시간 관제"),
+    ("ai_predict", "AI 예측"),
+    ("alarm", "알림"),
 ]
 
+
 class ThresholdCategory(models.Model):
-    code = models.CharField(max_length=50, unique=True, verbose_name='분류 코드')
-    name = models.CharField(max_length=50, verbose_name='분류명')
-    description = models.TextField(blank=True, default='', verbose_name='설명')
+    # 임계치 분류 그룹. 가스/전력 등 측정 분야별 분류.
+    code = models.CharField(max_length=50, unique=True, verbose_name="분류 코드")
+    # 분류 코드 (예: TH_GAS, TH_POWER). FastAPI 동기화 API에서 이 코드로 식별.
+
+    name = models.CharField(max_length=50, verbose_name="분류명")
+    description = models.TextField(blank=True, default="", verbose_name="설명")
     applies_to = models.CharField(
-        max_length=100, blank=True, default='',
-        verbose_name='반영 범위',
-        help_text='CSV: realtime,ai_predict,alarm',
+        max_length=100,
+        blank=True,
+        default="",
+        verbose_name="반영 범위",
+        help_text="CSV: realtime,ai_predict,alarm",
     )
-    sort_order = models.IntegerField(default=100, verbose_name='정렬 순서')
-    is_active = models.BooleanField(default=True, verbose_name='사용 여부')
-    is_system = models.BooleanField(default=False, verbose_name='시스템 분류 여부')
+    # 이 분류의 임계치가 반영될 기능. applies_to_list 프로퍼티로 파싱.
+
+    sort_order = models.IntegerField(default=100, verbose_name="정렬 순서")
+    is_active = models.BooleanField(default=True, verbose_name="사용 여부")
+    is_system = models.BooleanField(default=False, verbose_name="시스템 분류 여부")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
-    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='created_threshold_categories')
-    updated_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='updated_threshold_categories')
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="created_threshold_categories",
+    )
+    updated_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="updated_threshold_categories",
+    )
 
     class Meta:
-        ordering = ['sort_order', 'code']
-        verbose_name = '임계치 분류'
-        verbose_name_plural = '임계치 분류 목록'
+        ordering = ["sort_order", "code"]
+        verbose_name = "임계치 분류"
+        verbose_name_plural = "임계치 분류 목록"
 
     def __str__(self):
-        return f'{self.name} ({self.code})'
+        return f"{self.name} ({self.code})"
 
     @property
     def applies_to_list(self):
-        return [s for s in (self.applies_to or '').split(',') if s]
+        return [s for s in (self.applies_to or "").split(",") if s]
 
     @property
     def threshold_count(self):
         return self.thresholds.count()
+        # 하위 Threshold 항목 수.
 
 
 class Threshold(models.Model):
-    category = models.ForeignKey(ThresholdCategory, on_delete=models.CASCADE, related_name='thresholds', verbose_name='임계치 분류')
+    # 개별 측정 항목의 임계치 기준. 센서 경보 판단의 핵심 데이터.
+    category = models.ForeignKey(
+        ThresholdCategory,
+        on_delete=models.CASCADE,
+        related_name="thresholds",
+        verbose_name="임계치 분류",
+    )
+    # 소속 분류. 분류 삭제 시 하위 임계치도 모두 삭제됨(CASCADE).
+
     item_code = models.CharField(
-        max_length=50, verbose_name='측정 항목 코드',
-        help_text='가스: co/h2s/co2/o2/no2/so2/o3/nh3/voc/ch4 — generators.py 키와 일치',
+        max_length=50,
+        verbose_name="측정 항목 코드",
+        help_text="가스: co/h2s/co2/o2/no2/so2/o3/nh3/voc/ch4 — generators.py 키와 일치",
     )
-    item_name = models.CharField(max_length=50, verbose_name='측정 항목명')
-    unit = models.CharField(max_length=20, verbose_name='단위', help_text='ppm / %LEL / % / A / V')
+    # 측정 항목 코드. FastAPI generators.py의 GAS_THRESHOLDS 키와 일치해야 함.
+    # 이 코드로 센서 데이터에서 해당 측정값을 찾아 임계치와 비교함.
+
+    item_name = models.CharField(max_length=50, verbose_name="측정 항목명")
+    # 사람이 읽는 항목 이름 (예: '일산화탄소', '산소').
+
+    unit = models.CharField(
+        max_length=20, verbose_name="단위", help_text="ppm / %LEL / % / A / V"
+    )
+    # 측정 단위 (예: ppm, %LEL, %). UI에 표시되고 CSV 다운로드에도 포함됨.
+
     operator = models.CharField(
-        max_length=10, choices=THRESHOLD_OPERATOR_CHOICES, default='over',
-        verbose_name='판단 조건',
+        max_length=10,
+        choices=THRESHOLD_OPERATOR_CHOICES,
+        default="over",
+        verbose_name="판단 조건",
     )
-    caution_value = models.FloatField(verbose_name='주의값')
-    danger_value = models.FloatField(verbose_name='위험값')
-    is_active = models.BooleanField(default=True, verbose_name='사용 여부')
+    # 'over': 값이 기준 초과 시 경보. 'under': 값이 기준 미만 시 경보(산소 결핍 등).
+
+    caution_value = models.FloatField(verbose_name="주의값")
+    # 주의 경보 발생 기준값. operator에 따라 초과 또는 미만.
+    danger_value = models.FloatField(verbose_name="위험값")
+    # 위험 경보 발생 기준값. 주의값보다 더 극단적인 값.
+
+    is_active = models.BooleanField(default=True, verbose_name="사용 여부")
+    # False이면 FastAPI 동기화 시 이 임계치가 제외됨. 비활성 항목은 경보 판단에 미포함.
+
     applies_to = models.CharField(
-        max_length=100, blank=True, default='realtime,alarm',
-        verbose_name='반영 범위',
-        help_text='CSV: realtime,ai_predict,alarm',
+        max_length=100,
+        blank=True,
+        default="realtime,alarm",
+        verbose_name="반영 범위",
+        help_text="CSV: realtime,ai_predict,alarm",
     )
-    description = models.TextField(blank=True, default='', verbose_name='설명')
+    description = models.TextField(blank=True, default="", verbose_name="설명")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
-    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='created_thresholds')
-    updated_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='updated_thresholds')
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="created_thresholds",
+    )
+    updated_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="updated_thresholds",
+    )
 
     class Meta:
-        ordering = ['category__sort_order', 'item_code']
-        verbose_name = '임계치 기준'
-        verbose_name_plural = '임계치 기준 목록'
+        ordering = ["category__sort_order", "item_code"]
+        verbose_name = "임계치 기준"
+        verbose_name_plural = "임계치 기준 목록"
         constraints = [
-            models.UniqueConstraint(fields=['category', 'item_code'], name='threshold_unique_per_category'),
+            models.UniqueConstraint(
+                fields=["category", "item_code"], name="threshold_unique_per_category"
+            ),
+            # 같은 분류 안에서 측정 항목 코드가 중복되지 않도록 제약.
         ]
 
     def __str__(self):
-        return f'{self.category.code}.{self.item_code} ({self.caution_value}/{self.danger_value})'
+        return f"{self.category.code}.{self.item_code} ({self.caution_value}/{self.danger_value})"
+        # 예: 'TH_GAS.co (25.0/50.0)'. 분류·항목·기준값을 한눈에 파악 가능.
 
     @property
     def applies_to_list(self):
-        return [s for s in (self.applies_to or '').split(',') if s]
+        return [s for s in (self.applies_to or "").split(",") if s]
 
 
 # ═══════════════════════════════════════════════════════════
@@ -480,10 +739,11 @@ class Threshold(models.Model):
 # 수신 대상 (recipients): 'all_users,leaders,group:<org_id>,role:<role_code>' CSV
 
 NOTIFICATION_CHANNEL_CHOICES = [
-    ('app',      '앱 푸시'),
-    ('realtime', '관제 실시간'),
-    ('sms',      'SMS'),
-    ('email',    '이메일'),
+    # 알림을 발송할 수 있는 채널 목록.
+    ("app", "앱 푸시"),
+    ("realtime", "관제 실시간"),
+    ("sms", "SMS"),
+    ("email", "이메일"),
 ]
 
 
@@ -494,63 +754,100 @@ class NotificationPolicy(models.Model):
     대상:   recipients_csv (특수 토큰 + 조직/역할 조합)
     채널:   channels_csv
     """
-    code = models.CharField(max_length=50, unique=True, verbose_name='정책 코드')
-    name = models.CharField(max_length=100, verbose_name='정책명')
-    description = models.TextField(blank=True, default='', verbose_name='설명')
+
+    # 어떤 알람이 발생했을 때 누구에게 어떤 방법으로 알릴지 정의하는 규칙.
+    code = models.CharField(max_length=50, unique=True, verbose_name="정책 코드")
+    # 정책 식별 코드. 프로그램에서 특정 정책을 참조할 때 사용.
+
+    name = models.CharField(max_length=100, verbose_name="정책명")
+    description = models.TextField(blank=True, default="", verbose_name="설명")
 
     # 트리거 조건
     risk_category = models.ForeignKey(
-        RiskCategory, on_delete=models.CASCADE,
-        related_name='policies', verbose_name='적용 위험 분류',
+        RiskCategory,
+        on_delete=models.CASCADE,
+        related_name="policies",
+        verbose_name="적용 위험 분류",
     )
+    # 어떤 위험 분류(RISK_GAS 등)의 알람에 이 정책을 적용할지.
+
     alarm_level = models.ForeignKey(
-        AlarmLevel, on_delete=models.CASCADE,
-        related_name='policies', verbose_name='적용 알람 단계',
-        help_text='이 단계 이상의 이벤트에 정책 적용 (priority 기준)',
+        AlarmLevel,
+        on_delete=models.CASCADE,
+        related_name="policies",
+        verbose_name="적용 알람 단계",
+        help_text="이 단계 이상의 이벤트에 정책 적용 (priority 기준)",
     )
+    # 최소 적용 알람 레벨. 이 레벨 이상의 알람에만 정책이 발동됨.
+    # dispatch_for_alarm에서 alarm_level.priority <= alarm_priority 조건으로 매칭.
 
     # 발송 채널 / 수신 대상
     channels_csv = models.CharField(
-        max_length=100, default='app,realtime',
-        verbose_name='발송 채널',
-        help_text='CSV: app,realtime,sms,email',
+        max_length=100,
+        default="app,realtime",
+        verbose_name="발송 채널",
+        help_text="CSV: app,realtime,sms,email",
     )
+    # 알림을 발송할 채널을 CSV로 저장. channels_list 프로퍼티로 파싱.
+
     recipients_csv = models.CharField(
-        max_length=500, default='all_users',
-        verbose_name='수신 대상',
-        help_text='CSV: all_users / leaders / group:<org_id> / role:<role>',
+        max_length=500,
+        default="all_users",
+        verbose_name="수신 대상",
+        help_text="CSV: all_users / leaders / group:<org_id> / role:<role>",
     )
+    # 수신 대상 토큰을 CSV로 저장.
+    # 'all_users': 전체, 'leaders': 조직장, 'group:5': 조직 ID 5번 소속, 'role:admin': admin 역할.
 
     # 메시지 템플릿 (선택)
     message_template = models.TextField(
-        blank=True, default='',
-        verbose_name='메시지 템플릿',
-        help_text='{worker_name} {device_id} {value} 등 placeholder 사용 가능',
+        blank=True,
+        default="",
+        verbose_name="메시지 템플릿",
+        help_text="{worker_name} {device_id} {value} 등 placeholder 사용 가능",
     )
+    # 발송 메시지 형식. 없으면 alarm.message를 그대로 사용.
+    # notification_dispatcher._render_message()에서 placeholder를 실제 값으로 치환.
 
     # 정책 메타
-    is_active = models.BooleanField(default=True, verbose_name='사용 여부')
-    sort_order = models.IntegerField(default=100, verbose_name='정렬 순서')
+    is_active = models.BooleanField(default=True, verbose_name="사용 여부")
+    # False이면 이 정책은 알람 매칭에서 제외됨. 임시 비활성화 시 삭제 없이 사용.
+
+    sort_order = models.IntegerField(default=100, verbose_name="정렬 순서")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
-    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='created_policies')
-    updated_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='updated_policies')
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="created_policies",
+    )
+    updated_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="updated_policies",
+    )
 
     class Meta:
-        ordering = ['sort_order', 'code']
-        verbose_name = '알림 정책'
-        verbose_name_plural = '알림 정책 목록'
+        ordering = ["sort_order", "code"]
+        verbose_name = "알림 정책"
+        verbose_name_plural = "알림 정책 목록"
 
     def __str__(self):
-        return f'{self.name} ({self.code})'
+        return f"{self.name} ({self.code})"
 
     @property
     def channels_list(self):
-        return [s for s in (self.channels_csv or '').split(',') if s]
+        return [s for s in (self.channels_csv or "").split(",") if s]
+        # CSV 채널 문자열을 리스트로 파싱. 예: 'app,email' → ['app', 'email'].
 
     @property
     def recipients_list(self):
-        return [s for s in (self.recipients_csv or '').split(',') if s]
+        return [s for s in (self.recipients_csv or "").split(",") if s]
+        # CSV 수신 대상 토큰을 리스트로 파싱.
 
 
 class NotificationLog(models.Model):
@@ -559,46 +856,85 @@ class NotificationLog(models.Model):
     피그마 명세: 발송 일시 / 정책 / 알람 / 수신자 / 채널 / 결과.
     실제 발송은 v3 에서 알림 워커가 수행. 지금은 모델만 정의 + 화면.
     """
+
+    # 알림 1건의 발송 이력. 사용자별·채널별로 별도 레코드가 생성됨.
     SEND_STATUS_CHOICES = [
-        ('pending',   '대기'),
-        ('sent',      '성공'),
-        ('failed',    '실패'),
-        ('skipped',   '건너뜀'),
+        ("pending", "대기"),
+        # 아직 발송 시도 전. dispatch_for_alarm에서 먼저 생성 후 Provider 호출.
+        ("sent", "성공"),
+        # Provider.send()가 (True, '') 반환한 경우.
+        ("failed", "실패"),
+        # Provider.send()가 (False, 에러메시지) 반환하거나 예외 발생한 경우.
+        ("skipped", "건너뜀"),
+        # Provider.send()가 (False, '') 반환한 경우 (토큰 없음, 전화번호 없음 등).
     ]
     policy = models.ForeignKey(
-        NotificationPolicy, on_delete=models.SET_NULL,
-        null=True, blank=True, related_name='logs',
+        NotificationPolicy,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="logs",
     )
+    # 이 알림을 발송하게 한 정책. 정책 삭제 시 이력은 남음(SET_NULL).
+
     alarm = models.ForeignKey(
-        'alerts.Alarm', on_delete=models.SET_NULL,
-        null=True, blank=True, related_name='notification_logs',
+        "alerts.Alarm",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="notification_logs",
     )
+    # 이 알림의 원인이 된 알람 이벤트. 알람 삭제 시에도 이력은 남음(SET_NULL).
+
     recipient = models.ForeignKey(
-        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
-        null=True, blank=True, related_name='received_notifications',
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="received_notifications",
     )
+    # 수신자 User. 탈퇴 시 SET_NULL이지만 이름은 스냅샷으로 보존.
+
     recipient_name_snapshot = models.CharField(
-        max_length=100, blank=True, default='',
-        help_text='수신 시점 사용자명 스냅샷 (탈퇴 후에도 보존)',
+        max_length=100,
+        blank=True,
+        default="",
+        help_text="수신 시점 사용자명 스냅샷 (탈퇴 후에도 보존)",
     )
+    # 발송 시점의 수신자 이름. 사용자 탈퇴 후에도 "누가 받았는지" 확인 가능.
+
     channel = models.CharField(max_length=20, choices=NOTIFICATION_CHANNEL_CHOICES)
-    send_status = models.CharField(max_length=20, choices=SEND_STATUS_CHOICES, default='pending')
-    error_message = models.TextField(blank=True, default='')
+    # 발송 채널 (app/realtime/sms/email).
+
+    send_status = models.CharField(
+        max_length=20, choices=SEND_STATUS_CHOICES, default="pending"
+    )
+    # 발송 상태. 처음엔 'pending'으로 생성 후 Provider 결과에 따라 갱신.
+
+    error_message = models.TextField(blank=True, default="")
+    # 발송 실패 시 에러 메시지 저장. 운영 디버깅에 활용.
+
     sent_at = models.DateTimeField(null=True, blank=True)
+    # 발송 성공 일시. 성공 시에만 채워짐.
+
     created_at = models.DateTimeField(auto_now_add=True)
+    # 레코드 생성 일시 = 발송 시도 시작 시각.
 
     class Meta:
-        ordering = ['-created_at']
-        verbose_name = '알림 발송 이력'
-        verbose_name_plural = '알림 발송 이력 목록'
+        ordering = ["-created_at"]
+        verbose_name = "알림 발송 이력"
+        verbose_name_plural = "알림 발송 이력 목록"
         indexes = [
-            models.Index(fields=['-created_at']),
-            models.Index(fields=['recipient', '-created_at']),
-            models.Index(fields=['send_status', '-created_at']),
+            models.Index(fields=["-created_at"]),
+            # 최신 이력 목록 조회 최적화.
+            models.Index(fields=["recipient", "-created_at"]),
+            # 특정 수신자의 이력 조회 최적화.
+            models.Index(fields=["send_status", "-created_at"]),
+            # 상태별 필터 + 최신순 정렬 최적화.
         ]
 
     def __str__(self):
-        return f'[{self.send_status}] {self.recipient_name_snapshot} via {self.channel}'
+        return f"[{self.send_status}] {self.recipient_name_snapshot} via {self.channel}"
 
 
 # ═══════════════════════════════════════════════════════════
@@ -610,14 +946,15 @@ class NotificationLog(models.Model):
 #     operator 는 백오피스 진입 자체 불가.
 
 MENU_CODE_CHOICES = [
-    ('users',         '계정/권한 관리'),
-    ('menus',         '메뉴 관리'),
-    ('devices',       '설비/장비 관리'),
-    ('maps',          '지도 편집 관리'),
-    ('references',    '기준정보 관리'),
-    ('operations',    '운영 데이터 관리'),
-    ('notices',       '공지사항 관리'),
-    ('notifications', '알림/이벤트 관리'),
+    # 백오피스의 1Depth 메뉴 목록. MenuPermission과 permissions.py에서 메뉴 코드 검증에 사용.
+    ("users", "계정/권한 관리"),
+    ("menus", "메뉴 관리"),
+    ("devices", "설비/장비 관리"),
+    ("maps", "지도 편집 관리"),
+    ("references", "기준정보 관리"),
+    ("operations", "운영 데이터 관리"),
+    ("notices", "공지사항 관리"),
+    ("notifications", "알림/이벤트 관리"),
 ]
 
 
@@ -627,36 +964,58 @@ class MenuPermission(models.Model):
     하나의 (role, menu_code) 조합당 1건. is_visible/is_writable 토글로 제어.
     super_admin 은 이 테이블 무관 — 항상 전체 접근.
     """
+
+    # admin 역할의 메뉴별 접근 권한. super_admin은 이 테이블 없이 무조건 전체 접근.
     role = models.CharField(
         max_length=20,
-        verbose_name='역할',
-        help_text='accounts.User.ROLE_CHOICES 의 코드 — admin/operator',
+        verbose_name="역할",
+        help_text="accounts.User.ROLE_CHOICES 의 코드 — admin/operator",
     )
+    # 권한을 부여할 역할. 현재는 'admin'만 실질적으로 사용.
+
     menu_code = models.CharField(
-        max_length=30, choices=MENU_CODE_CHOICES,
-        verbose_name='메뉴',
+        max_length=30,
+        choices=MENU_CODE_CHOICES,
+        verbose_name="메뉴",
     )
+    # 어떤 메뉴에 대한 권한인지.
+
     is_visible = models.BooleanField(
-        default=True, verbose_name='조회 가능',
-        help_text='False 면 SNB 에 표시 자체가 안 됨',
+        default=True,
+        verbose_name="조회 가능",
+        help_text="False 면 SNB 에 표시 자체가 안 됨",
     )
+    # False이면 사이드바에 메뉴가 아예 표시되지 않음.
+
     is_writable = models.BooleanField(
-        default=False, verbose_name='등록/수정 가능',
-        help_text='False 면 페이지 진입은 가능하나 등록/수정 버튼 비활성',
+        default=False,
+        verbose_name="등록/수정 가능",
+        help_text="False 면 페이지 진입은 가능하나 등록/수정 버튼 비활성",
     )
+    # True여도 is_visible이 False면 의미 없음. permissions.py에서 is_visible + is_writable 함께 확인.
+
     updated_at = models.DateTimeField(auto_now=True)
-    updated_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='updated_menu_perms')
+    updated_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="updated_menu_perms",
+    )
 
     class Meta:
-        ordering = ['role', 'menu_code']
-        verbose_name = '메뉴 권한'
-        verbose_name_plural = '메뉴 권한 목록'
+        ordering = ["role", "menu_code"]
+        verbose_name = "메뉴 권한"
+        verbose_name_plural = "메뉴 권한 목록"
         constraints = [
-            models.UniqueConstraint(fields=['role', 'menu_code'], name='menu_perm_unique_role_menu'),
+            models.UniqueConstraint(
+                fields=["role", "menu_code"], name="menu_perm_unique_role_menu"
+            ),
+            # 역할+메뉴 조합이 중복되지 않도록 제약. get_or_create로 안전하게 upsert 가능.
         ]
 
     def __str__(self):
-        return f'{self.role}/{self.menu_code} (visible={self.is_visible}, writable={self.is_writable})'
+        return f"{self.role}/{self.menu_code} (visible={self.is_visible}, writable={self.is_writable})"
 
 
 # ═══════════════════════════════════════════════════════════
@@ -667,40 +1026,63 @@ class MenuPermission(models.Model):
 # 실제 삭제는 v4 의 batch (Celery beat) 가 수행 — 지금은 정책 등록·조회 + 통계만.
 
 DATA_TARGET_CHOICES = [
-    ('sensor_data',    '센서 측정값 (devices.SensorData)'),
-    ('worker_location','작업자 위치 (workers.WorkerLocation)'),
-    ('alarms',         '알람 (alerts.Alarm)'),
-    ('notification_logs', '알림 발송 이력 (backoffice.NotificationLog)'),
-    ('audit_logs',     '감사 로그 (예정)'),
+    # 데이터 보관 정책 적용 대상 테이블 목록.
+    ("sensor_data", "센서 측정값 (devices.SensorData)"),
+    ("worker_location", "작업자 위치 (workers.WorkerLocation)"),
+    ("alarms", "알람 (alerts.Alarm)"),
+    ("notification_logs", "알림 발송 이력 (backoffice.NotificationLog)"),
+    ("audit_logs", "감사 로그 (예정)"),
 ]
+
 
 class DataRetentionPolicy(models.Model):
     """데이터 보관 주기 정책. 단일 target 당 1건 권장."""
+
+    # 특정 데이터 유형의 보관 기간을 정의하고 정리 이력을 기록하는 모델.
     target = models.CharField(
-        max_length=30, choices=DATA_TARGET_CHOICES, unique=True,
-        verbose_name='대상 데이터',
+        max_length=30,
+        choices=DATA_TARGET_CHOICES,
+        unique=True,
+        verbose_name="대상 데이터",
     )
+    # 어떤 데이터를 관리할지 (sensor_data/alarms 등). target당 정책 1건만 존재해야 함.
+
     retention_days = models.IntegerField(
-        default=90, verbose_name='보관 기간 (일)',
-        help_text='이 기간 이전 데이터는 삭제 대상',
+        default=90,
+        verbose_name="보관 기간 (일)",
+        help_text="이 기간 이전 데이터는 삭제 대상",
     )
-    is_active = models.BooleanField(default=True, verbose_name='정책 활성화')
-    last_run_at = models.DateTimeField(null=True, blank=True, verbose_name='최근 정리 일시')
-    last_run_deleted = models.IntegerField(default=0, verbose_name='최근 삭제 건수')
-    description = models.TextField(blank=True, default='')
+    # 데이터 보관 기간(일). 이 기간이 지난 데이터는 정리 실행 시 삭제됨.
+
+    is_active = models.BooleanField(default=True, verbose_name="정책 활성화")
+    # False이면 이 정책의 자동 정리(배치/즉시 실행)가 비활성화됨.
+
+    last_run_at = models.DateTimeField(
+        null=True, blank=True, verbose_name="최근 정리 일시"
+    )
+    # 마지막으로 정리 작업이 실행된 시각. retention_run_now_api 실행 시 업데이트.
+
+    last_run_deleted = models.IntegerField(default=0, verbose_name="최근 삭제 건수")
+    # 마지막 정리 실행에서 삭제된 레코드 수.
+
+    description = models.TextField(blank=True, default="")
     updated_at = models.DateTimeField(auto_now=True)
     updated_by = models.ForeignKey(
-        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
-        null=True, blank=True, related_name='updated_retention_policies',
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="updated_retention_policies",
     )
 
     class Meta:
-        ordering = ['target']
-        verbose_name = '운영 데이터 보관 정책'
-        verbose_name_plural = '운영 데이터 보관 정책'
+        ordering = ["target"]
+        verbose_name = "운영 데이터 보관 정책"
+        verbose_name_plural = "운영 데이터 보관 정책"
 
     def __str__(self):
-        return f'{self.get_target_display()} — {self.retention_days}일'
+        return f"{self.get_target_display()} — {self.retention_days}일"
+        # 예: '센서 측정값 (devices.SensorData) — 90일'.
 
 
 # ═══════════════════════════════════════════════════════════
@@ -708,45 +1090,75 @@ class DataRetentionPolicy(models.Model):
 # ═══════════════════════════════════════════════════════════
 
 NOTICE_CATEGORY_CHOICES = [
-    ('system',     '시스템 공지'),
-    ('safety',     '안전 안내'),
-    ('event',      '이벤트/행사'),
-    ('maintenance','정기 점검'),
-    ('other',      '기타'),
+    # 공지사항 카테고리 목록. 목록 필터 및 표시에 사용.
+    ("system", "시스템 공지"),
+    ("safety", "안전 안내"),
+    ("event", "이벤트/행사"),
+    ("maintenance", "정기 점검"),
+    ("other", "기타"),
 ]
 
 
 class Notice(models.Model):
     """공지사항. 게시 기간 + 중요 표시 + 작성자 추적."""
-    title = models.CharField(max_length=200, verbose_name='제목')
+
+    # 운영자가 사용자에게 전달하는 공지사항. 게시 기간 설정 및 상단 고정 가능.
+    title = models.CharField(max_length=200, verbose_name="제목")
     category = models.CharField(
-        max_length=20, choices=NOTICE_CATEGORY_CHOICES, default='system',
-        verbose_name='카테고리',
+        max_length=20,
+        choices=NOTICE_CATEGORY_CHOICES,
+        default="system",
+        verbose_name="카테고리",
     )
-    content = models.TextField(verbose_name='내용')
-    is_pinned = models.BooleanField(default=False, verbose_name='상단 고정')
-    is_published = models.BooleanField(default=True, verbose_name='게시 중')
-    published_from = models.DateTimeField(null=True, blank=True, verbose_name='게시 시작일시')
-    published_to = models.DateTimeField(null=True, blank=True, verbose_name='게시 종료일시')
-    view_count = models.IntegerField(default=0, verbose_name='조회수')
+    content = models.TextField(verbose_name="내용")
+    # 공지 본문. HTML 또는 마크다운 허용 여부는 프론트엔드 처리에 따라 다름.
+
+    is_pinned = models.BooleanField(default=False, verbose_name="상단 고정")
+    # True이면 목록 최상단에 고정 표시됨(Meta.ordering 참고).
+
+    is_published = models.BooleanField(default=True, verbose_name="게시 중")
+    # False이면 게시 기간과 무관하게 사용자에게 표시되지 않음.
+
+    published_from = models.DateTimeField(
+        null=True, blank=True, verbose_name="게시 시작일시"
+    )
+    # 게시 시작 시각. None이면 즉시 게시.
+
+    published_to = models.DateTimeField(
+        null=True, blank=True, verbose_name="게시 종료일시"
+    )
+    # 게시 종료 시각. None이면 무기한 게시.
+
+    view_count = models.IntegerField(default=0, verbose_name="조회수")
+    # 사용자가 공지를 열람한 횟수. 현재는 수동 집계 또는 미구현.
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     created_by = models.ForeignKey(
-        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
-        null=True, blank=True, related_name='created_notices',
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="created_notices",
     )
     updated_by = models.ForeignKey(
-        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
-        null=True, blank=True, related_name='updated_notices',
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="updated_notices",
     )
 
     class Meta:
-        ordering = ['-is_pinned', '-created_at']
-        verbose_name = '공지사항'
-        verbose_name_plural = '공지사항 목록'
+        ordering = ["-is_pinned", "-created_at"]
+        # 기본 정렬: 상단 고정 공지 → 최신 공지 순.
+        verbose_name = "공지사항"
+        verbose_name_plural = "공지사항 목록"
         indexes = [
-            models.Index(fields=['-is_pinned', '-created_at']),
-            models.Index(fields=['category', '-created_at']),
+            models.Index(fields=["-is_pinned", "-created_at"]),
+            # 기본 목록 조회(고정 + 최신순) 최적화.
+            models.Index(fields=["category", "-created_at"]),
+            # 카테고리별 필터 + 최신순 조회 최적화.
         ]
 
     def __str__(self):
@@ -756,14 +1168,19 @@ class Notice(models.Model):
     def is_currently_published(self):
         """현재 시점 기준 실제로 게시 중인지."""
         from django.utils import timezone
+
         now = timezone.now()
         if not self.is_published:
             return False
+            # is_published=False면 게시 기간 무관하게 미게시.
         if self.published_from and now < self.published_from:
             return False
+            # 아직 게시 시작 시각이 되지 않음.
         if self.published_to and now > self.published_to:
             return False
+            # 게시 종료 시각이 지났음.
         return True
+        # 세 조건을 모두 통과하면 현재 게시 중.
 
 
 # ═══════════════════════════════════════════════════════════
@@ -781,16 +1198,17 @@ class Notice(models.Model):
 # 운영 1년치 = 약 5만 건. retention 365일 정책으로 관리 (DataRetentionPolicy 'audit_logs').
 
 AUDIT_ACTION_CHOICES = [
-    ('create', '등록'),
-    ('update', '수정'),
-    ('delete', '삭제'),
-    ('login',  '로그인'),
-    ('logout', '로그아웃'),
-    ('login_fail', '로그인 실패'),
-    ('bulk_op',    '일괄 처리'),
-    ('csv_upload', 'CSV 업로드'),
-    ('cleanup',    '데이터 정리'),
-    ('dispatch',   '알림 발송'),
+    # 감사 로그에 기록되는 액션 종류.
+    ("create", "등록"),
+    ("update", "수정"),
+    ("delete", "삭제"),
+    ("login", "로그인"),
+    ("logout", "로그아웃"),
+    ("login_fail", "로그인 실패"),
+    ("bulk_op", "일괄 처리"),
+    ("csv_upload", "CSV 업로드"),
+    ("cleanup", "데이터 정리"),
+    ("dispatch", "알림 발송"),
 ]
 
 
@@ -804,43 +1222,93 @@ class AuditLog(models.Model):
       - changes: 변경 내역 JSON. {"field": [old, new]} 또는 단순 메모.
       - ip_address: 미들웨어가 채움.
     """
+
+    # 백오피스의 모든 변경 이력. 대상 정보를 문자열로 저장해 삭제 후에도 이력이 남음.
     actor = models.ForeignKey(
-        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
-        null=True, blank=True, related_name='+',
-        verbose_name='수행자',
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="+",
+        verbose_name="수행자",
     )
+    # 액션 수행자 FK. related_name='+'는 역참조를 비활성화(User에서 audit_set 같은 접근 불필요).
+
     actor_username_snapshot = models.CharField(
-        max_length=150, blank=True, default='',
-        help_text='수행자 username 스냅샷 (사용자 삭제 후에도 보존)',
+        max_length=150,
+        blank=True,
+        default="",
+        help_text="수행자 username 스냅샷 (사용자 삭제 후에도 보존)",
     )
-    action = models.CharField(max_length=20, choices=AUDIT_ACTION_CHOICES, verbose_name='액션')
-    target_app = models.CharField(max_length=50, blank=True, default='', verbose_name='대상 앱')
-    target_model = models.CharField(max_length=50, blank=True, default='', verbose_name='대상 모델')
-    target_pk = models.CharField(max_length=50, blank=True, default='', verbose_name='대상 PK')
+    # actor가 삭제되어 FK가 NULL이 돼도 "누가 했는지" 알 수 있도록 username을 복사 보존.
+
+    action = models.CharField(
+        max_length=20, choices=AUDIT_ACTION_CHOICES, verbose_name="액션"
+    )
+    # 액션 종류 코드 (create/update/delete/login 등).
+
+    target_app = models.CharField(
+        max_length=50, blank=True, default="", verbose_name="대상 앱"
+    )
+    # 변경된 객체가 속한 Django 앱 이름 (예: 'backoffice', 'accounts').
+
+    target_model = models.CharField(
+        max_length=50, blank=True, default="", verbose_name="대상 모델"
+    )
+    # 변경된 모델 이름 소문자 (예: 'user', 'device', 'organization').
+
+    target_pk = models.CharField(
+        max_length=50, blank=True, default="", verbose_name="대상 PK"
+    )
+    # 변경된 객체의 기본 키 문자열. 숫자든 UUID든 str()로 저장.
+
     target_repr = models.CharField(
-        max_length=200, blank=True, default='',
-        verbose_name='대상 표시명',
-        help_text='str(obj) 스냅샷 (대상 삭제 후에도 무엇을 지웠는지 추적)',
+        max_length=200,
+        blank=True,
+        default="",
+        verbose_name="대상 표시명",
+        help_text="str(obj) 스냅샷 (대상 삭제 후에도 무엇을 지웠는지 추적)",
     )
-    changes = models.JSONField(default=dict, blank=True, verbose_name='변경 내역')
-    ip_address = models.GenericIPAddressField(null=True, blank=True, verbose_name='IP 주소')
-    request_path = models.CharField(max_length=500, blank=True, default='', verbose_name='요청 경로')
-    extra_message = models.CharField(max_length=300, blank=True, default='', verbose_name='추가 메모')
+    # str(obj) 결과를 200자 이내로 저장. "홍길동 (hong01)"처럼 사람이 알아볼 수 있는 표시.
+
+    changes = models.JSONField(default=dict, blank=True, verbose_name="변경 내역")
+    # 변경 전후 값 딕셔너리. 예: {'role': ['operator', 'admin'], 'name': ['김', '이']}.
+
+    ip_address = models.GenericIPAddressField(
+        null=True, blank=True, verbose_name="IP 주소"
+    )
+    # 액션을 수행한 클라이언트의 IP 주소. 미들웨어에서 X-Forwarded-For 등을 파싱해 채움.
+
+    request_path = models.CharField(
+        max_length=500, blank=True, default="", verbose_name="요청 경로"
+    )
+    # 어떤 API 엔드포인트에서 변경이 일어났는지 기록 (예: '/backoffice/api/users/5/update/').
+
+    extra_message = models.CharField(
+        max_length=300, blank=True, default="", verbose_name="추가 메모"
+    )
+    # 자유 텍스트 메모 (예: '로그인 실패: username=hacker', 'CSV 일괄 삭제 10건').
+
     created_at = models.DateTimeField(auto_now_add=True)
+    # 감사 로그 생성 시각 = 액션 발생 시각.
 
     class Meta:
-        ordering = ['-created_at']
-        verbose_name = '감사 로그'
-        verbose_name_plural = '감사 로그 목록'
+        ordering = ["-created_at"]
+        verbose_name = "감사 로그"
+        verbose_name_plural = "감사 로그 목록"
         indexes = [
-            models.Index(fields=['-created_at']),
-            models.Index(fields=['actor', '-created_at']),
-            models.Index(fields=['target_model', '-created_at']),
-            models.Index(fields=['action', '-created_at']),
+            models.Index(fields=["-created_at"]),
+            models.Index(fields=["actor", "-created_at"]),
+            # 특정 사용자의 행동 이력 조회 최적화.
+            models.Index(fields=["target_model", "-created_at"]),
+            # 특정 모델의 변경 이력 조회 최적화.
+            models.Index(fields=["action", "-created_at"]),
+            # 액션 종류별 필터 조회 최적화.
         ]
 
     def __str__(self):
         return f'[{self.action}] {self.actor_username_snapshot or "anon"} → {self.target_model}#{self.target_pk}'
+        # 예: '[update] admin01 → user#5'. 목록에서 한눈에 파악 가능.
 
 
 # ═══════════════════════════════════════════════════════════
@@ -851,39 +1319,65 @@ class AuditLog(models.Model):
 # "이 장비 누가 언제 어떻게 바꿨나" 를 빠르게 보기 위함.
 # AuditLog 가 시스템 전체 audit 라면, DeviceHistory 는 장비 카드 안의 history tab 용.
 
+
 class DeviceHistory(models.Model):
+    # 장비별 변경 이력. AuditLog의 장비 전용 보조 테이블.
+    # 장비 상세 화면의 '변경 이력' 탭에서 이 테이블의 데이터를 표시함.
     DEVICE_HISTORY_ACTION_CHOICES = [
-        ('create',     '등록'),
-        ('update',     '수정'),
-        ('delete',     '삭제'),
-        ('move',       '좌표 이동'),
-        ('toggle',     '활성/비활성'),
-        ('csv_import', 'CSV 일괄 등록'),
+        ("create", "등록"),
+        ("update", "수정"),
+        ("delete", "삭제"),
+        ("move", "좌표 이동"),
+        ("toggle", "활성/비활성"),
+        ("csv_import", "CSV 일괄 등록"),
     ]
-    device_id_snapshot = models.CharField(max_length=50, db_index=True, verbose_name='장비 ID 스냅샷')
+    device_id_snapshot = models.CharField(
+        max_length=50, db_index=True, verbose_name="장비 ID 스냅샷"
+    )
+    # 장비 식별 ID 스냅샷. 장비 삭제 후에도 "어떤 장비가 변경됐는지" 추적 가능.
+    # db_index=True로 특정 장비 ID의 이력을 빠르게 조회.
+
     device = models.ForeignKey(
-        'devices.Device', on_delete=models.SET_NULL,
-        null=True, blank=True, related_name='history_logs',
-        verbose_name='장비',
+        "devices.Device",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="history_logs",
+        verbose_name="장비",
     )
+    # 실제 Device FK. 장비 삭제 시 SET_NULL이지만 device_id_snapshot으로 이력은 유지.
+
     actor = models.ForeignKey(
-        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
-        null=True, blank=True, related_name='+',
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="+",
     )
-    actor_username_snapshot = models.CharField(max_length=150, blank=True, default='')
+    actor_username_snapshot = models.CharField(max_length=150, blank=True, default="")
+    # 수행자 FK + username 스냅샷.
+
     action = models.CharField(max_length=20, choices=DEVICE_HISTORY_ACTION_CHOICES)
+    # 장비 변경 액션 종류.
+
     changes = models.JSONField(default=dict, blank=True)
-    extra_message = models.CharField(max_length=300, blank=True, default='')
+    # 변경 전후 값 딕셔너리. CSV upsert의 경우 여러 필드가 한 번에 변경될 수 있음.
+
+    extra_message = models.CharField(max_length=300, blank=True, default="")
+    # 추가 메모 (예: 'CSV upsert (line 42)', '관리자 직접 수정').
+
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        ordering = ['-created_at']
-        verbose_name = '장비 변경 이력'
-        verbose_name_plural = '장비 변경 이력'
+        ordering = ["-created_at"]
+        verbose_name = "장비 변경 이력"
+        verbose_name_plural = "장비 변경 이력"
         indexes = [
-            models.Index(fields=['device_id_snapshot', '-created_at']),
-            models.Index(fields=['-created_at']),
+            models.Index(fields=["device_id_snapshot", "-created_at"]),
+            # 특정 장비 ID의 이력을 최신순으로 빠르게 조회.
+            models.Index(fields=["-created_at"]),
         ]
 
     def __str__(self):
         return f'[{self.action}] {self.device_id_snapshot} by {self.actor_username_snapshot or "anon"}'
+        # 예: '[update] sensor_01 by admin01'.

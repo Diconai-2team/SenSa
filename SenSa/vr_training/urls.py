@@ -9,14 +9,15 @@ mysite/urls.py 에서:
     POST /vr-training/api/progress/ — 재생 위치 저장
     POST /vr-training/api/complete/ — 완료 처리
 """
+
 from django.urls import path
 
 from . import views
 
-app_name = 'vr_training'
+app_name = "vr_training"
 
 urlpatterns = [
-    path('', views.player_page, name='player'),
-    path('api/progress/', views.VRProgressView.as_view(), name='progress'),
-    path('api/complete/', views.VRCompleteView.as_view(), name='complete'),
+    path("", views.player_page, name="player"),
+    path("api/progress/", views.VRProgressView.as_view(), name="progress"),
+    path("api/complete/", views.VRCompleteView.as_view(), name="complete"),
 ]

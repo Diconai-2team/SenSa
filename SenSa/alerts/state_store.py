@@ -10,6 +10,7 @@ alerts/state_store.py — 작업자별 알람 상태 + 안정화 카운터 (Redi
 
 TTL: 5분.
 """
+
 import time
 import redis
 from django.conf import settings
@@ -22,7 +23,7 @@ def _client() -> redis.Redis:
     """Channels 설정의 Redis 호스트를 재사용."""
     global _pool
     if _pool is None:
-        host_tuple = settings.CHANNEL_LAYERS['default']['CONFIG']['hosts'][0]
+        host_tuple = settings.CHANNEL_LAYERS["default"]["CONFIG"]["hosts"][0]
         if isinstance(host_tuple, (tuple, list)):
             host, port = host_tuple
             _pool = redis.ConnectionPool(host=host, port=port, decode_responses=True)
@@ -45,10 +46,10 @@ def get_worker_snapshot(worker_id: str) -> dict:
     key = KEY_FORMAT.format(worker_id=worker_id)
     data = r.hgetall(key)
     return {
-        'state': data.get('state', 'safe'),
-        'last_alarm_at': float(data.get('last_alarm_at', 0) or 0),
-        'pending_state': data.get('pending_state') or None,
-        'pending_count': int(data.get('pending_count', 0) or 0),
+        "state": data.get("state", "safe"),
+        "last_alarm_at": float(data.get("last_alarm_at", 0) or 0),
+        "pending_state": data.get("pending_state") or None,
+        "pending_count": int(data.get("pending_count", 0) or 0),
     }
 
 
@@ -59,16 +60,16 @@ def commit_state(worker_id: str, state: str, mark_alarmed: bool = False) -> None
     """
     if state not in ("safe", "caution", "danger"):
         raise ValueError(f"invalid state: {state}")
-    
+
     r = _client()
     key = KEY_FORMAT.format(worker_id=worker_id)
     mapping = {
-        'state': state,
-        'pending_state': '',
-        'pending_count': '0',
+        "state": state,
+        "pending_state": "",
+        "pending_count": "0",
     }
     if mark_alarmed:
-        mapping['last_alarm_at'] = str(time.time())
+        mapping["last_alarm_at"] = str(time.time())
     r.hset(key, mapping=mapping)
     r.expire(key, TTL_SEC)
 
@@ -80,10 +81,13 @@ def set_pending(worker_id: str, pending_state: str, count: int) -> None:
     """
     r = _client()
     key = KEY_FORMAT.format(worker_id=worker_id)
-    r.hset(key, mapping={
-        'pending_state': pending_state,
-        'pending_count': str(count),
-    })
+    r.hset(
+        key,
+        mapping={
+            "pending_state": pending_state,
+            "pending_count": str(count),
+        },
+    )
     r.expire(key, TTL_SEC)
 
 
@@ -91,11 +95,15 @@ def clear_pending(worker_id: str) -> None:
     """회복 후보 폐기 (현재 상태를 유지함을 의미)."""
     r = _client()
     key = KEY_FORMAT.format(worker_id=worker_id)
-    r.hset(key, mapping={
-        'pending_state': '',
-        'pending_count': '0',
-    })
+    r.hset(
+        key,
+        mapping={
+            "pending_state": "",
+            "pending_count": "0",
+        },
+    )
     r.expire(key, TTL_SEC)
+
 
 # ═══════════════════════════════════════════════════════════
 # 센서용 상태 저장소 (구조는 작업자와 동일)
@@ -110,10 +118,10 @@ def get_sensor_snapshot(device_id: str) -> dict:
     key = SENSOR_KEY_FORMAT.format(device_id=device_id)
     data = r.hgetall(key)
     return {
-        'state': data.get('state', 'normal'),
-        'last_alarm_at': float(data.get('last_alarm_at', 0) or 0),
-        'pending_state': data.get('pending_state') or None,
-        'pending_count': int(data.get('pending_count', 0) or 0),
+        "state": data.get("state", "normal"),
+        "last_alarm_at": float(data.get("last_alarm_at", 0) or 0),
+        "pending_state": data.get("pending_state") or None,
+        "pending_count": int(data.get("pending_count", 0) or 0),
     }
 
 
@@ -121,16 +129,16 @@ def commit_sensor_state(device_id: str, state: str, mark_alarmed: bool = False) 
     """센서 공식 상태 확정."""
     if state not in ("normal", "caution", "danger"):
         raise ValueError(f"invalid sensor state: {state}")
-    
+
     r = _client()
     key = SENSOR_KEY_FORMAT.format(device_id=device_id)
     mapping = {
-        'state': state,
-        'pending_state': '',
-        'pending_count': '0',
+        "state": state,
+        "pending_state": "",
+        "pending_count": "0",
     }
     if mark_alarmed:
-        mapping['last_alarm_at'] = str(time.time())
+        mapping["last_alarm_at"] = str(time.time())
     r.hset(key, mapping=mapping)
     r.expire(key, TTL_SEC)
 
@@ -139,10 +147,13 @@ def set_sensor_pending(device_id: str, pending_state: str, count: int) -> None:
     """센서 회복 후보 저장."""
     r = _client()
     key = SENSOR_KEY_FORMAT.format(device_id=device_id)
-    r.hset(key, mapping={
-        'pending_state': pending_state,
-        'pending_count': str(count),
-    })
+    r.hset(
+        key,
+        mapping={
+            "pending_state": pending_state,
+            "pending_count": str(count),
+        },
+    )
     r.expire(key, TTL_SEC)
 
 
@@ -150,8 +161,11 @@ def clear_sensor_pending(device_id: str) -> None:
     """센서 회복 후보 폐기."""
     r = _client()
     key = SENSOR_KEY_FORMAT.format(device_id=device_id)
-    r.hset(key, mapping={
-        'pending_state': '',
-        'pending_count': '0',
-    })
+    r.hset(
+        key,
+        mapping={
+            "pending_state": "",
+            "pending_count": "0",
+        },
+    )
     r.expire(key, TTL_SEC)

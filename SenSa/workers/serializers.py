@@ -6,6 +6,7 @@ workers/serializers.py — 모델 ↔ JSON 변환기
   2. Python 객체 → API 응답(JSON) (직렬화)
   3. 유효성 검사 (타입, 길이, 필수 여부 등)
 """
+
 from rest_framework import serializers
 from .models import Worker, WorkerLocation
 
@@ -36,11 +37,11 @@ class WorkerSerializer(serializers.ModelSerializer):
         model = Worker
 
         # '__all__' → Worker 모델의 모든 필드 + 위에서 추가한 location_count
-        fields = '__all__'
+        fields = "__all__"
 
         # API 요청으로 변경 불가한 필드
         # POST로 {"id": 999} 보내도 무시됨
-        read_only_fields = ['id', 'created_at']
+        read_only_fields = ["id", "created_at"]
 
     def get_location_count(self, obj):
         """
@@ -76,14 +77,8 @@ class WorkerLocationSerializer(serializers.ModelSerializer):
     # source='worker.name'      → location.worker.name
     # source='worker.worker_id' → location.worker.worker_id
     # read_only=True → 조회(GET)에서만 표시, 생성(POST)에서는 무시
-    worker_name = serializers.CharField(
-        source='worker.name',
-        read_only=True
-    )
-    worker_id_str = serializers.CharField(
-        source='worker.worker_id',
-        read_only=True
-    )
+    worker_name = serializers.CharField(source="worker.name", read_only=True)
+    worker_id_str = serializers.CharField(source="worker.worker_id", read_only=True)
 
     class Meta:
         model = WorkerLocation
@@ -92,13 +87,13 @@ class WorkerLocationSerializer(serializers.ModelSerializer):
         # 이유: worker_name, worker_id_str은 모델에 없는 가상 필드라
         #       '__all__'로는 포함되지 않음
         fields = [
-            'id',               # PK (자동)
-            'worker',           # FK → Worker (숫자 ID)
-            'worker_name',      # 가상 필드 (작업자명)
-            'worker_id_str',    # 가상 필드 (작업자 식별자)
-            'x',                # X 좌표
-            'y',                # Y 좌표
-            'movement_status',  # 이동 상태
-            'timestamp',        # 기록 시각
+            "id",  # PK (자동)
+            "worker",  # FK → Worker (숫자 ID)
+            "worker_name",  # 가상 필드 (작업자명)
+            "worker_id_str",  # 가상 필드 (작업자 식별자)
+            "x",  # X 좌표
+            "y",  # Y 좌표
+            "movement_status",  # 이동 상태
+            "timestamp",  # 기록 시각
         ]
-        read_only_fields = ['id', 'timestamp']
+        read_only_fields = ["id", "timestamp"]

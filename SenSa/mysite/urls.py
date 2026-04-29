@@ -8,27 +8,24 @@ from django.conf.urls.static import static
 from backoffice.views import thresholds_for_fastapi
 
 urlpatterns = [
-    path('admin/', admin.site.urls),
-
+    path("admin/", admin.site.urls),
     # === accounts (인증) ===
-    path('', include('accounts.urls')),
-
+    path("", include("accounts.urls")),
     # === dashboard (통합 화면) ===
-    path('dashboard/', include('dashboard.urls')),        # 'monitor.urls' → 'dashboard.urls'
-    path('dashboard/api/', include('devices.urls')),      # 'monitor/api/' → 'dashboard/api/'
-    path('dashboard/api/', include('geofence.urls')),
-    path('dashboard/api/', include('alerts.urls')),
-    path('dashboard/api/', include('workers.urls')),     # ← Worker API 추가
-
+    path("dashboard/", include("dashboard.urls")),  # 'monitor.urls' → 'dashboard.urls'
+    path(
+        "dashboard/api/", include("devices.urls")
+    ),  # 'monitor/api/' → 'dashboard/api/'
+    path("dashboard/api/", include("geofence.urls")),
+    path("dashboard/api/", include("alerts.urls")),
+    path("dashboard/api/", include("workers.urls")),  # ← Worker API 추가
     # === FastAPI ↔ Django 임계치 동기화 (internal) ===
-    path('dashboard/api/thresholds/', thresholds_for_fastapi, name='thresholds-sync'),
-
-    path('safety/', include('safety.urls')),    # ← 추가
-    path('vr-training/', include('vr_training.urls')),    # ← 추가
-    path('workers/', include('workers.page_urls')),         # ← 이 줄 추가
-
+    path("dashboard/api/thresholds/", thresholds_for_fastapi, name="thresholds-sync"),
+    path("safety/", include("safety.urls")),  # ← 추가
+    path("vr-training/", include("vr_training.urls")),  # ← 추가
+    path("workers/", include("workers.page_urls")),  # ← 이 줄 추가
     # === 백오피스 (슈퍼관리자 채널) ===
-    path('backoffice/', include('backoffice.urls', namespace='backoffice')),
+    path("backoffice/", include("backoffice.urls", namespace="backoffice")),
 ]
 
 if settings.DEBUG:

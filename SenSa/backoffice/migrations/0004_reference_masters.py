@@ -9,176 +9,575 @@ class Migration(migrations.Migration):
 
     dependencies = [
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
-        ('backoffice', '0003_alter_organization_code_and_more'),
+        ("backoffice", "0003_alter_organization_code_and_more"),
     ]
 
     operations = [
         migrations.CreateModel(
-            name='RiskCategory',
+            name="RiskCategory",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('code', models.CharField(max_length=50, unique=True, verbose_name='분류 코드')),
-                ('name', models.CharField(max_length=50, verbose_name='분류명')),
-                ('description', models.TextField(blank=True, default='', verbose_name='설명')),
-                ('applies_to', models.CharField(blank=True, default='', help_text='CSV: realtime,event,alarm', max_length=100, verbose_name='반영 범위')),
-                ('sort_order', models.IntegerField(default=100, verbose_name='정렬 순서')),
-                ('is_active', models.BooleanField(default=True, verbose_name='사용 여부')),
-                ('is_system', models.BooleanField(default=False, verbose_name='시스템 분류 여부')),
-                ('created_at', models.DateTimeField(auto_now_add=True)),
-                ('updated_at', models.DateTimeField(auto_now=True)),
-                ('created_by', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='created_risk_categories', to=settings.AUTH_USER_MODEL)),
-                ('updated_by', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='updated_risk_categories', to=settings.AUTH_USER_MODEL)),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                (
+                    "code",
+                    models.CharField(
+                        max_length=50, unique=True, verbose_name="분류 코드"
+                    ),
+                ),
+                ("name", models.CharField(max_length=50, verbose_name="분류명")),
+                (
+                    "description",
+                    models.TextField(blank=True, default="", verbose_name="설명"),
+                ),
+                (
+                    "applies_to",
+                    models.CharField(
+                        blank=True,
+                        default="",
+                        help_text="CSV: realtime,event,alarm",
+                        max_length=100,
+                        verbose_name="반영 범위",
+                    ),
+                ),
+                (
+                    "sort_order",
+                    models.IntegerField(default=100, verbose_name="정렬 순서"),
+                ),
+                (
+                    "is_active",
+                    models.BooleanField(default=True, verbose_name="사용 여부"),
+                ),
+                (
+                    "is_system",
+                    models.BooleanField(default=False, verbose_name="시스템 분류 여부"),
+                ),
+                ("created_at", models.DateTimeField(auto_now_add=True)),
+                ("updated_at", models.DateTimeField(auto_now=True)),
+                (
+                    "created_by",
+                    models.ForeignKey(
+                        blank=True,
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="created_risk_categories",
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
+                (
+                    "updated_by",
+                    models.ForeignKey(
+                        blank=True,
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="updated_risk_categories",
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
             ],
             options={
-                'verbose_name': '위험 분류',
-                'verbose_name_plural': '위험 분류 목록',
-                'ordering': ['sort_order', 'code'],
+                "verbose_name": "위험 분류",
+                "verbose_name_plural": "위험 분류 목록",
+                "ordering": ["sort_order", "code"],
             },
         ),
         migrations.CreateModel(
-            name='ThresholdCategory',
+            name="ThresholdCategory",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('code', models.CharField(max_length=50, unique=True, verbose_name='분류 코드')),
-                ('name', models.CharField(max_length=50, verbose_name='분류명')),
-                ('description', models.TextField(blank=True, default='', verbose_name='설명')),
-                ('applies_to', models.CharField(blank=True, default='', help_text='CSV: realtime,ai_predict,alarm', max_length=100, verbose_name='반영 범위')),
-                ('sort_order', models.IntegerField(default=100, verbose_name='정렬 순서')),
-                ('is_active', models.BooleanField(default=True, verbose_name='사용 여부')),
-                ('is_system', models.BooleanField(default=False, verbose_name='시스템 분류 여부')),
-                ('created_at', models.DateTimeField(auto_now_add=True)),
-                ('updated_at', models.DateTimeField(auto_now=True)),
-                ('created_by', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='created_threshold_categories', to=settings.AUTH_USER_MODEL)),
-                ('updated_by', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='updated_threshold_categories', to=settings.AUTH_USER_MODEL)),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                (
+                    "code",
+                    models.CharField(
+                        max_length=50, unique=True, verbose_name="분류 코드"
+                    ),
+                ),
+                ("name", models.CharField(max_length=50, verbose_name="분류명")),
+                (
+                    "description",
+                    models.TextField(blank=True, default="", verbose_name="설명"),
+                ),
+                (
+                    "applies_to",
+                    models.CharField(
+                        blank=True,
+                        default="",
+                        help_text="CSV: realtime,ai_predict,alarm",
+                        max_length=100,
+                        verbose_name="반영 범위",
+                    ),
+                ),
+                (
+                    "sort_order",
+                    models.IntegerField(default=100, verbose_name="정렬 순서"),
+                ),
+                (
+                    "is_active",
+                    models.BooleanField(default=True, verbose_name="사용 여부"),
+                ),
+                (
+                    "is_system",
+                    models.BooleanField(default=False, verbose_name="시스템 분류 여부"),
+                ),
+                ("created_at", models.DateTimeField(auto_now_add=True)),
+                ("updated_at", models.DateTimeField(auto_now=True)),
+                (
+                    "created_by",
+                    models.ForeignKey(
+                        blank=True,
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="created_threshold_categories",
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
+                (
+                    "updated_by",
+                    models.ForeignKey(
+                        blank=True,
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="updated_threshold_categories",
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
             ],
             options={
-                'verbose_name': '임계치 분류',
-                'verbose_name_plural': '임계치 분류 목록',
-                'ordering': ['sort_order', 'code'],
+                "verbose_name": "임계치 분류",
+                "verbose_name_plural": "임계치 분류 목록",
+                "ordering": ["sort_order", "code"],
             },
         ),
         migrations.CreateModel(
-            name='Threshold',
+            name="Threshold",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('item_code', models.CharField(help_text='가스: co/h2s/co2/o2/no2/so2/o3/nh3/voc/ch4 — generators.py 키와 일치', max_length=50, verbose_name='측정 항목 코드')),
-                ('item_name', models.CharField(max_length=50, verbose_name='측정 항목명')),
-                ('unit', models.CharField(help_text='ppm / %LEL / % / A / V', max_length=20, verbose_name='단위')),
-                ('operator', models.CharField(choices=[('over', '초과'), ('under', '이하')], default='over', max_length=10, verbose_name='판단 조건')),
-                ('caution_value', models.FloatField(verbose_name='주의값')),
-                ('danger_value', models.FloatField(verbose_name='위험값')),
-                ('is_active', models.BooleanField(default=True, verbose_name='사용 여부')),
-                ('applies_to', models.CharField(blank=True, default='realtime,alarm', help_text='CSV: realtime,ai_predict,alarm', max_length=100, verbose_name='반영 범위')),
-                ('description', models.TextField(blank=True, default='', verbose_name='설명')),
-                ('created_at', models.DateTimeField(auto_now_add=True)),
-                ('updated_at', models.DateTimeField(auto_now=True)),
-                ('category', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='thresholds', to='backoffice.thresholdcategory', verbose_name='임계치 분류')),
-                ('created_by', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='created_thresholds', to=settings.AUTH_USER_MODEL)),
-                ('updated_by', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='updated_thresholds', to=settings.AUTH_USER_MODEL)),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                (
+                    "item_code",
+                    models.CharField(
+                        help_text="가스: co/h2s/co2/o2/no2/so2/o3/nh3/voc/ch4 — generators.py 키와 일치",
+                        max_length=50,
+                        verbose_name="측정 항목 코드",
+                    ),
+                ),
+                (
+                    "item_name",
+                    models.CharField(max_length=50, verbose_name="측정 항목명"),
+                ),
+                (
+                    "unit",
+                    models.CharField(
+                        help_text="ppm / %LEL / % / A / V",
+                        max_length=20,
+                        verbose_name="단위",
+                    ),
+                ),
+                (
+                    "operator",
+                    models.CharField(
+                        choices=[("over", "초과"), ("under", "이하")],
+                        default="over",
+                        max_length=10,
+                        verbose_name="판단 조건",
+                    ),
+                ),
+                ("caution_value", models.FloatField(verbose_name="주의값")),
+                ("danger_value", models.FloatField(verbose_name="위험값")),
+                (
+                    "is_active",
+                    models.BooleanField(default=True, verbose_name="사용 여부"),
+                ),
+                (
+                    "applies_to",
+                    models.CharField(
+                        blank=True,
+                        default="realtime,alarm",
+                        help_text="CSV: realtime,ai_predict,alarm",
+                        max_length=100,
+                        verbose_name="반영 범위",
+                    ),
+                ),
+                (
+                    "description",
+                    models.TextField(blank=True, default="", verbose_name="설명"),
+                ),
+                ("created_at", models.DateTimeField(auto_now_add=True)),
+                ("updated_at", models.DateTimeField(auto_now=True)),
+                (
+                    "category",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="thresholds",
+                        to="backoffice.thresholdcategory",
+                        verbose_name="임계치 분류",
+                    ),
+                ),
+                (
+                    "created_by",
+                    models.ForeignKey(
+                        blank=True,
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="created_thresholds",
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
+                (
+                    "updated_by",
+                    models.ForeignKey(
+                        blank=True,
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="updated_thresholds",
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
             ],
             options={
-                'verbose_name': '임계치 기준',
-                'verbose_name_plural': '임계치 기준 목록',
-                'ordering': ['category__sort_order', 'item_code'],
+                "verbose_name": "임계치 기준",
+                "verbose_name_plural": "임계치 기준 목록",
+                "ordering": ["category__sort_order", "item_code"],
             },
         ),
         migrations.CreateModel(
-            name='RiskType',
+            name="RiskType",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('code', models.CharField(max_length=50, verbose_name='유형 코드')),
-                ('name', models.CharField(max_length=100, verbose_name='유형명')),
-                ('description', models.TextField(blank=True, default='', verbose_name='설명')),
-                ('show_on_map', models.BooleanField(default=True, verbose_name='지도 반영 여부')),
-                ('sort_order', models.IntegerField(default=100, verbose_name='정렬 순서')),
-                ('is_active', models.BooleanField(default=True, verbose_name='사용 여부')),
-                ('created_at', models.DateTimeField(auto_now_add=True)),
-                ('updated_at', models.DateTimeField(auto_now=True)),
-                ('category', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='types', to='backoffice.riskcategory', verbose_name='위험 분류')),
-                ('created_by', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='created_risk_types', to=settings.AUTH_USER_MODEL)),
-                ('updated_by', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='updated_risk_types', to=settings.AUTH_USER_MODEL)),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                ("code", models.CharField(max_length=50, verbose_name="유형 코드")),
+                ("name", models.CharField(max_length=100, verbose_name="유형명")),
+                (
+                    "description",
+                    models.TextField(blank=True, default="", verbose_name="설명"),
+                ),
+                (
+                    "show_on_map",
+                    models.BooleanField(default=True, verbose_name="지도 반영 여부"),
+                ),
+                (
+                    "sort_order",
+                    models.IntegerField(default=100, verbose_name="정렬 순서"),
+                ),
+                (
+                    "is_active",
+                    models.BooleanField(default=True, verbose_name="사용 여부"),
+                ),
+                ("created_at", models.DateTimeField(auto_now_add=True)),
+                ("updated_at", models.DateTimeField(auto_now=True)),
+                (
+                    "category",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="types",
+                        to="backoffice.riskcategory",
+                        verbose_name="위험 분류",
+                    ),
+                ),
+                (
+                    "created_by",
+                    models.ForeignKey(
+                        blank=True,
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="created_risk_types",
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
+                (
+                    "updated_by",
+                    models.ForeignKey(
+                        blank=True,
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="updated_risk_types",
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
             ],
             options={
-                'verbose_name': '위험 유형',
-                'verbose_name_plural': '위험 유형 목록',
-                'ordering': ['sort_order', 'code'],
+                "verbose_name": "위험 유형",
+                "verbose_name_plural": "위험 유형 목록",
+                "ordering": ["sort_order", "code"],
             },
         ),
         migrations.CreateModel(
-            name='CodeGroup',
+            name="CodeGroup",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('code', models.CharField(help_text='UPPER_SNAKE_CASE (예: DEVICE_TYPE)', max_length=50, unique=True, verbose_name='코드 그룹')),
-                ('name', models.CharField(max_length=50, verbose_name='그룹명')),
-                ('description', models.TextField(blank=True, default='', verbose_name='설명')),
-                ('sort_order', models.IntegerField(default=100, verbose_name='정렬 순서')),
-                ('is_active', models.BooleanField(default=True, verbose_name='사용 여부')),
-                ('is_system', models.BooleanField(default=False, help_text='True 면 그룹 자체 삭제 불가 (시드된 핵심 그룹 보호)', verbose_name='시스템 그룹 여부')),
-                ('created_at', models.DateTimeField(auto_now_add=True)),
-                ('updated_at', models.DateTimeField(auto_now=True)),
-                ('created_by', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='created_codegroups', to=settings.AUTH_USER_MODEL)),
-                ('updated_by', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='updated_codegroups', to=settings.AUTH_USER_MODEL)),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                (
+                    "code",
+                    models.CharField(
+                        help_text="UPPER_SNAKE_CASE (예: DEVICE_TYPE)",
+                        max_length=50,
+                        unique=True,
+                        verbose_name="코드 그룹",
+                    ),
+                ),
+                ("name", models.CharField(max_length=50, verbose_name="그룹명")),
+                (
+                    "description",
+                    models.TextField(blank=True, default="", verbose_name="설명"),
+                ),
+                (
+                    "sort_order",
+                    models.IntegerField(default=100, verbose_name="정렬 순서"),
+                ),
+                (
+                    "is_active",
+                    models.BooleanField(default=True, verbose_name="사용 여부"),
+                ),
+                (
+                    "is_system",
+                    models.BooleanField(
+                        default=False,
+                        help_text="True 면 그룹 자체 삭제 불가 (시드된 핵심 그룹 보호)",
+                        verbose_name="시스템 그룹 여부",
+                    ),
+                ),
+                ("created_at", models.DateTimeField(auto_now_add=True)),
+                ("updated_at", models.DateTimeField(auto_now=True)),
+                (
+                    "created_by",
+                    models.ForeignKey(
+                        blank=True,
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="created_codegroups",
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
+                (
+                    "updated_by",
+                    models.ForeignKey(
+                        blank=True,
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="updated_codegroups",
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
             ],
             options={
-                'verbose_name': '코드 그룹',
-                'verbose_name_plural': '코드 그룹 목록',
-                'ordering': ['sort_order', 'code'],
+                "verbose_name": "코드 그룹",
+                "verbose_name_plural": "코드 그룹 목록",
+                "ordering": ["sort_order", "code"],
             },
         ),
         migrations.CreateModel(
-            name='Code',
+            name="Code",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('code', models.CharField(max_length=50, verbose_name='코드')),
-                ('name', models.CharField(max_length=100, verbose_name='코드명')),
-                ('description', models.TextField(blank=True, default='', verbose_name='설명')),
-                ('sort_order', models.IntegerField(default=100, verbose_name='정렬 순서')),
-                ('is_active', models.BooleanField(default=True, verbose_name='사용 여부')),
-                ('created_at', models.DateTimeField(auto_now_add=True)),
-                ('updated_at', models.DateTimeField(auto_now=True)),
-                ('created_by', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='created_codes', to=settings.AUTH_USER_MODEL)),
-                ('group', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='codes', to='backoffice.codegroup', verbose_name='코드 그룹')),
-                ('updated_by', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='updated_codes', to=settings.AUTH_USER_MODEL)),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                ("code", models.CharField(max_length=50, verbose_name="코드")),
+                ("name", models.CharField(max_length=100, verbose_name="코드명")),
+                (
+                    "description",
+                    models.TextField(blank=True, default="", verbose_name="설명"),
+                ),
+                (
+                    "sort_order",
+                    models.IntegerField(default=100, verbose_name="정렬 순서"),
+                ),
+                (
+                    "is_active",
+                    models.BooleanField(default=True, verbose_name="사용 여부"),
+                ),
+                ("created_at", models.DateTimeField(auto_now_add=True)),
+                ("updated_at", models.DateTimeField(auto_now=True)),
+                (
+                    "created_by",
+                    models.ForeignKey(
+                        blank=True,
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="created_codes",
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
+                (
+                    "group",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="codes",
+                        to="backoffice.codegroup",
+                        verbose_name="코드 그룹",
+                    ),
+                ),
+                (
+                    "updated_by",
+                    models.ForeignKey(
+                        blank=True,
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="updated_codes",
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
             ],
             options={
-                'verbose_name': '코드',
-                'verbose_name_plural': '코드 목록',
-                'ordering': ['sort_order', 'code'],
+                "verbose_name": "코드",
+                "verbose_name_plural": "코드 목록",
+                "ordering": ["sort_order", "code"],
             },
         ),
         migrations.CreateModel(
-            name='AlarmLevel',
+            name="AlarmLevel",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('code', models.CharField(help_text='UPPER 영문/숫자/언더스코어 (예: WARNING)', max_length=50, unique=True, verbose_name='단계 코드')),
-                ('name', models.CharField(max_length=20, verbose_name='단계명')),
-                ('color', models.CharField(choices=[('gray', '회색'), ('green', '녹색'), ('yellow', '황색'), ('orange', '주황색'), ('red', '적색'), ('black', '검정색')], max_length=20, verbose_name='표시 색상')),
-                ('intensity', models.CharField(choices=[('normal', '정상'), ('caution', '주의'), ('warning', '경고'), ('danger', '위험')], max_length=20, verbose_name='알림 강도')),
-                ('priority', models.IntegerField(default=100, help_text='작을수록 높은 우선순위 (정상=10, 위험=90 같은 식)', verbose_name='이벤트 우선순위')),
-                ('description', models.TextField(blank=True, default='', verbose_name='설명')),
-                ('is_active', models.BooleanField(default=True, verbose_name='사용 여부')),
-                ('is_system', models.BooleanField(default=False, verbose_name='시스템 단계 여부')),
-                ('created_at', models.DateTimeField(auto_now_add=True)),
-                ('updated_at', models.DateTimeField(auto_now=True)),
-                ('created_by', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='created_alarm_levels', to=settings.AUTH_USER_MODEL)),
-                ('updated_by', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='updated_alarm_levels', to=settings.AUTH_USER_MODEL)),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                (
+                    "code",
+                    models.CharField(
+                        help_text="UPPER 영문/숫자/언더스코어 (예: WARNING)",
+                        max_length=50,
+                        unique=True,
+                        verbose_name="단계 코드",
+                    ),
+                ),
+                ("name", models.CharField(max_length=20, verbose_name="단계명")),
+                (
+                    "color",
+                    models.CharField(
+                        choices=[
+                            ("gray", "회색"),
+                            ("green", "녹색"),
+                            ("yellow", "황색"),
+                            ("orange", "주황색"),
+                            ("red", "적색"),
+                            ("black", "검정색"),
+                        ],
+                        max_length=20,
+                        verbose_name="표시 색상",
+                    ),
+                ),
+                (
+                    "intensity",
+                    models.CharField(
+                        choices=[
+                            ("normal", "정상"),
+                            ("caution", "주의"),
+                            ("warning", "경고"),
+                            ("danger", "위험"),
+                        ],
+                        max_length=20,
+                        verbose_name="알림 강도",
+                    ),
+                ),
+                (
+                    "priority",
+                    models.IntegerField(
+                        default=100,
+                        help_text="작을수록 높은 우선순위 (정상=10, 위험=90 같은 식)",
+                        verbose_name="이벤트 우선순위",
+                    ),
+                ),
+                (
+                    "description",
+                    models.TextField(blank=True, default="", verbose_name="설명"),
+                ),
+                (
+                    "is_active",
+                    models.BooleanField(default=True, verbose_name="사용 여부"),
+                ),
+                (
+                    "is_system",
+                    models.BooleanField(default=False, verbose_name="시스템 단계 여부"),
+                ),
+                ("created_at", models.DateTimeField(auto_now_add=True)),
+                ("updated_at", models.DateTimeField(auto_now=True)),
+                (
+                    "created_by",
+                    models.ForeignKey(
+                        blank=True,
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="created_alarm_levels",
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
+                (
+                    "updated_by",
+                    models.ForeignKey(
+                        blank=True,
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="updated_alarm_levels",
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
             ],
             options={
-                'verbose_name': '위험 기준',
-                'verbose_name_plural': '위험 기준 목록',
-                'ordering': ['priority', 'code'],
+                "verbose_name": "위험 기준",
+                "verbose_name_plural": "위험 기준 목록",
+                "ordering": ["priority", "code"],
             },
         ),
         migrations.AddConstraint(
-            model_name='threshold',
-            constraint=models.UniqueConstraint(fields=('category', 'item_code'), name='threshold_unique_per_category'),
+            model_name="threshold",
+            constraint=models.UniqueConstraint(
+                fields=("category", "item_code"), name="threshold_unique_per_category"
+            ),
         ),
         migrations.AddConstraint(
-            model_name='risktype',
-            constraint=models.UniqueConstraint(fields=('category', 'code'), name='risk_type_unique_per_category'),
+            model_name="risktype",
+            constraint=models.UniqueConstraint(
+                fields=("category", "code"), name="risk_type_unique_per_category"
+            ),
         ),
         migrations.AddConstraint(
-            model_name='code',
-            constraint=models.UniqueConstraint(fields=('group', 'code'), name='code_unique_per_group'),
+            model_name="code",
+            constraint=models.UniqueConstraint(
+                fields=("group", "code"), name="code_unique_per_group"
+            ),
         ),
     ]

@@ -8,54 +8,217 @@ import django.db.models.deletion
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('devices', '0005_sensordata_current_sensordata_voltage_and_more'),
+        ("devices", "0005_sensordata_current_sensordata_voltage_and_more"),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
-        ('backoffice', '0009_seed_retention_and_notice'),
+        ("backoffice", "0009_seed_retention_and_notice"),
     ]
 
     operations = [
         migrations.CreateModel(
-            name='DeviceHistory',
+            name="DeviceHistory",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('device_id_snapshot', models.CharField(db_index=True, max_length=50, verbose_name='장비 ID 스냅샷')),
-                ('actor_username_snapshot', models.CharField(blank=True, default='', max_length=150)),
-                ('action', models.CharField(choices=[('create', '등록'), ('update', '수정'), ('delete', '삭제'), ('move', '좌표 이동'), ('toggle', '활성/비활성'), ('csv_import', 'CSV 일괄 등록')], max_length=20)),
-                ('changes', models.JSONField(blank=True, default=dict)),
-                ('extra_message', models.CharField(blank=True, default='', max_length=300)),
-                ('created_at', models.DateTimeField(auto_now_add=True)),
-                ('actor', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='+', to=settings.AUTH_USER_MODEL)),
-                ('device', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='history_logs', to='devices.device', verbose_name='장비')),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                (
+                    "device_id_snapshot",
+                    models.CharField(
+                        db_index=True, max_length=50, verbose_name="장비 ID 스냅샷"
+                    ),
+                ),
+                (
+                    "actor_username_snapshot",
+                    models.CharField(blank=True, default="", max_length=150),
+                ),
+                (
+                    "action",
+                    models.CharField(
+                        choices=[
+                            ("create", "등록"),
+                            ("update", "수정"),
+                            ("delete", "삭제"),
+                            ("move", "좌표 이동"),
+                            ("toggle", "활성/비활성"),
+                            ("csv_import", "CSV 일괄 등록"),
+                        ],
+                        max_length=20,
+                    ),
+                ),
+                ("changes", models.JSONField(blank=True, default=dict)),
+                (
+                    "extra_message",
+                    models.CharField(blank=True, default="", max_length=300),
+                ),
+                ("created_at", models.DateTimeField(auto_now_add=True)),
+                (
+                    "actor",
+                    models.ForeignKey(
+                        blank=True,
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="+",
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
+                (
+                    "device",
+                    models.ForeignKey(
+                        blank=True,
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="history_logs",
+                        to="devices.device",
+                        verbose_name="장비",
+                    ),
+                ),
             ],
             options={
-                'verbose_name': '장비 변경 이력',
-                'verbose_name_plural': '장비 변경 이력',
-                'ordering': ['-created_at'],
-                'indexes': [models.Index(fields=['device_id_snapshot', '-created_at'], name='backoffice__device__5b6c7a_idx'), models.Index(fields=['-created_at'], name='backoffice__created_bd1ddb_idx')],
+                "verbose_name": "장비 변경 이력",
+                "verbose_name_plural": "장비 변경 이력",
+                "ordering": ["-created_at"],
+                "indexes": [
+                    models.Index(
+                        fields=["device_id_snapshot", "-created_at"],
+                        name="backoffice__device__5b6c7a_idx",
+                    ),
+                    models.Index(
+                        fields=["-created_at"], name="backoffice__created_bd1ddb_idx"
+                    ),
+                ],
             },
         ),
         migrations.CreateModel(
-            name='AuditLog',
+            name="AuditLog",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('actor_username_snapshot', models.CharField(blank=True, default='', help_text='수행자 username 스냅샷 (사용자 삭제 후에도 보존)', max_length=150)),
-                ('action', models.CharField(choices=[('create', '등록'), ('update', '수정'), ('delete', '삭제'), ('login', '로그인'), ('logout', '로그아웃'), ('login_fail', '로그인 실패'), ('bulk_op', '일괄 처리'), ('csv_upload', 'CSV 업로드'), ('cleanup', '데이터 정리'), ('dispatch', '알림 발송')], max_length=20, verbose_name='액션')),
-                ('target_app', models.CharField(blank=True, default='', max_length=50, verbose_name='대상 앱')),
-                ('target_model', models.CharField(blank=True, default='', max_length=50, verbose_name='대상 모델')),
-                ('target_pk', models.CharField(blank=True, default='', max_length=50, verbose_name='대상 PK')),
-                ('target_repr', models.CharField(blank=True, default='', help_text='str(obj) 스냅샷 (대상 삭제 후에도 무엇을 지웠는지 추적)', max_length=200, verbose_name='대상 표시명')),
-                ('changes', models.JSONField(blank=True, default=dict, verbose_name='변경 내역')),
-                ('ip_address', models.GenericIPAddressField(blank=True, null=True, verbose_name='IP 주소')),
-                ('request_path', models.CharField(blank=True, default='', max_length=500, verbose_name='요청 경로')),
-                ('extra_message', models.CharField(blank=True, default='', max_length=300, verbose_name='추가 메모')),
-                ('created_at', models.DateTimeField(auto_now_add=True)),
-                ('actor', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='+', to=settings.AUTH_USER_MODEL, verbose_name='수행자')),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                (
+                    "actor_username_snapshot",
+                    models.CharField(
+                        blank=True,
+                        default="",
+                        help_text="수행자 username 스냅샷 (사용자 삭제 후에도 보존)",
+                        max_length=150,
+                    ),
+                ),
+                (
+                    "action",
+                    models.CharField(
+                        choices=[
+                            ("create", "등록"),
+                            ("update", "수정"),
+                            ("delete", "삭제"),
+                            ("login", "로그인"),
+                            ("logout", "로그아웃"),
+                            ("login_fail", "로그인 실패"),
+                            ("bulk_op", "일괄 처리"),
+                            ("csv_upload", "CSV 업로드"),
+                            ("cleanup", "데이터 정리"),
+                            ("dispatch", "알림 발송"),
+                        ],
+                        max_length=20,
+                        verbose_name="액션",
+                    ),
+                ),
+                (
+                    "target_app",
+                    models.CharField(
+                        blank=True, default="", max_length=50, verbose_name="대상 앱"
+                    ),
+                ),
+                (
+                    "target_model",
+                    models.CharField(
+                        blank=True, default="", max_length=50, verbose_name="대상 모델"
+                    ),
+                ),
+                (
+                    "target_pk",
+                    models.CharField(
+                        blank=True, default="", max_length=50, verbose_name="대상 PK"
+                    ),
+                ),
+                (
+                    "target_repr",
+                    models.CharField(
+                        blank=True,
+                        default="",
+                        help_text="str(obj) 스냅샷 (대상 삭제 후에도 무엇을 지웠는지 추적)",
+                        max_length=200,
+                        verbose_name="대상 표시명",
+                    ),
+                ),
+                (
+                    "changes",
+                    models.JSONField(
+                        blank=True, default=dict, verbose_name="변경 내역"
+                    ),
+                ),
+                (
+                    "ip_address",
+                    models.GenericIPAddressField(
+                        blank=True, null=True, verbose_name="IP 주소"
+                    ),
+                ),
+                (
+                    "request_path",
+                    models.CharField(
+                        blank=True, default="", max_length=500, verbose_name="요청 경로"
+                    ),
+                ),
+                (
+                    "extra_message",
+                    models.CharField(
+                        blank=True, default="", max_length=300, verbose_name="추가 메모"
+                    ),
+                ),
+                ("created_at", models.DateTimeField(auto_now_add=True)),
+                (
+                    "actor",
+                    models.ForeignKey(
+                        blank=True,
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="+",
+                        to=settings.AUTH_USER_MODEL,
+                        verbose_name="수행자",
+                    ),
+                ),
             ],
             options={
-                'verbose_name': '감사 로그',
-                'verbose_name_plural': '감사 로그 목록',
-                'ordering': ['-created_at'],
-                'indexes': [models.Index(fields=['-created_at'], name='backoffice__created_d72976_idx'), models.Index(fields=['actor', '-created_at'], name='backoffice__actor_i_57b98b_idx'), models.Index(fields=['target_model', '-created_at'], name='backoffice__target__5f5b16_idx'), models.Index(fields=['action', '-created_at'], name='backoffice__action_50887a_idx')],
+                "verbose_name": "감사 로그",
+                "verbose_name_plural": "감사 로그 목록",
+                "ordering": ["-created_at"],
+                "indexes": [
+                    models.Index(
+                        fields=["-created_at"], name="backoffice__created_d72976_idx"
+                    ),
+                    models.Index(
+                        fields=["actor", "-created_at"],
+                        name="backoffice__actor_i_57b98b_idx",
+                    ),
+                    models.Index(
+                        fields=["target_model", "-created_at"],
+                        name="backoffice__target__5f5b16_idx",
+                    ),
+                    models.Index(
+                        fields=["action", "-created_at"],
+                        name="backoffice__action_50887a_idx",
+                    ),
+                ],
             },
         ),
     ]
