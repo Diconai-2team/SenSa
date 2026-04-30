@@ -6,22 +6,30 @@ alerts 앱 뷰
 """
 
 from datetime import timedelta
+
 # 24h 통계 윈도우 계산용 — timezone.now() - timedelta(hours=24)
 from django.contrib.auth.decorators import login_required
+
 # 페이지 뷰 보호 데코레이터 — 비로그인 사용자를 LOGIN_URL로 리다이렉트
 from django.core.paginator import Paginator
+
 # 알람 목록 페이지네이션 — 누적 알람이 수만 건인 환경에서 필수
 # 한 페이지에 너무 많은 알람이 표시되면 인지 부하 + 렌더링 부하 모두 증가
 from django.shortcuts import render
+
 # Django 템플릿 렌더링 헬퍼 — 템플릿 + 컨텍스트 → HttpResponse
 from django.utils import timezone
+
 # timezone-aware datetime 생성 — settings.USE_TZ=True 환경에서 안전한 시간 비교
 from rest_framework import viewsets
+
 # DRF의 ViewSet 클래스들 — list/retrieve를 자동 처리하는 ReadOnlyModelViewSet 사용
 from rest_framework.decorators import action
+
 # ViewSet에 커스텀 액션(stats, read, read_all) 추가용 데코레이터
 # detail=True/False로 단일/컬렉션 액션 구분
 from rest_framework.response import Response
+
 # DRF용 JSON 응답 클래스 — content negotiation 지원
 
 from .models import Alarm
@@ -30,6 +38,7 @@ from .serializers import AlarmSerializer
 
 class AlarmViewSet(viewsets.ReadOnlyModelViewSet):
     """알람 조회 / 읽음 처리 / 통계 API"""
+
     # ReadOnlyModelViewSet — list/retrieve만 자동 제공, create/update/destroy는 차단
     # 알람은 services.py(상태 전이 로직)에서만 생성됨 — API로 직접 생성 못 하게 막은 의도
     # → 외부 호출자가 알람 위변조 못 함, 데이터 무결성 보장
@@ -70,14 +79,16 @@ class AlarmViewSet(viewsets.ReadOnlyModelViewSet):
         # 현재 시점 기준 24시간 전 컷오프
         qs = Alarm.objects.filter(created_at__gte=since)
         # 24시간 이내 알람만 필터 — 누적 데이터에서 최근 활동만 추출
-        return Response({
-            "danger":  qs.filter(alarm_level__in=["danger", "critical"]).count(),
-            # 위험+심각 합산 — 운영자 관점 단일 카테고리
-            "caution": qs.filter(alarm_level="caution").count(),
-            "total":   qs.count(),
-            # ⚠️ COUNT 쿼리 3번 별도 실행 — DB 부하 측면에서 비효율
-            #    개선안: aggregate(Count(Case(When(...))))로 1번 쿼리에 통합 가능
-        })
+        return Response(
+            {
+                "danger": qs.filter(alarm_level__in=["danger", "critical"]).count(),
+                # 위험+심각 합산 — 운영자 관점 단일 카테고리
+                "caution": qs.filter(alarm_level="caution").count(),
+                "total": qs.count(),
+                # ⚠️ COUNT 쿼리 3번 별도 실행 — DB 부하 측면에서 비효율
+                #    개선안: aggregate(Count(Case(When(...))))로 1번 쿼리에 통합 가능
+            }
+        )
 
     @action(detail=True, methods=["patch"])
     # detail=True — 개별 객체 레벨 액션 (특정 알람에 대한 동작)
@@ -151,6 +162,7 @@ def alarm_list_view(request):
         # critical < danger < caution < info 순으로 위에 오도록 정수 매핑.
         # 그 외 알람 레벨은 99 로 두어 가장 아래.
         from django.db.models import Case, When, IntegerField, Value
+
         # 함수 내부 import — 다른 분기에선 안 쓰니 모듈 로드 비용 절감
         # SQL의 CASE WHEN 표현식을 Django ORM으로 표현하기 위한 도구들
         qs = qs.annotate(
@@ -158,9 +170,9 @@ def alarm_list_view(request):
                 # 가상 필드 _priority를 매 row에 부여 — 정렬용 임시 컬럼
                 When(alarm_level="critical", then=Value(0)),
                 # critical은 최우선 (가장 작은 정수가 위로 옴)
-                When(alarm_level="danger",   then=Value(1)),
-                When(alarm_level="caution",  then=Value(2)),
-                When(alarm_level="info",     then=Value(3)),
+                When(alarm_level="danger", then=Value(1)),
+                When(alarm_level="caution", then=Value(2)),
+                When(alarm_level="info", then=Value(3)),
                 default=Value(99),
                 # 매핑되지 않은 레벨은 가장 아래 — 미래에 새 레벨 추가돼도 안전
                 output_field=IntegerField(),
@@ -182,19 +194,25 @@ def alarm_list_view(request):
     since = timezone.now() - timedelta(hours=24)
     # 통계 카드용 24h 컷오프
     stats = {
-    # 5개 카드 통계 — 카드 개선: 기존 4개 → 5개 (info 추가로 산술 일관성 확보)
-        "total":    Alarm.objects.count(),
+        # 5개 카드 통계 — 카드 개선: 기존 4개 → 5개 (info 추가로 산술 일관성 확보)
+        "total": Alarm.objects.count(),
         # 전체 누적 알람 수
-        "danger":   Alarm.objects.filter(alarm_level__in=["danger", "critical"]).count(),
+        "danger": Alarm.objects.filter(alarm_level__in=["danger", "critical"]).count(),
         # 위험+심각 합산 — get_queryset()/stats action과 동일 정책
-        "info":     Alarm.objects.filter(alarm_level="info").count(),
+        "info": Alarm.objects.filter(alarm_level="info").count(),
         # info(회복) 알람 — 약 50% 비중인데 기존엔 카드에 없어 안 보였음
         # 이제 '전체 = 위험 + 주의 + 정보'로 산술 일관성 성립
-    return render(request, "alerts/alarm_list.html", {
-        "alarms":       alarms,
-        # 페이지네이션된 알람 객체 (.object_list, .has_next, .number 등 템플릿에서 사용)
-        "level_filter": level_filter,
-        # 현재 활성 필터 탭 표시용
-        "stats":        stats,
-        # 상단 5개 카드 데이터
-    })
+    }
+
+    return render(
+        request,
+        "alerts/alarm_list.html",
+        {
+            "alarms": alarms,
+            # 페이지네이션된 알람 객체 (.object_list, .has_next, .number 등 템플릿에서 사용)
+            "level_filter": level_filter,
+            # 현재 활성 필터 탭 표시용
+            "stats": stats,
+            # 상단 5개 카드 데이터
+        },
+    )
