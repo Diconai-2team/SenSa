@@ -15,19 +15,55 @@ backoffice/views.py — 백오피스 (슈퍼관리자 채널) 뷰
 import json
 
 from django.db.models import Q, Case, When, IntegerField, Value
-from django.http import JsonResponse, Http404
+from django.http import JsonResponse, Http404, HttpResponse
 from django.shortcuts import render, get_object_or_404
 from django.urls import reverse
 from django.views.decorators.http import require_GET, require_POST
 
 from accounts.models import User
 
-from .models import Organization, Position
+from .models import (
+    # v1 (계정/조직)
+    Organization, Position,
+    # v2 (기준정보)
+    CodeGroup, Code, RiskCategory, RiskType, AlarmLevel,
+    ThresholdCategory, Threshold,
+    # v3 (알림/메뉴)
+    NotificationPolicy, NotificationLog, MenuPermission,
+    NOTIFICATION_CHANNEL_CHOICES, MENU_CODE_CHOICES,
+    # v4 (운영/공지)
+    DataRetentionPolicy, Notice,
+    DATA_TARGET_CHOICES, NOTICE_CATEGORY_CHOICES,
+)
 from .forms import (
+    # v1 (계정/조직)
     UserCreateForm, UserUpdateForm,
     OrganizationForm, PositionForm,
+    # v2 (기준정보)
+    CodeGroupForm, CodeForm,
+    RiskCategoryForm, RiskTypeForm, AlarmLevelForm,
+    ThresholdCategoryForm, ThresholdForm,
+    # v3 (알림/메뉴)
+    NotificationPolicyForm, MenuPermissionUpdateForm,
+    # v4 (운영/공지)
+    DeviceForm, GeoFenceForm,
+    DataRetentionForm, NoticeForm,
 )
 from .permissions import super_admin_required, super_admin_required_api
+
+# ─── Phase 1: 흩어져있던 import 통합 ───
+import csv
+from datetime import datetime, timedelta
+
+from django.utils import timezone
+from django.views.decorators.csrf import csrf_exempt
+
+from alerts.models import Alarm, ALARM_LEVEL_CHOICES, ALARM_TYPE_CHOICES
+from devices.models import Device, SENSOR_TYPE_CHOICES as DEVICE_SENSOR_TYPE_CHOICES
+from geofence.models import GeoFence, ZONE_TYPE_CHOICES, RISK_LEVEL_CHOICES
+from dashboard.models import MapImage
+
+# ─── Phase 1: 통합 import (이전에 파일 중간에 흩어져있던 것들) ───
 
 
 # ═══════════════════════════════════════════════════════════
@@ -567,16 +603,6 @@ def position_bulk_delete_api(request):
 # ═══════════════════════════════════════════════════════════
 # 코어 마스터 — 공통 코드 / 위험 유형 / 위험 기준 / 임계치
 # ═══════════════════════════════════════════════════════════
-from .models import (
-    CodeGroup, Code, RiskCategory, RiskType, AlarmLevel,
-    ThresholdCategory, Threshold,
-)
-from .forms import (
-    CodeGroupForm, CodeForm,
-    RiskCategoryForm, RiskTypeForm,
-    AlarmLevelForm,
-    ThresholdCategoryForm, ThresholdForm,
-)
 
 
 # ───────────────── 공통 코드 ─────────────────
@@ -985,8 +1011,6 @@ def threshold_bulk_toggle_api(request):
 # 인증: 세션 인증 (Django) 또는 INTERNAL_API_KEY (FastAPI 가 호출 시).
 # 응답 포맷: 기존 GAS_THRESHOLDS 와 호환되는 dict 구조 + 추가 메타.
 
-from django.views.decorators.csrf import csrf_exempt
-
 @csrf_exempt
 @require_GET
 def thresholds_for_fastapi(request):
@@ -1034,18 +1058,8 @@ def thresholds_for_fastapi(request):
 # ═══════════════════════════════════════════════════════════
 # 이벤트 이력 (Alarm 조회) — 피그마 '이벤트 이력 관리'
 # ═══════════════════════════════════════════════════════════
-import csv
-from datetime import datetime, timedelta
-from django.http import HttpResponse
-from django.utils import timezone
 
-from alerts.models import Alarm, ALARM_LEVEL_CHOICES, ALARM_TYPE_CHOICES
 
-from .models import (
-    NotificationPolicy, NotificationLog, MenuPermission,
-    NOTIFICATION_CHANNEL_CHOICES, MENU_CODE_CHOICES,
-)
-from .forms import NotificationPolicyForm, MenuPermissionUpdateForm
 
 
 EVENT_PAGE_SIZE = 20
@@ -1425,12 +1439,7 @@ def menu_perm_update_api(request):
 # ═══════════════════════════════════════════════════════════
 # 설비/장비 관리 — 피그마 '설비/장비 관리'
 # ═══════════════════════════════════════════════════════════
-from devices.models import Device, SENSOR_TYPE_CHOICES as DEVICE_SENSOR_TYPE_CHOICES
-from geofence.models import GeoFence, ZONE_TYPE_CHOICES, RISK_LEVEL_CHOICES
-from dashboard.models import MapImage
 
-from .models import DataRetentionPolicy, Notice, DATA_TARGET_CHOICES, NOTICE_CATEGORY_CHOICES
-from .forms import DeviceForm, GeoFenceForm, DataRetentionForm, NoticeForm
 
 
 DEVICE_PAGE_SIZE = 20

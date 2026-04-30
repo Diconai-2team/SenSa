@@ -19,7 +19,29 @@ from django import forms
 from django.contrib.auth import get_user_model
 from django.core.validators import EmailValidator
 
-from .models import Organization, Position
+from .models import (
+    # v1 (계정/조직)
+    Organization, Position,
+    # v2 (기준정보)
+    CodeGroup, Code, RiskCategory, RiskType, AlarmLevel,
+    ThresholdCategory, Threshold,
+    ALARM_COLOR_CHOICES, ALARM_INTENSITY_CHOICES,
+    THRESHOLD_OPERATOR_CHOICES,
+    # v3 (알림/메뉴)
+    NotificationPolicy, MenuPermission,
+    NOTIFICATION_CHANNEL_CHOICES, MENU_CODE_CHOICES,
+    # v4 (운영/공지)
+    DataRetentionPolicy, Notice,
+    DATA_TARGET_CHOICES, NOTICE_CATEGORY_CHOICES,
+)
+
+# 외부 앱 모델 (forms 에서 직접 사용)
+from devices.models import (
+    Device,
+    SENSOR_TYPE_CHOICES as DEVICE_SENSOR_TYPE_CHOICES,
+    STATUS_CHOICES as DEVICE_STATUS_CHOICES,
+)
+from geofence.models import GeoFence, ZONE_TYPE_CHOICES, RISK_LEVEL_CHOICES
 
 
 User = get_user_model()
@@ -382,15 +404,8 @@ class PositionForm(forms.Form):
 # 코어 마스터 폼 (공통 코드 / 위험 유형 / 위험 기준 / 임계치)
 # ═══════════════════════════════════════════════════════════
 
-import re as _re
-from .models import (
-    CodeGroup, Code, RiskCategory, RiskType, AlarmLevel,
-    ThresholdCategory, Threshold,
-    ALARM_COLOR_CHOICES, ALARM_INTENSITY_CHOICES,
-    THRESHOLD_OPERATOR_CHOICES,
-)
 
-UPPER_SNAKE_RE = _re.compile(r'^[A-Z][A-Z0-9_]*$')
+UPPER_SNAKE_RE = re.compile(r'^[A-Z][A-Z0-9_]*$')
 
 
 def _validate_upper_snake(v: str, label: str = '코드'):
@@ -858,10 +873,6 @@ class ThresholdForm(forms.Form):
 # 알림 정책 / 메뉴 권한 폼
 # ═══════════════════════════════════════════════════════════
 
-from .models import (
-    NotificationPolicy, MenuPermission,
-    NOTIFICATION_CHANNEL_CHOICES, MENU_CODE_CHOICES,
-)
 
 
 class NotificationPolicyForm(forms.Form):
@@ -1010,12 +1021,6 @@ class MenuPermissionUpdateForm(forms.Form):
 # 설비/장비 / 지도/지오펜스 / 운영데이터 / 공지사항 폼
 # ═══════════════════════════════════════════════════════════
 
-from devices.models import Device, SENSOR_TYPE_CHOICES as DEVICE_SENSOR_TYPE_CHOICES, STATUS_CHOICES as DEVICE_STATUS_CHOICES
-from geofence.models import GeoFence, ZONE_TYPE_CHOICES, RISK_LEVEL_CHOICES
-from .models import (
-    DataRetentionPolicy, Notice,
-    DATA_TARGET_CHOICES, NOTICE_CATEGORY_CHOICES,
-)
 
 
 class DeviceForm(forms.Form):
@@ -1030,7 +1035,7 @@ class DeviceForm(forms.Form):
     geofence_id = forms.IntegerField(required=False)
     last_value_unit = forms.CharField(required=False)
 
-    DEVICE_ID_RE = _re.compile(r'^[A-Za-z0-9_\-]+$')
+    DEVICE_ID_RE = re.compile(r'^[A-Za-z0-9_\-]+$')
 
     def __init__(self, *args, instance=None, **kwargs):
         super().__init__(*args, **kwargs)

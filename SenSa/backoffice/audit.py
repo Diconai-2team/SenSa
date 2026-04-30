@@ -16,6 +16,11 @@ from django.dispatch import receiver
 
 from .middleware import get_current_user, get_current_ip, get_current_request
 
+# Django 인증 시그널 (login/logout/login_fail audit)
+from django.contrib.auth.signals import (
+    user_logged_in, user_logged_out, user_login_failed,
+)
+
 
 logger = logging.getLogger(__name__)
 
@@ -158,7 +163,6 @@ def write_device_history(device, action: str, changes=None, message: str = ''):
 # ═══════════════════════════════════════════════════════════
 # 인증 이벤트 추적 — login / logout / login_fail
 # ═══════════════════════════════════════════════════════════
-from django.contrib.auth.signals import user_logged_in, user_logged_out, user_login_failed
 
 
 @receiver(user_logged_in)
