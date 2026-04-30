@@ -52,7 +52,7 @@ class Worker(models.Model):
     department = models.CharField(
         max_length=100,
         blank=True,
-        default='',
+        default="",
         help_text="소속 부서",
     )
     # 부서 — 작업자 현황 페이지에서 그룹별 조회용
@@ -61,21 +61,21 @@ class Worker(models.Model):
     position = models.CharField(
         max_length=50,
         blank=True,
-        default='',
+        default="",
         help_text="직급 (사원/대리/과장 등)",
     )
     # 직급 — 작업자 현황 페이지 표시용
     # ⚠️ accounts.User에도 동일한 position 필드 존재 — 운영자/작업자 모두에게 공통 개념
     email = models.EmailField(
         blank=True,
-        default='',
+        default="",
         help_text="이메일",
     )
     # EmailField — 이메일 형식 자동 검증 (vs CharField + 수동 검증)
     phone = models.CharField(
         max_length=20,
         blank=True,
-        default='',
+        default="",
         help_text="연락처",
     )
     # 향후 SMS 알림 발송 시 사용될 채널 정보
@@ -134,7 +134,7 @@ class WorkerLocation(models.Model):
     movement_status = models.CharField(
         max_length=20,
         choices=MOVEMENT_STATUS_CHOICES,
-        default='moving',
+        default="moving",
     )
     # 이 측정치 시점의 이동/정지 상태
     timestamp = models.DateTimeField(auto_now_add=True)
@@ -159,6 +159,7 @@ class WorkerLocation(models.Model):
 # ═══════════════════════════════════════════════════════════
 # Phase 4A 신규 — 관리자 → 작업자 푸시 알림 로그
 # ═══════════════════════════════════════════════════════════
+
 
 class NotificationLog(models.Model):
     """
@@ -216,13 +217,13 @@ class NotificationLog(models.Model):
     # 발송 시각
 
     class Meta:
-        ordering = ['-sent_at']
-        verbose_name = '알림 전송 이력'
-        verbose_name_plural = '알림 전송 이력 목록'
+        ordering = ["-sent_at"]
+        verbose_name = "알림 전송 이력"
+        verbose_name_plural = "알림 전송 이력 목록"
         indexes = [
             models.Index(fields=['-sent_at']),
             # 시간순 조회용 — 최근 N건 알림 빠르게 조회
         ]
 
     def __str__(self):
-        return f'[{self.get_send_type_display()}] {self.message[:30]}'
+        return f"[{self.get_send_type_display()}] {self.message[:30]}"

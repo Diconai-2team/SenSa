@@ -4,6 +4,7 @@ alerts 앱 뷰
 - AlarmViewSet: 알람 조회 + 읽음 처리 + 24h 통계
 - alarm_list_view: 알람 상세 목록 페이지 (HTML)
 """
+
 from datetime import timedelta
 from django.contrib.auth.decorators import login_required
 from django.core.paginator import Paginator
@@ -19,6 +20,7 @@ from .serializers import AlarmSerializer
 
 class AlarmViewSet(viewsets.ReadOnlyModelViewSet):
     """알람 조회 / 읽음 처리 / 통계 API"""
+
     queryset = Alarm.objects.all().order_by("-created_at")
     serializer_class = AlarmSerializer
 
@@ -38,11 +40,13 @@ class AlarmViewSet(viewsets.ReadOnlyModelViewSet):
         """최근 24시간 알람 통계 — GET /dashboard/api/alarm/stats/"""
         since = timezone.now() - timedelta(hours=24)
         qs = Alarm.objects.filter(created_at__gte=since)
-        return Response({
-            "danger":  qs.filter(alarm_level__in=["danger", "critical"]).count(),
-            "caution": qs.filter(alarm_level="caution").count(),
-            "total":   qs.count(),
-        })
+        return Response(
+            {
+                "danger": qs.filter(alarm_level__in=["danger", "critical"]).count(),
+                "caution": qs.filter(alarm_level="caution").count(),
+                "total": qs.count(),
+            }
+        )
 
     @action(detail=True, methods=["patch"])
     def read(self, request, pk=None):
@@ -97,12 +101,13 @@ def alarm_list_view(request):
         # critical < danger < caution < info 순으로 위에 오도록 정수 매핑.
         # 그 외 알람 레벨은 99 로 두어 가장 아래.
         from django.db.models import Case, When, IntegerField, Value
+
         qs = qs.annotate(
             _priority=Case(
                 When(alarm_level="critical", then=Value(0)),
-                When(alarm_level="danger",   then=Value(1)),
-                When(alarm_level="caution",  then=Value(2)),
-                When(alarm_level="info",     then=Value(3)),
+                When(alarm_level="danger", then=Value(1)),
+                When(alarm_level="caution", then=Value(2)),
+                When(alarm_level="info", then=Value(3)),
                 default=Value(99),
                 output_field=IntegerField(),
             )
@@ -114,15 +119,19 @@ def alarm_list_view(request):
 
     since = timezone.now() - timedelta(hours=24)
     stats = {
-        "total":    Alarm.objects.count(),
-        "danger":   Alarm.objects.filter(alarm_level__in=["danger", "critical"]).count(),
-        "caution":  Alarm.objects.filter(alarm_level="caution").count(),
-        "info":     Alarm.objects.filter(alarm_level="info").count(),
+        "total": Alarm.objects.count(),
+        "danger": Alarm.objects.filter(alarm_level__in=["danger", "critical"]).count(),
+        "caution": Alarm.objects.filter(alarm_level="caution").count(),
+        "info": Alarm.objects.filter(alarm_level="info").count(),
         "last_24h": Alarm.objects.filter(created_at__gte=since).count(),
     }
 
-    return render(request, "alerts/alarm_list.html", {
-        "alarms":       alarms,
-        "level_filter": level_filter,
-        "stats":        stats,
-    })
+    return render(
+        request,
+        "alerts/alarm_list.html",
+        {
+            "alarms": alarms,
+            "level_filter": level_filter,
+            "stats": stats,
+        },
+    )

@@ -6,6 +6,7 @@ workers/serializers.py — 모델 ↔ JSON 변환기
   2. Python 객체 → API 응답(JSON) (직렬화)
   3. 유효성 검사 (타입, 길이, 필수 여부 등)
 """
+
 from rest_framework import serializers
 from .models import Worker, WorkerLocation
 # NotificationLog 시리얼라이저 부재 — views.WorkerNotifyView가 dict 수동 조립

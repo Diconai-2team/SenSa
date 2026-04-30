@@ -44,15 +44,19 @@ FastAPI 기동 시 lifespan 에서 백그라운드 태스크로 돌며 Django RE
        → [H2S:18.2], [O2:17.3], [전류:22.5A] 등 진짜 원인이 박힘
      - 모든 항목이 정상 영역이면 fallback (정상 복귀 메시지 의미 유지)
 """
+
 import asyncio
 import httpx
 
 from config import TICK_INTERVAL, DEFAULT_SCENARIO
 from django_loader import load_devices, load_workers, load_thresholds
 from generators import (
-    generate_gas, generate_power, move_worker,
-    identify_worst_gas, identify_worst_power,   # Layer 3 — 알람 detail 라벨용
-    apply_thresholds,                            # v3 — Django DB 임계치 동기화
+    generate_gas,
+    generate_power,
+    move_worker,
+    identify_worst_gas,
+    identify_worst_power,  # Layer 3 — 알람 detail 라벨용
+    apply_thresholds,  # v3 — Django DB 임계치 동기화
 )
 from poster import post_sensor_data, post_worker_location, post_check_geofence
 
@@ -65,6 +69,7 @@ RELOAD_INTERVAL_SEC = 5
 # ═══════════════════════════════════════════════════════════
 # 틱 1회 처리 — 루프와 분리해 예외 격리
 # ═══════════════════════════════════════════════════════════
+
 
 async def _tick_once(
     client: httpx.AsyncClient,
@@ -84,7 +89,7 @@ async def _tick_once(
     # 1. 센서 POST 태스크 구성 (gas + power)
     # ═══════════════════════════════════════════════════════
     sensor_tasks: list = []
-    sensor_refs:  list = []   # gather 결과를 device 와 zip 하려고 순서 보존
+    sensor_refs: list = []  # gather 결과를 device 와 zip 하려고 순서 보존
 
     for d in devices:
         device_id = d["device_id"]
@@ -95,42 +100,42 @@ async def _tick_once(
             # generate_gas 가 in-place 로 sim_state 갱신 + 새 가스값 반환.
             sim_state = d.setdefault("sim_state", {})
             gas = generate_gas(tick, scenario, prev_state=sim_state)
-            sensor_tasks.append(
-                post_sensor_data(client, device_id, "gas", gas)
-            )
+            sensor_tasks.append(post_sensor_data(client, device_id, "gas", gas))
             # Layer 3: 알람 메시지 detail 에 "실제로 임계 넘긴 가스" 박기.
             # 모든 가스가 정상이면 fallback 으로 CO 표시 (회복 메시지 등에서 의미 유지).
             worst_label, worst_val = identify_worst_gas(gas)
             if worst_label is None:
-                detail = f"CO:{gas['co']}"   # 정상 시 fallback (관례)
+                detail = f"CO:{gas['co']}"  # 정상 시 fallback (관례)
             else:
                 detail = f"{worst_label}:{worst_val}"
-            sensor_refs.append({
-                "device": d,
-                "sensor_type": "gas",
-                "detail": detail,
-            })
+            sensor_refs.append(
+                {
+                    "device": d,
+                    "sensor_type": "gas",
+                    "detail": detail,
+                }
+            )
 
         elif sensor_type == "power":
             # R1 v3: 전력도 sim_state(평균회귀 prev + 이벤트 카운터) 보존.
             sim_state = d.setdefault("sim_state", {})
             power = generate_power(tick, scenario, prev_state=sim_state)
-            sensor_tasks.append(
-                post_sensor_data(client, device_id, "power", power)
-            )
+            sensor_tasks.append(post_sensor_data(client, device_id, "power", power))
             # Layer 3: 전력도 worst 항목 동적 식별
             worst_label, worst_val = identify_worst_power(power)
             if worst_label is None:
-                detail = f"전류:{power['current']}A"   # 정상 시 fallback
+                detail = f"전류:{power['current']}A"  # 정상 시 fallback
             elif worst_label == "전류":
                 detail = f"전류:{worst_val}A"
-            else:   # 전압
+            else:  # 전압
                 detail = f"전압:{worst_val}V"
-            sensor_refs.append({
-                "device": d,
-                "sensor_type": "power",
-                "detail": detail,
-            })
+            sensor_refs.append(
+                {
+                    "device": d,
+                    "sensor_type": "power",
+                    "detail": detail,
+                }
+            )
         # 다른 sensor_type (temperature/motion) 은 현재 미지원 → 스킵
 
     # ═══════════════════════════════════════════════════════
@@ -147,12 +152,14 @@ async def _tick_once(
         worker_tasks.append(
             post_worker_location(client, w["worker_db_pk"], w["x"], w["y"])
         )
-        worker_summary.append({
-            "worker_id": w["worker_id"],
-            "name":      w["name"],
-            "x": round(w["x"]),
-            "y": round(w["y"]),
-        })
+        worker_summary.append(
+            {
+                "worker_id": w["worker_id"],
+                "name": w["name"],
+                "x": round(w["x"]),
+                "y": round(w["y"]),
+            }
+        )
 
     # ═══════════════════════════════════════════════════════
     # 3. 저장 POST 병렬 실행
@@ -160,10 +167,8 @@ async def _tick_once(
     #
     # return_exceptions=True: 한 태스크가 실패해도 나머지는 그대로 진행.
     # 언패킹 순서가 sensor → worker 이므로 슬라이스 인덱스도 그 순서.
-    results = await asyncio.gather(
-        *sensor_tasks, *worker_tasks, return_exceptions=True
-    )
-    sensor_results = results[:len(sensor_tasks)]
+    results = await asyncio.gather(*sensor_tasks, *worker_tasks, return_exceptions=True)
+    sensor_results = results[: len(sensor_tasks)]
     # worker_results = results[len(sensor_tasks):]  # 현재 후처리 없음
 
     # ═══════════════════════════════════════════════════════
@@ -181,14 +186,16 @@ async def _tick_once(
             continue
         status = res.get("status", "normal")
         device = ref["device"]
-        sensor_summary.append({
-            "device_id":   device["device_id"],
-            "sensor_type": ref["sensor_type"],
-            "status":      status,
-            "detail":      ref["detail"],
-            "x": device.get("x", 0),   # CheckGeofenceView 의 PROXIMITY_RADIUS 판정용
-            "y": device.get("y", 0),
-        })
+        sensor_summary.append(
+            {
+                "device_id": device["device_id"],
+                "sensor_type": ref["sensor_type"],
+                "status": status,
+                "detail": ref["detail"],
+                "x": device.get("x", 0),  # CheckGeofenceView 의 PROXIMITY_RADIUS 판정용
+                "y": device.get("y", 0),
+            }
+        )
 
     # ═══════════════════════════════════════════════════════
     # 5. 알람 판정 트리거
@@ -203,6 +210,7 @@ async def _tick_once(
 # ═══════════════════════════════════════════════════════════
 # P2+ — 동적 재로드 헬퍼
 # ═══════════════════════════════════════════════════════════
+
 
 async def _reload_devices_and_workers(
     client: httpx.AsyncClient,
@@ -225,9 +233,9 @@ async def _reload_devices_and_workers(
 
     # devices: x/y 는 DB 가 SoT 이지만 sim_state(R1 평균회귀 prev) 는 in-memory 보존
     prev_dev_by_id = {d["device_id"]: d for d in devices}
-    prev_dev_ids  = set(prev_dev_by_id)
+    prev_dev_ids = set(prev_dev_by_id)
     fresh_dev_ids = {d["device_id"] for d in fresh_devices}
-    added_dev   = fresh_dev_ids - prev_dev_ids
+    added_dev = fresh_dev_ids - prev_dev_ids
     removed_dev = prev_dev_ids - fresh_dev_ids
     if added_dev or removed_dev:
         print(
@@ -260,13 +268,13 @@ async def _reload_devices_and_workers(
             # 기존 작업자 — in-memory 좌표(x, y, dx, dy) 유지, 메타만 갱신
             existing = prev_workers_by_id[wid]
             existing["worker_db_pk"] = fw["worker_db_pk"]
-            existing["name"]         = fw["name"]
+            existing["name"] = fw["name"]
             new_workers.append(existing)
         else:
             # 신규 작업자 — fresh 그대로 추가 (load_workers 가 latest 좌표 채워줌)
             new_workers.append(fw)
 
-    added_w   = {fw["worker_id"] for fw in fresh_workers} - set(prev_workers_by_id)
+    added_w = {fw["worker_id"] for fw in fresh_workers} - set(prev_workers_by_id)
     removed_w = set(prev_workers_by_id) - {fw["worker_id"] for fw in fresh_workers}
     if added_w or removed_w:
         print(
@@ -280,6 +288,7 @@ async def _reload_devices_and_workers(
 # ═══════════════════════════════════════════════════════════
 # 메인 루프
 # ═══════════════════════════════════════════════════════════
+
 
 async def run_simulation_loop(app_state) -> None:
     """
@@ -328,7 +337,9 @@ async def run_simulation_loop(app_state) -> None:
 
         # P2+ 재로드 시점 추적 — TICK_INTERVAL 단위로 환산
         # 예: TICK_INTERVAL=1, RELOAD_INTERVAL_SEC=5 → 5틱마다 재로드
-        reload_every_n_ticks = max(1, int(RELOAD_INTERVAL_SEC / max(TICK_INTERVAL, 0.1)))
+        reload_every_n_ticks = max(
+            1, int(RELOAD_INTERVAL_SEC / max(TICK_INTERVAL, 0.1))
+        )
 
         # ─── 무한 루프 ───
         tick = 0
@@ -342,7 +353,9 @@ async def run_simulation_loop(app_state) -> None:
             # 신규 센서/작업자가 즉시 이번 틱부터 시뮬에 포함되도록 함.
             if tick % reload_every_n_ticks == 0:
                 devices, workers = await _reload_devices_and_workers(
-                    client, devices, workers,
+                    client,
+                    devices,
+                    workers,
                 )
                 # v3 — 임계치도 동시 재로드. 백오피스에서 임계치 변경 시 5초 안에 반영.
                 # 실패해도 기존 GAS_THRESHOLDS 유지 (apply_thresholds 가 None 받으면 no-op).

@@ -8,6 +8,7 @@ devices/models.py — 센서 장비 + 측정값 히스토리
     → 동적 전력 판정(최근 24시간 중앙값 기반)의 데이터 소스.
     → alerts.services._get_24h_avg_watt 가 이 watt 필드를 읽음.
 """
+
 from django.db import models
 # 모델 필드 타입(CharField, FloatField, ForeignKey 등)을 정의하기 위한 ORM 모듈
 

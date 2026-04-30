@@ -4,6 +4,7 @@ alerts 앱 뷰
 - AlarmViewSet: 알람 조회 + 읽음 처리 + 24h 통계
 - alarm_list_view: 알람 상세 목록 페이지 (HTML)
 """
+
 from datetime import timedelta
 # 24h 통계 윈도우 계산용 — timezone.now() - timedelta(hours=24)
 from django.contrib.auth.decorators import login_required
@@ -186,16 +187,9 @@ def alarm_list_view(request):
         # 전체 누적 알람 수
         "danger":   Alarm.objects.filter(alarm_level__in=["danger", "critical"]).count(),
         # 위험+심각 합산 — get_queryset()/stats action과 동일 정책
-        "caution":  Alarm.objects.filter(alarm_level="caution").count(),
         "info":     Alarm.objects.filter(alarm_level="info").count(),
         # info(회복) 알람 — 약 50% 비중인데 기존엔 카드에 없어 안 보였음
         # 이제 '전체 = 위험 + 주의 + 정보'로 산술 일관성 성립
-        "last_24h": Alarm.objects.filter(created_at__gte=since).count(),
-        # ⚠️ COUNT 쿼리 5번 별도 실행 — 페이지 로드마다 5번씩 풀스캔
-        #    개선안: 1번의 aggregate(Count(Case(When(...))))로 통합
-        #    또는 created_at에 인덱스 추가 + 별도 캐시 (5초 TTL)
-    }
-
     return render(request, "alerts/alarm_list.html", {
         "alarms":       alarms,
         # 페이지네이션된 알람 객체 (.object_list, .has_next, .number 등 템플릿에서 사용)

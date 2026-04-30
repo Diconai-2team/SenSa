@@ -7,6 +7,7 @@ GeoFence.polygon 은 [[x, y], [x, y], ...] 형식의 단순 폴리곤.
 성능: O(n_points × n_polygons). 본 시스템 규모 (수십 폴리곤, 수백 장비)
 에선 충분. 대규모 환경은 R-tree (rtree 패키지) 권장.
 """
+
 from __future__ import annotations
 
 
@@ -23,7 +24,9 @@ def point_in_polygon(x: float, y: float, polygon: list) -> bool:
     for i in range(n):
         xi, yi = polygon[i][0], polygon[i][1]
         xj, yj = polygon[j][0], polygon[j][1]
-        if ((yi > y) != (yj > y)) and (x < (xj - xi) * (y - yi) / (yj - yi + 1e-12) + xi):
+        if ((yi > y) != (yj > y)) and (
+            x < (xj - xi) * (y - yi) / (yj - yi + 1e-12) + xi
+        ):
             inside = not inside
         j = i
     return inside
@@ -40,7 +43,7 @@ def find_containing_geofence(x: float, y: float, geofences):
         매칭되는 GeoFence 인스턴스 또는 None
     """
     # 우선순위: danger > restricted > caution > 기타 (위험할수록 먼저 매칭)
-    PRIORITY = {'danger': 0, 'restricted': 1, 'caution': 2}
+    PRIORITY = {"danger": 0, "restricted": 1, "caution": 2}
     matches = []
     for g in geofences:
         if point_in_polygon(x, y, g.polygon):

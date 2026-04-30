@@ -23,8 +23,7 @@ def point_in_polygon(x: float, y: float, polygon: list) -> bool:
         xi, yi = polygon[i]
         xj, yj = polygon[j]
 
-        if ((yi > y) != (yj > y)) and \
-           (x < (xj - xi) * (y - yi) / (yj - yi) + xi):
+        if ((yi > y) != (yj > y)) and (x < (xj - xi) * (y - yi) / (yj - yi) + xi):
             inside = not inside
 
         j = i

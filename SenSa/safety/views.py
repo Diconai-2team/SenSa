@@ -5,6 +5,7 @@ safety/views.py — 안전 확인 체크리스트 페이지 + 제출 API
   v1 : 기본 체크리스트 페이지
   v2 : 사이드바에 VR 교육 완료 상태 표시용 context 추가
 """
+
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import render
 from django.utils import timezone
@@ -24,13 +25,15 @@ from .models import SafetyChecklist
 # 페이지 뷰
 # ═══════════════════════════════════════════════════════════
 
-@login_required(login_url='/accounts/login/')
+
+@login_required(login_url="/accounts/login/")
 def checklist_page(request):
     """체크리스트 페이지 + 사이드바 컨텍스트."""
     today = timezone.localdate()
 
     existing = SafetyChecklist.objects.filter(
-        user=request.user, check_date=today,
+        user=request.user,
+        check_date=today,
     ).first()
     checklist_done = existing is not None
 
@@ -39,8 +42,11 @@ def checklist_page(request):
     vr_completed = False
     try:
         from vr_training.models import VRTrainingLog
+
         vr_log = VRTrainingLog.objects.filter(
-            user=request.user, check_date=today, is_completed=True,
+            user=request.user,
+            check_date=today,
+            is_completed=True,
         ).first()
         vr_completed = vr_log is not None
     except Exception:
@@ -48,32 +54,34 @@ def checklist_page(request):
         vr_completed = False
 
     context = {
-        'checklist_categories': CHECKLIST_ITEMS,
-        'total_count': get_total_count(),
-        'today': today,
-        'already_completed': checklist_done,
-        'previously_checked': existing.checked_items if existing else [],
+        "checklist_categories": CHECKLIST_ITEMS,
+        "total_count": get_total_count(),
+        "today": today,
+        "already_completed": checklist_done,
+        "previously_checked": existing.checked_items if existing else [],
         # 사이드바용
-        'checklist_done': checklist_done,
-        'vr_completed': vr_completed,
+        "checklist_done": checklist_done,
+        "vr_completed": vr_completed,
     }
-    return render(request, 'safety/checklist.html', context)
+    return render(request, "safety/checklist.html", context)
 
 
 # ═══════════════════════════════════════════════════════════
 # 제출 API
 # ═══════════════════════════════════════════════════════════
 
-@method_decorator(csrf_exempt, name='dispatch')
+
+@method_decorator(csrf_exempt, name="dispatch")
 class ChecklistSubmitView(APIView):
     """체크리스트 제출 API."""
+
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
-        checked_items = request.data.get('checked_items', [])
+        checked_items = request.data.get("checked_items", [])
         if not isinstance(checked_items, list):
             return Response(
-                {'status': 'error', 'message': 'checked_items 는 배열이어야 합니다.'},
+                {"status": "error", "message": "checked_items 는 배열이어야 합니다."},
                 status=http_status.HTTP_400_BAD_REQUEST,
             )
 
@@ -87,8 +95,8 @@ class ChecklistSubmitView(APIView):
         if invalid:
             return Response(
                 {
-                    'status': 'error',
-                    'message': f'정의되지 않은 항목 key 가 포함됨: {invalid}',
+                    "status": "error",
+                    "message": f"정의되지 않은 항목 key 가 포함됨: {invalid}",
                 },
                 status=http_status.HTTP_400_BAD_REQUEST,
             )
@@ -96,9 +104,9 @@ class ChecklistSubmitView(APIView):
         if missing:
             return Response(
                 {
-                    'status': 'incomplete',
-                    'message': '모든 항목을 체크해주세요.',
-                    'missing_keys': missing,
+                    "status": "incomplete",
+                    "message": "모든 항목을 체크해주세요.",
+                    "missing_keys": missing,
                 },
                 status=http_status.HTTP_400_BAD_REQUEST,
             )
@@ -107,17 +115,17 @@ class ChecklistSubmitView(APIView):
         obj, created = SafetyChecklist.objects.update_or_create(
             user=request.user,
             check_date=today,
-            defaults={'checked_items': checked_items},
+            defaults={"checked_items": checked_items},
         )
 
         return Response(
             {
-                'status': 'ok',
-                'created': created,
-                'check_date': obj.check_date.isoformat(),
-                'completed_at': obj.completed_at.isoformat(),
-                'total_count': get_total_count(),
-                'checked_count': len(checked_items),
+                "status": "ok",
+                "created": created,
+                "check_date": obj.check_date.isoformat(),
+                "completed_at": obj.completed_at.isoformat(),
+                "total_count": get_total_count(),
+                "checked_count": len(checked_items),
             },
             status=http_status.HTTP_201_CREATED if created else http_status.HTTP_200_OK,
         )

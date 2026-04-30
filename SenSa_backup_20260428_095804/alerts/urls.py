@@ -3,8 +3,8 @@ from rest_framework.routers import DefaultRouter
 from . import views
 
 router = DefaultRouter()
-router.register(r'alarm', views.AlarmViewSet, basename='alarm')
+router.register(r"alarm", views.AlarmViewSet, basename="alarm")
 
 urlpatterns = [
-    path('', include(router.urls)),
+    path("", include(router.urls)),
 ]

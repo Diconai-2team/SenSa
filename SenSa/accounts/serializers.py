@@ -17,6 +17,7 @@ class LoginSerializer(serializers.Serializer):
     로그인 요청 시리얼라이저.
     백엔드 측 유효성 검사를 담당한다.
     """
+
     username = serializers.CharField()
     # 아이디 입력 필드 — 필수
     password = serializers.CharField(
@@ -95,6 +96,7 @@ class SignupSerializer(serializers.ModelSerializer):
     회원가입 시리얼라이저.
     ...(docstring 생략)...
     """
+
     password = serializers.CharField(
     # 비밀번호 필드 — 생성 시에만 받고 응답에는 절대 포함하지 않아
         write_only=True,
@@ -133,7 +135,7 @@ class SignupSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("아이디는 4~20자여야 합니다.")
 
         # 형식 검증 (영문, 숫자, 언더스코어만)
-        if not re.match(r'^[a-zA-Z0-9_]+$', value):
+        if not re.match(r"^[a-zA-Z0-9_]+$", value):
             raise serializers.ValidationError(
                 "아이디는 영문, 숫자, 언더스코어(_)만 사용 가능합니다."
             )

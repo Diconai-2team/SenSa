@@ -56,7 +56,7 @@ class InternalAPIKeyMiddleware(MiddlewareMixin):
             # 예: 어드민 페이지에 API 키만 보낸다고 admin 권한 얻을 수 없음
 
         # 2. 키 검사
-        provided = request.META.get(self.HEADER_NAME, '')
+        provided = request.META.get(self.HEADER_NAME, "")
         if not provided or provided != expected:
             return None
             # 키 없거나 다르면 그냥 통과 — 일반 인증(세션/JWT)으로 처리되도록

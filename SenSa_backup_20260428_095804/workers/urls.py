@@ -12,14 +12,17 @@ mysite/urls.py:
 
 Phase 4A 의 페이지/알림 API 는 workers.page_urls 에 분리.
 """
+
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from . import views
 
 router = DefaultRouter()
-router.register(r'worker', views.WorkerViewSet, basename='worker')
-router.register(r'worker-location', views.WorkerLocationViewSet, basename='worker-location')
+router.register(r"worker", views.WorkerViewSet, basename="worker")
+router.register(
+    r"worker-location", views.WorkerLocationViewSet, basename="worker-location"
+)
 
 urlpatterns = [
-    path('', include(router.urls)),
+    path("", include(router.urls)),
 ]

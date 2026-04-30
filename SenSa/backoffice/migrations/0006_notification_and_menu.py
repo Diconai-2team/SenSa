@@ -9,76 +9,291 @@ class Migration(migrations.Migration):
 
     dependencies = [
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
-        ('alerts', '0001_initial'),
-        ('backoffice', '0005_seed_reference_masters'),
+        ("alerts", "0001_initial"),
+        ("backoffice", "0005_seed_reference_masters"),
     ]
 
     operations = [
         migrations.CreateModel(
-            name='NotificationPolicy',
+            name="NotificationPolicy",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('code', models.CharField(max_length=50, unique=True, verbose_name='정책 코드')),
-                ('name', models.CharField(max_length=100, verbose_name='정책명')),
-                ('description', models.TextField(blank=True, default='', verbose_name='설명')),
-                ('channels_csv', models.CharField(default='app,realtime', help_text='CSV: app,realtime,sms,email', max_length=100, verbose_name='발송 채널')),
-                ('recipients_csv', models.CharField(default='all_users', help_text='CSV: all_users / leaders / group:<org_id> / role:<role>', max_length=500, verbose_name='수신 대상')),
-                ('message_template', models.TextField(blank=True, default='', help_text='{worker_name} {device_id} {value} 등 placeholder 사용 가능', verbose_name='메시지 템플릿')),
-                ('is_active', models.BooleanField(default=True, verbose_name='사용 여부')),
-                ('sort_order', models.IntegerField(default=100, verbose_name='정렬 순서')),
-                ('created_at', models.DateTimeField(auto_now_add=True)),
-                ('updated_at', models.DateTimeField(auto_now=True)),
-                ('alarm_level', models.ForeignKey(help_text='이 단계 이상의 이벤트에 정책 적용 (priority 기준)', on_delete=django.db.models.deletion.CASCADE, related_name='policies', to='backoffice.alarmlevel', verbose_name='적용 알람 단계')),
-                ('created_by', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='created_policies', to=settings.AUTH_USER_MODEL)),
-                ('risk_category', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='policies', to='backoffice.riskcategory', verbose_name='적용 위험 분류')),
-                ('updated_by', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='updated_policies', to=settings.AUTH_USER_MODEL)),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                (
+                    "code",
+                    models.CharField(
+                        max_length=50, unique=True, verbose_name="정책 코드"
+                    ),
+                ),
+                ("name", models.CharField(max_length=100, verbose_name="정책명")),
+                (
+                    "description",
+                    models.TextField(blank=True, default="", verbose_name="설명"),
+                ),
+                (
+                    "channels_csv",
+                    models.CharField(
+                        default="app,realtime",
+                        help_text="CSV: app,realtime,sms,email",
+                        max_length=100,
+                        verbose_name="발송 채널",
+                    ),
+                ),
+                (
+                    "recipients_csv",
+                    models.CharField(
+                        default="all_users",
+                        help_text="CSV: all_users / leaders / group:<org_id> / role:<role>",
+                        max_length=500,
+                        verbose_name="수신 대상",
+                    ),
+                ),
+                (
+                    "message_template",
+                    models.TextField(
+                        blank=True,
+                        default="",
+                        help_text="{worker_name} {device_id} {value} 등 placeholder 사용 가능",
+                        verbose_name="메시지 템플릿",
+                    ),
+                ),
+                (
+                    "is_active",
+                    models.BooleanField(default=True, verbose_name="사용 여부"),
+                ),
+                (
+                    "sort_order",
+                    models.IntegerField(default=100, verbose_name="정렬 순서"),
+                ),
+                ("created_at", models.DateTimeField(auto_now_add=True)),
+                ("updated_at", models.DateTimeField(auto_now=True)),
+                (
+                    "alarm_level",
+                    models.ForeignKey(
+                        help_text="이 단계 이상의 이벤트에 정책 적용 (priority 기준)",
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="policies",
+                        to="backoffice.alarmlevel",
+                        verbose_name="적용 알람 단계",
+                    ),
+                ),
+                (
+                    "created_by",
+                    models.ForeignKey(
+                        blank=True,
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="created_policies",
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
+                (
+                    "risk_category",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="policies",
+                        to="backoffice.riskcategory",
+                        verbose_name="적용 위험 분류",
+                    ),
+                ),
+                (
+                    "updated_by",
+                    models.ForeignKey(
+                        blank=True,
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="updated_policies",
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
             ],
             options={
-                'verbose_name': '알림 정책',
-                'verbose_name_plural': '알림 정책 목록',
-                'ordering': ['sort_order', 'code'],
+                "verbose_name": "알림 정책",
+                "verbose_name_plural": "알림 정책 목록",
+                "ordering": ["sort_order", "code"],
             },
         ),
         migrations.CreateModel(
-            name='MenuPermission',
+            name="MenuPermission",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('role', models.CharField(help_text='accounts.User.ROLE_CHOICES 의 코드 — admin/operator', max_length=20, verbose_name='역할')),
-                ('menu_code', models.CharField(choices=[('users', '계정/권한 관리'), ('menus', '메뉴 관리'), ('devices', '설비/장비 관리'), ('maps', '지도 편집 관리'), ('references', '기준정보 관리'), ('operations', '운영 데이터 관리'), ('notices', '공지사항 관리'), ('notifications', '알림/이벤트 관리')], max_length=30, verbose_name='메뉴')),
-                ('is_visible', models.BooleanField(default=True, help_text='False 면 SNB 에 표시 자체가 안 됨', verbose_name='조회 가능')),
-                ('is_writable', models.BooleanField(default=False, help_text='False 면 페이지 진입은 가능하나 등록/수정 버튼 비활성', verbose_name='등록/수정 가능')),
-                ('updated_at', models.DateTimeField(auto_now=True)),
-                ('updated_by', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='updated_menu_perms', to=settings.AUTH_USER_MODEL)),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                (
+                    "role",
+                    models.CharField(
+                        help_text="accounts.User.ROLE_CHOICES 의 코드 — admin/operator",
+                        max_length=20,
+                        verbose_name="역할",
+                    ),
+                ),
+                (
+                    "menu_code",
+                    models.CharField(
+                        choices=[
+                            ("users", "계정/권한 관리"),
+                            ("menus", "메뉴 관리"),
+                            ("devices", "설비/장비 관리"),
+                            ("maps", "지도 편집 관리"),
+                            ("references", "기준정보 관리"),
+                            ("operations", "운영 데이터 관리"),
+                            ("notices", "공지사항 관리"),
+                            ("notifications", "알림/이벤트 관리"),
+                        ],
+                        max_length=30,
+                        verbose_name="메뉴",
+                    ),
+                ),
+                (
+                    "is_visible",
+                    models.BooleanField(
+                        default=True,
+                        help_text="False 면 SNB 에 표시 자체가 안 됨",
+                        verbose_name="조회 가능",
+                    ),
+                ),
+                (
+                    "is_writable",
+                    models.BooleanField(
+                        default=False,
+                        help_text="False 면 페이지 진입은 가능하나 등록/수정 버튼 비활성",
+                        verbose_name="등록/수정 가능",
+                    ),
+                ),
+                ("updated_at", models.DateTimeField(auto_now=True)),
+                (
+                    "updated_by",
+                    models.ForeignKey(
+                        blank=True,
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="updated_menu_perms",
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
             ],
             options={
-                'verbose_name': '메뉴 권한',
-                'verbose_name_plural': '메뉴 권한 목록',
-                'ordering': ['role', 'menu_code'],
+                "verbose_name": "메뉴 권한",
+                "verbose_name_plural": "메뉴 권한 목록",
+                "ordering": ["role", "menu_code"],
             },
         ),
         migrations.CreateModel(
-            name='NotificationLog',
+            name="NotificationLog",
             fields=[
-                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('recipient_name_snapshot', models.CharField(blank=True, default='', help_text='수신 시점 사용자명 스냅샷 (탈퇴 후에도 보존)', max_length=100)),
-                ('channel', models.CharField(choices=[('app', '앱 푸시'), ('realtime', '관제 실시간'), ('sms', 'SMS'), ('email', '이메일')], max_length=20)),
-                ('send_status', models.CharField(choices=[('pending', '대기'), ('sent', '성공'), ('failed', '실패'), ('skipped', '건너뜀')], default='pending', max_length=20)),
-                ('error_message', models.TextField(blank=True, default='')),
-                ('sent_at', models.DateTimeField(blank=True, null=True)),
-                ('created_at', models.DateTimeField(auto_now_add=True)),
-                ('alarm', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='notification_logs', to='alerts.alarm')),
-                ('policy', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='logs', to='backoffice.notificationpolicy')),
-                ('recipient', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='received_notifications', to=settings.AUTH_USER_MODEL)),
+                (
+                    "id",
+                    models.BigAutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                (
+                    "recipient_name_snapshot",
+                    models.CharField(
+                        blank=True,
+                        default="",
+                        help_text="수신 시점 사용자명 스냅샷 (탈퇴 후에도 보존)",
+                        max_length=100,
+                    ),
+                ),
+                (
+                    "channel",
+                    models.CharField(
+                        choices=[
+                            ("app", "앱 푸시"),
+                            ("realtime", "관제 실시간"),
+                            ("sms", "SMS"),
+                            ("email", "이메일"),
+                        ],
+                        max_length=20,
+                    ),
+                ),
+                (
+                    "send_status",
+                    models.CharField(
+                        choices=[
+                            ("pending", "대기"),
+                            ("sent", "성공"),
+                            ("failed", "실패"),
+                            ("skipped", "건너뜀"),
+                        ],
+                        default="pending",
+                        max_length=20,
+                    ),
+                ),
+                ("error_message", models.TextField(blank=True, default="")),
+                ("sent_at", models.DateTimeField(blank=True, null=True)),
+                ("created_at", models.DateTimeField(auto_now_add=True)),
+                (
+                    "alarm",
+                    models.ForeignKey(
+                        blank=True,
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="notification_logs",
+                        to="alerts.alarm",
+                    ),
+                ),
+                (
+                    "policy",
+                    models.ForeignKey(
+                        blank=True,
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="logs",
+                        to="backoffice.notificationpolicy",
+                    ),
+                ),
+                (
+                    "recipient",
+                    models.ForeignKey(
+                        blank=True,
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="received_notifications",
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
             ],
             options={
-                'verbose_name': '알림 발송 이력',
-                'verbose_name_plural': '알림 발송 이력 목록',
-                'ordering': ['-created_at'],
-                'indexes': [models.Index(fields=['-created_at'], name='backoffice__created_27af14_idx'), models.Index(fields=['recipient', '-created_at'], name='backoffice__recipie_ca59ff_idx'), models.Index(fields=['send_status', '-created_at'], name='backoffice__send_st_ab43d7_idx')],
+                "verbose_name": "알림 발송 이력",
+                "verbose_name_plural": "알림 발송 이력 목록",
+                "ordering": ["-created_at"],
+                "indexes": [
+                    models.Index(
+                        fields=["-created_at"], name="backoffice__created_27af14_idx"
+                    ),
+                    models.Index(
+                        fields=["recipient", "-created_at"],
+                        name="backoffice__recipie_ca59ff_idx",
+                    ),
+                    models.Index(
+                        fields=["send_status", "-created_at"],
+                        name="backoffice__send_st_ab43d7_idx",
+                    ),
+                ],
             },
         ),
         migrations.AddConstraint(
-            model_name='menupermission',
-            constraint=models.UniqueConstraint(fields=('role', 'menu_code'), name='menu_perm_unique_role_menu'),
+            model_name="menupermission",
+            constraint=models.UniqueConstraint(
+                fields=("role", "menu_code"), name="menu_perm_unique_role_menu"
+            ),
         ),
     ]

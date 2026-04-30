@@ -11,6 +11,7 @@ workers/views.py — 작업자 API + 페이지 (Phase 4A)
   WorkerListDataView     GET  /workers/api/list/
   WorkerNotifyView       POST /workers/api/notify/
 """
+
 from datetime import timedelta
 # CONNECTION_TIMEOUT_SEC 컷오프 계산용
 
@@ -41,8 +42,10 @@ from realtime.publishers import publish_worker_position
 # 기존 DRF ViewSet (변경 없음)
 # ═══════════════════════════════════════════════════════════
 
+
 class WorkerViewSet(viewsets.ModelViewSet):
     """작업자 CRUD"""
+
     queryset = Worker.objects.filter(is_active=True)
     # 활성 작업자만 노출 — 소프트 삭제된 작업자는 API에서 안 보임
     serializer_class = WorkerSerializer
@@ -73,6 +76,7 @@ class WorkerViewSet(viewsets.ModelViewSet):
 
 class WorkerLocationViewSet(viewsets.ModelViewSet):
     """작업자 위치 기록"""
+
     serializer_class = WorkerLocationSerializer
 
     def get_queryset(self):
@@ -80,12 +84,12 @@ class WorkerLocationViewSet(viewsets.ModelViewSet):
         qs = WorkerLocation.objects.select_related('worker').all()
         # select_related — N+1 회피 (WorkerLocationSerializer가 worker.name/worker.worker_id 접근)
 
-        worker_id = self.request.query_params.get('worker_id')
+        worker_id = self.request.query_params.get("worker_id")
         if worker_id:
             qs = qs.filter(worker__worker_id=worker_id)
             # 특정 작업자 이력만 조회 — 차트 데이터 소스
 
-        limit = self.request.query_params.get('limit', '100')
+        limit = self.request.query_params.get("limit", "100")
         try:
             limit = int(limit)
         except (ValueError, TypeError):
@@ -133,7 +137,7 @@ CONNECTION_TIMEOUT_SEC = 30
 # ⚠️ 모듈 레벨 상수 — settings로 외부화하면 환경별 튜닝 가능
 
 
-@login_required(login_url='/accounts/login/')
+@login_required(login_url="/accounts/login/")
 def worker_list_page(request):
     """
     작업자 현황 목록 페이지.
@@ -174,7 +178,7 @@ def _get_worker_state_map() -> dict[str, str]:
             if snap:
                 result[w.worker_id] = snap.get('state', 'safe')
             else:
-                result[w.worker_id] = 'safe'
+                result[w.worker_id] = "safe"
         except Exception:
             result[w.worker_id] = 'safe'
             # 개별 작업자 조회 실패 시 안전 측 기본값
@@ -212,11 +216,11 @@ def _get_worker_zone_map() -> dict[str, str]:
         latest_by_worker[loc.worker.worker_id] = (loc.x, loc.y)
 
     for wid, (x, y) in latest_by_worker.items():
-        zone_name = ''
+        zone_name = ""
         for fence in fences:
-            poly = fence.get('polygon') or []
+            poly = fence.get("polygon") or []
             if len(poly) >= 3 and _point_in_polygon(x, y, poly):
-                zone_name = fence['name']
+                zone_name = fence["name"]
                 break
                 # 첫 매칭만 — 다중 소속 지오펜스가 있어도 1개만 표시
                 # ⚠️ alerts._classify_state는 모든 매칭을 보고 우선순위 결정 — 정책 차이
@@ -278,7 +282,7 @@ class WorkerListDataView(APIView):
             if connection_ok:
                 checked_in_count += 1
 
-            status = state_map.get(w.worker_id, 'safe')
+            status = state_map.get(w.worker_id, "safe")
             # critical 은 UI 표시상 danger 로 합침 (3-배지 체계)
             ui_status = 'danger' if status in ('danger', 'critical') else status
             # ⭐ 4단계 상태(safe/caution/danger/critical) → UI 3-state 매핑
@@ -322,54 +326,59 @@ class WorkerNotifyView(APIView):
     """
     푸시 알림 전송 (Phase 4A 더미).
     """
+
     permission_classes = [IsAuthenticated]
     # 로그인된 사용자만 알림 발송 가능
 
     def post(self, request):
-        send_type = request.data.get('send_type', '').strip()
-        message   = request.data.get('message', '').strip()
-        recipient_ids = request.data.get('recipients', [])
+        send_type = request.data.get("send_type", "").strip()
+        message = request.data.get("message", "").strip()
+        recipient_ids = request.data.get("recipients", [])
 
         # ─── 검증 ───
-        if send_type not in ('single', 'selected', 'all'):
+        if send_type not in ("single", "selected", "all"):
             return Response(
-                {'status': 'error', 'message': 'send_type 은 single/selected/all 중 하나여야 합니다.'},
+                {
+                    "status": "error",
+                    "message": "send_type 은 single/selected/all 중 하나여야 합니다.",
+                },
                 status=http_status.HTTP_400_BAD_REQUEST,
             )
             # send_type 화이트리스트 검증
         if not message:
             return Response(
-                {'status': 'error', 'message': '메시지를 입력해주세요.'},
+                {"status": "error", "message": "메시지를 입력해주세요."},
                 status=http_status.HTTP_400_BAD_REQUEST,
             )
         if len(message) > 200:
             return Response(
-                {'status': 'error', 'message': '메시지는 200자 이내여야 합니다.'},
+                {"status": "error", "message": "메시지는 200자 이내여야 합니다."},
                 status=http_status.HTTP_400_BAD_REQUEST,
             )
             # 모델의 max_length=200과 일치 — 이중 방어선
             # ⚠️ docstring은 "100자 권장"이지만 실제 한계는 200자 — 일관성 부재
 
         # ─── 수신자 결정 ───
-        if send_type == 'all':
+        if send_type == "all":
             recipients = list(Worker.objects.filter(is_active=True))
             # 활성 작업자 전원 스냅샷 — 이 시점의 명단이 영구 보존됨
         else:
             if not isinstance(recipient_ids, list) or not recipient_ids:
                 return Response(
-                    {'status': 'error', 'message': '수신 대상을 지정해주세요.'},
+                    {"status": "error", "message": "수신 대상을 지정해주세요."},
                     status=http_status.HTTP_400_BAD_REQUEST,
                 )
                 # single/selected는 recipients 배열 필수
             recipients = list(
                 Worker.objects.filter(
-                    worker_id__in=recipient_ids, is_active=True,
+                    worker_id__in=recipient_ids,
+                    is_active=True,
                 )
             )
             # worker_id 기반 조회 + 활성 작업자만
             if not recipients:
                 return Response(
-                    {'status': 'error', 'message': '유효한 수신 대상이 없습니다.'},
+                    {"status": "error", "message": "유효한 수신 대상이 없습니다."},
                     status=http_status.HTTP_400_BAD_REQUEST,
                 )
                 # 잘못된 worker_id만 보냈거나 모두 비활성인 경우
@@ -388,10 +397,10 @@ class WorkerNotifyView(APIView):
 
         return Response(
             {
-                'status':          'ok',
-                'notification_id': log.id,
-                'sent_at':         log.sent_at.isoformat(),
-                'recipient_count': len(recipients),
+                "status": "ok",
+                "notification_id": log.id,
+                "sent_at": log.sent_at.isoformat(),
+                "recipient_count": len(recipients),
             },
             status=http_status.HTTP_201_CREATED,
         )

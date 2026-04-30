@@ -8,6 +8,7 @@ accounts 앱 뷰
   v1 : 로그인/회원가입/로그아웃/홈/me
   v2 : profile_page (내 정보 페이지) + PasswordChangeAPIView (비밀번호 변경)
 """
+
 import re
 # 정규표현식 — 비밀번호 규칙 검증에 사용
 
@@ -46,6 +47,7 @@ from .serializers import LoginSerializer, UserSerializer, SignupSerializer
 # ============================================================
 # 페이지 뷰 (Django Template + 세션)
 # ============================================================
+
 
 def root_redirect(request):
     # 루트 경로 진입 시 사용자 상태/역할에 따라 어디로 보낼지 결정하는 분기 뷰야
@@ -114,11 +116,11 @@ def login_page(request):
             next_url = request.GET.get('next') or request.POST.get('next')
             # next 파라미터 우선 — @login_required가 redirect 시 전달한 원래 가려던 URL
             if not next_url:
-                if getattr(user, 'is_super_admin_role', False):
-                    next_url = '/backoffice/'
-                elif user.role == 'admin':
+                if getattr(user, "is_super_admin_role", False):
+                    next_url = "/backoffice/"
+                elif user.role == "admin":
                     # v5: admin 도 백오피스 진입 가능 — MenuPermission 으로 메뉴 제어
-                    next_url = '/backoffice/'
+                    next_url = "/backoffice/"
                 else:
                     next_url = '/dashboard/'
                     # 운영자는 일반 대시보드로
@@ -137,7 +139,7 @@ def login_page(request):
                 error_message = errors[first_key][0] if errors[first_key] else '입력값을 확인해주세요.'
                 # 필드별 에러 중 첫 번째만 표시 (단순 처리)
             else:
-                error_message = '입력값을 확인해주세요.'
+                error_message = "입력값을 확인해주세요."
 
     return render(request, 'accounts/login.html', {
         'error_message': error_message,
@@ -160,12 +162,12 @@ def signup_page(request):
     form_data = {}
     # 검증 실패 시 사용자가 입력했던 값 다시 채워주려는 용도
 
-    if request.method == 'POST':
+    if request.method == "POST":
         form_data = {
-            'username': request.POST.get('username', '').strip(),
-            'email': request.POST.get('email', '').strip(),
-            'department': request.POST.get('department', '').strip(),
-            'phone': request.POST.get('phone', '').strip(),
+            "username": request.POST.get("username", "").strip(),
+            "email": request.POST.get("email", "").strip(),
+            "department": request.POST.get("department", "").strip(),
+            "phone": request.POST.get("phone", "").strip(),
         }
 
         data = {
@@ -182,14 +184,14 @@ def signup_page(request):
             # 검증 통과 → User 생성
             messages.success(
                 request,
-                f'{user.username}님, 회원가입이 완료되었습니다. 로그인해주세요.'
+                f"{user.username}님, 회원가입이 완료되었습니다. 로그인해주세요.",
             )
             return redirect(f"{reverse('login')}?username={user.username}")
             # 로그인 페이지로 username 미리 채워서 리다이렉트
         else:
             for field, errs in serializer.errors.items():
-                if field == 'non_field_errors':
-                    error_message = errs[0] if errs else '입력값을 확인해주세요.'
+                if field == "non_field_errors":
+                    error_message = errs[0] if errs else "입력값을 확인해주세요."
                 else:
                     if isinstance(errs, list) and errs:
                         field_errors[field] = str(errs[0])
@@ -197,11 +199,15 @@ def signup_page(request):
                         field_errors[field] = str(errs)
                     # 필드명을 키로 한 dict — 템플릿에서 {{ field_errors.username }} 형태로 사용
 
-    return render(request, 'accounts/signup.html', {
-        'error_message': error_message,
-        'field_errors': field_errors,
-        'form_data': form_data,
-    })
+    return render(
+        request,
+        "accounts/signup.html",
+        {
+            "error_message": error_message,
+            "field_errors": field_errors,
+            "form_data": form_data,
+        },
+    )
 
 
 @login_required
@@ -212,8 +218,8 @@ def logout_view(request):
     username = request.user.username
     # logout() 호출 후엔 request.user가 AnonymousUser로 바뀌므로 미리 저장
     logout(request)
-    messages.info(request, f'{username}님 로그아웃 되었습니다.')
-    return redirect('login')
+    messages.info(request, f"{username}님 로그아웃 되었습니다.")
+    return redirect("login")
 
 
 @login_required
@@ -241,9 +247,11 @@ def profile_page(request):
 # API 뷰 (JWT + Generic)
 # ============================================================
 
+
 class SignupAPIView(CreateAPIView):
     # CreateAPIView 상속 — POST 메서드만 자동 제공돼
     """회원가입 API"""
+
     serializer_class = SignupSerializer
     permission_classes = [AllowAny]
     # 비로그인 상태에서 호출 가능 (당연 — 가입 자체가 비로그인 상태에서 일어남)
@@ -264,12 +272,13 @@ class SignupAPIView(CreateAPIView):
 class LoginAPIView(APIView):
     # 일반 APIView 상속 — Generic은 모델 생성 패턴이 아니라서 안 맞아
     """JWT 로그인 API"""
+
     permission_classes = [AllowAny]
 
     def post(self, request):
         serializer = LoginSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        user = serializer.validated_data['user']
+        user = serializer.validated_data["user"]
         refresh = RefreshToken.for_user(user)
         # 해당 user에 대한 refresh 토큰 신규 발급 — JTI claim 자동 생성
         return Response({
@@ -283,12 +292,13 @@ class LoginAPIView(APIView):
 
 class LogoutAPIView(APIView):
     """JWT 로그아웃 API"""
+
     permission_classes = [IsAuthenticated]
     # 로그인된 사용자만 로그아웃 호출 가능
 
     def post(self, request):
         try:
-            refresh_token = request.data.get('refresh')
+            refresh_token = request.data.get("refresh")
             if refresh_token:
                 RefreshToken(refresh_token).blacklist()
                 # blacklist 앱이 활성화돼 있어야 동작 — 이후 이 refresh로는 access 재발급 불가
@@ -304,6 +314,7 @@ class LogoutAPIView(APIView):
 class MeAPIView(RetrieveAPIView):
     # RetrieveAPIView — GET 단일 조회 자동 제공
     """현재 로그인한 사용자 정보"""
+
     serializer_class = UserSerializer
     permission_classes = [IsAuthenticated]
 
@@ -326,9 +337,9 @@ _PASSWORD_RE = re.compile(
 def _validate_new_password(pw: str) -> str | None:
     # 신규 비밀번호 검증 헬퍼 — 통과면 None, 실패면 에러 문구 반환
     if not pw:
-        return '새로운 비밀번호를 입력해 주세요.'
+        return "새로운 비밀번호를 입력해 주세요."
     if not _PASSWORD_RE.match(pw):
-        return '8~16자의 영문, 숫자, 특수문자를 조합하여 입력해 주세요.'
+        return "8~16자의 영문, 숫자, 특수문자를 조합하여 입력해 주세요."
     return None
 
 
@@ -362,21 +373,22 @@ class PasswordChangeAPIView(APIView):
       - current_password 검증 필수 (본인 재인증)
       - 변경 성공 시 update_session_auth_hash 로 세션 유지 (재로그인 불필요)
     """
+
     permission_classes = [IsAuthenticated]
     # 본인만 자기 비밀번호 변경 가능
 
     def post(self, request):
         user = request.user
-        current_pw = request.data.get('current_password', '')
-        new_pw = request.data.get('new_password', '')
-        new_pw_confirm = request.data.get('new_password_confirm', '')
+        current_pw = request.data.get("current_password", "")
+        new_pw = request.data.get("new_password", "")
+        new_pw_confirm = request.data.get("new_password_confirm", "")
 
         errors: dict[str, str] = {}
         # 필드별 에러 누적 dict — 한 번에 모든 에러를 응답해 UX 향상
 
         # 1) 현재 비밀번호 확인
         if not current_pw:
-            errors['current_password'] = '현재 사용 중인 비밀번호를 입력해 주세요.'
+            errors["current_password"] = "현재 사용 중인 비밀번호를 입력해 주세요."
         elif not user.check_password(current_pw):
             errors['current_password'] = '현재 비밀번호가 일치하지 않습니다. 다시 확인해 주세요.'
             # check_password는 해시 비교 — 평문 비교 절대 금지
@@ -384,20 +396,24 @@ class PasswordChangeAPIView(APIView):
         # 2) 신규 비밀번호 규칙
         new_pw_err = _validate_new_password(new_pw)
         if new_pw_err:
-            errors['new_password'] = new_pw_err
+            errors["new_password"] = new_pw_err
         elif current_pw and new_pw == current_pw:
             errors['new_password'] = '현재 사용 중인 비밀번호는 신규 비밀번호로 사용할 수 없습니다.'
             # 동일 비밀번호 재사용 차단 — 보안 정책
 
         # 3) 확인 필드 일치
         if not new_pw_confirm:
-            errors['new_password_confirm'] = '비밀번호 확인을 위해 한 번 더 입력해 주세요.'
+            errors["new_password_confirm"] = (
+                "비밀번호 확인을 위해 한 번 더 입력해 주세요."
+            )
         elif new_pw and new_pw != new_pw_confirm:
-            errors['new_password_confirm'] = '입력하신 신규 비밀번호와 일치하지 않습니다.'
+            errors["new_password_confirm"] = (
+                "입력하신 신규 비밀번호와 일치하지 않습니다."
+            )
 
         if errors:
             return Response(
-                {'status': 'error', 'errors': errors},
+                {"status": "error", "errors": errors},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -409,7 +425,9 @@ class PasswordChangeAPIView(APIView):
         update_session_auth_hash(request, user)
         # 비번 변경 후 세션 재해시 — 안 하면 현재 세션이 무효화돼 자동 로그아웃됨
 
-        return Response({
-            'status': 'ok',
-            'detail': '비밀번호가 변경되었습니다.',
-        })
+        return Response(
+            {
+                "status": "ok",
+                "detail": "비밀번호가 변경되었습니다.",
+            }
+        )

@@ -21,6 +21,7 @@ class User(AbstractUser):
            - organization / position_obj FK 신설 (점진 마이그레이션,
              기존 free-text department/position 도 유지하여 무중단)
     """
+
     ROLE_CHOICES = [
     # role 필드의 선택 가능한 값과 화면 표시 이름의 매핑 리스트야
         ('operator', '운영자'),
@@ -58,16 +59,16 @@ class User(AbstractUser):
     # 직급명을 자유 텍스트로 저장 — 마찬가지로 legacy 호환용 필드야
         max_length=50,
         blank=True,
-        default='',
-        verbose_name='직급',
-        help_text='legacy free-text. 새 백오피스는 position_obj FK 사용 권장',
+        default="",
+        verbose_name="직급",
+        help_text="legacy free-text. 새 백오피스는 position_obj FK 사용 권장",
     )
     phone = models.CharField(
     # 사용자 연락처를 문자열로 저장 — 형식 검증은 별도 없이 자유 입력이야
         max_length=20,
         blank=True,
-        default='',
-        verbose_name='연락처',
+        default="",
+        verbose_name="연락처",
     )
 
     # ─── v3 신규 — 계정 잠금 (피그마 '계정 상태' 의 '잠금' 상태) ───
@@ -100,9 +101,10 @@ class User(AbstractUser):
     # 정규화된 직위 테이블(backoffice.Position)과의 FK — legacy position을 대체할 신규 필드야
         'backoffice.Position',
         on_delete=models.SET_NULL,
-        null=True, blank=True,
-        related_name='users',
-        verbose_name='직위',
+        null=True,
+        blank=True,
+        related_name="users",
+        verbose_name="직위",
     )
 
     class Meta:
@@ -162,9 +164,9 @@ class User(AbstractUser):
     def account_status_display(self) -> str:
         # 위 상태 코드를 한국어 라벨로 매핑해서 돌려주는 화면 표시 전용 프로퍼티야
         return {
-            self.ACCOUNT_STATUS_ACTIVE: '사용',
-            self.ACCOUNT_STATUS_LOCKED: '잠금',
-            self.ACCOUNT_STATUS_DISABLED: '비활성',
+            self.ACCOUNT_STATUS_ACTIVE: "사용",
+            self.ACCOUNT_STATUS_LOCKED: "잠금",
+            self.ACCOUNT_STATUS_DISABLED: "비활성",
         }[self.account_status]
         # dict 즉시 인덱싱 방식 — KeyError 가능성은 위 account_status가 3개 값만 반환하므로 닫혀있음
 
@@ -183,4 +185,4 @@ class User(AbstractUser):
         # display_organization과 동일한 패턴의 직위 버전이야
         if self.position_obj_id:
             return self.position_obj.name
-        return self.position or '-'
+        return self.position or "-"

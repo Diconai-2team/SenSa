@@ -27,6 +27,7 @@ alerts/services.py — 상태 전이 기반 알람 서비스
     (B1 은 dashboard/views.py 에 반영 — normal 센서 거리 계산 스킵)
     (B2/B4 는 검토 결과 제외. 자세한 근거는 docs/merge_history.md 참조)
 """
+
 import statistics
 # 중앙값 계산용 — 평균 대신 median 써서 기동전류 같은 스파이크에 강건하게 만들려는 의도
 import time
@@ -209,7 +210,7 @@ def classify_power(power: dict, device_id: str = '') -> str:
         avg = _get_24h_avg_watt(device_id)
         if avg and avg > 0:
             if watt > avg * _POWER_DANGER_MULT:
-                return 'danger'
+                return "danger"
             if watt > avg * _POWER_CAUTION_MULT:
                 return 'caution'
             return 'normal'
@@ -217,15 +218,16 @@ def classify_power(power: dict, device_id: str = '') -> str:
 
     # 3. 고정 임계치 fallback — 처음 가동 시점 / device_id 미지정 시
     if cur >= 25 or watt >= 4500:
-        return 'danger'
+        return "danger"
     if cur >= 15 or watt >= 3000:
-        return 'caution'
-    return 'normal'
+        return "caution"
+    return "normal"
 
 
 # ═══════════════════════════════════════════════════════════
 # 지오펜스 조회 유틸
 # ═══════════════════════════════════════════════════════════
+
 
 def _find_containing_geofences(x: float, y: float) -> list:
     # 작업자 (x,y) 가 속한 모든 활성 지오펜스를 찾아 리스트로 반환 — 다중 소속 가능
@@ -279,6 +281,7 @@ def _find_sensor_geofence(device_id: str):
 # 작업자 상태 분류 / 메시지 / 전이 매핑
 # ═══════════════════════════════════════════════════════════
 
+
 def _classify_state(geofences: list, worst_sensor_status: str) -> str:
     # 4단계 사다리: safe < caution < danger < critical
     """
@@ -297,10 +300,10 @@ def _classify_state(geofences: list, worst_sensor_status: str) -> str:
         return 'danger'
         # 지오펜스든 센서든 한쪽이라도 danger 면 danger
 
-    if 'caution' in zone_types or worst_sensor_status == 'caution':
-        return 'caution'
+    if "caution" in zone_types or worst_sensor_status == "caution":
+        return "caution"
 
-    return 'safe'
+    return "safe"
 
 
 def _pick_primary_geofence(geofences: list, target_state: str):
@@ -308,19 +311,24 @@ def _pick_primary_geofence(geofences: list, target_state: str):
     """알람 메시지에 표시할 '대표' 지오펜스 선택."""
     for g in geofences:
         zone_type = g.zone_type
-        if target_state == 'critical' and zone_type == 'restricted':
+        if target_state == "critical" and zone_type == "restricted":
             return g
-        if target_state == 'danger' and zone_type in ('danger', 'restricted'):
+        if target_state == "danger" and zone_type in ("danger", "restricted"):
             return g
-        if target_state == 'caution' and zone_type == 'caution':
+        if target_state == "caution" and zone_type == "caution":
             return g
     return geofences[0] if geofences else None
     # 매칭 실패 시 첫 번째 fence — 최소한 하나는 표시 (UX 일관성)
 
 
-def _build_message(worker_name: str, prev: str, curr: str,
-                    geofence, sensor_status: str,
-                    influencing_sensors: list | None = None) -> str:
+def _build_message(
+    worker_name: str,
+    prev: str,
+    curr: str,
+    geofence,
+    sensor_status: str,
+    influencing_sensors: list | None = None,
+) -> str:
     """
     전이별 메시지 조립.
 
@@ -332,7 +340,7 @@ def _build_message(worker_name: str, prev: str, curr: str,
       우선순위: zone_name (지오펜스) > 영향 센서 ID > 기본 "(센서 주의)"
       → 지오펜스 기반 알람은 기존 포맷 그대로, 센서 기반 알람만 구체화됨.
     """
-    zone_name = geofence.name if geofence else ''
+    zone_name = geofence.name if geofence else ""
     influencing_sensors = influencing_sensors or []
     # None 방어 — 기본값 None 으로 받아 하위 호환 유지
 
@@ -351,42 +359,46 @@ def _build_message(worker_name: str, prev: str, curr: str,
             statuses = {st for _, st in influencing_sensors}
             if len(statuses) == 1:
                 only_status = next(iter(statuses))
-                ids = ', '.join(sid for sid, _ in influencing_sensors)
+                ids = ", ".join(sid for sid, _ in influencing_sensors)
                 return f" ({ids} {only_status})"
             parts = [f"{sid} {st}" for sid, st in influencing_sensors]
             return f" ({', '.join(parts)})"
         return default_suffix
 
     # ─── critical (restricted 구역) ───
-    if curr == 'critical' and prev != 'critical':
-        return f"{worker_name} 출입금지구역 진입" + (f" ({zone_name})" if zone_name else "")
-    if prev == 'critical' and curr == 'critical':
-        return f"{worker_name} 출입금지구역 체류 중" + (f" ({zone_name})" if zone_name else "")
-    if prev == 'critical' and curr == 'danger':
+    if curr == "critical" and prev != "critical":
+        return f"{worker_name} 출입금지구역 진입" + (
+            f" ({zone_name})" if zone_name else ""
+        )
+    if prev == "critical" and curr == "critical":
+        return f"{worker_name} 출입금지구역 체류 중" + (
+            f" ({zone_name})" if zone_name else ""
+        )
+    if prev == "critical" and curr == "danger":
         return f"{worker_name} 출입금지구역 이탈 — 위험 수준으로 낮아짐"
-    if prev == 'critical' and curr in ('caution', 'safe'):
+    if prev == "critical" and curr in ("caution", "safe"):
         return f"{worker_name} 출입금지구역 이탈 완료"
 
     # ─── 악화 ───
-    if prev == 'safe' and curr == 'caution':
+    if prev == "safe" and curr == "caution":
         return f"{worker_name} 주의구역 진입" + _sensor_suffix(" (센서 주의)")
-    if prev == 'safe' and curr == 'danger':
+    if prev == "safe" and curr == "danger":
         return f"{worker_name} 위험구역 진입" + _sensor_suffix(" (센서 위험)")
-    if prev == 'caution' and curr == 'danger':
+    if prev == "caution" and curr == "danger":
         return f"{worker_name} 상태 악화 — 주의→위험" + _sensor_suffix("")
 
     # ─── 회복 ───
-    if prev == 'danger' and curr == 'caution':
+    if prev == "danger" and curr == "caution":
         return f"{worker_name} 위험 벗어남 — 주의 수준으로 회복"
-    if prev == 'danger' and curr == 'safe':
+    if prev == "danger" and curr == "safe":
         return f"{worker_name} 안전지역 복귀 — 위험 상황 종료"
-    if prev == 'caution' and curr == 'safe':
+    if prev == "caution" and curr == "safe":
         return f"{worker_name} 안전지역 복귀 — 주의 상황 종료"
 
     # ─── 지속 ───
-    if curr == 'danger':
+    if curr == "danger":
         return f"{worker_name} 위험 상황 지속 중" + _sensor_suffix("")
-    if curr == 'caution':
+    if curr == "caution":
         return f"{worker_name} 주의 상황 지속 중" + _sensor_suffix("")
 
     return f"{worker_name} 상태 변화"
@@ -395,39 +407,39 @@ def _build_message(worker_name: str, prev: str, curr: str,
 def _transition_to_type_and_level(prev: str, curr: str) -> tuple[str, str]:
     """전이 유형 → (alarm_type, alarm_level) 매핑."""
     # critical 진입
-    if curr == 'critical' and prev != 'critical':
-        return 'state_danger_enter', 'critical'
+    if curr == "critical" and prev != "critical":
+        return "state_danger_enter", "critical"
     # critical 에서 회복
-    if prev == 'critical' and curr == 'danger':
-        return 'state_recover_partial', 'info'
-    if prev == 'critical' and curr in ('caution', 'safe'):
-        return 'state_recover_safe', 'info'
-    if prev == 'critical' and curr == 'critical':
-        return 'state_ongoing', 'critical'
+    if prev == "critical" and curr == "danger":
+        return "state_recover_partial", "info"
+    if prev == "critical" and curr in ("caution", "safe"):
+        return "state_recover_safe", "info"
+    if prev == "critical" and curr == "critical":
+        return "state_ongoing", "critical"
 
     # 기존 전이
-    if prev == 'safe' and curr == 'caution':
-        return 'state_caution_enter', 'caution'
-    if prev == 'safe' and curr == 'danger':
-        return 'state_danger_enter', 'danger'
-    if prev == 'caution' and curr == 'danger':
-        return 'state_escalate', 'danger'
-    if prev == 'danger' and curr == 'caution':
-        return 'state_recover_partial', 'info'
-    if prev in ('danger', 'caution') and curr == 'safe':
-        return 'state_recover_safe', 'info'
+    if prev == "safe" and curr == "caution":
+        return "state_caution_enter", "caution"
+    if prev == "safe" and curr == "danger":
+        return "state_danger_enter", "danger"
+    if prev == "caution" and curr == "danger":
+        return "state_escalate", "danger"
+    if prev == "danger" and curr == "caution":
+        return "state_recover_partial", "info"
+    if prev in ("danger", "caution") and curr == "safe":
+        return "state_recover_safe", "info"
     # 지속
-    if curr == 'danger':
-        return 'state_ongoing', 'danger'
-    if curr == 'caution':
-        return 'state_ongoing', 'caution'
-    return 'state_ongoing', 'info'
+    if curr == "danger":
+        return "state_ongoing", "danger"
+    if curr == "caution":
+        return "state_ongoing", "caution"
+    return "state_ongoing", "info"
 
 
 def _is_escalation(prev: str, curr: str) -> bool:
     # 상태가 더 위험해지는 방향인지 판정 — Hysteresis 의 핵심
     """상태 악화 여부. safe < caution < danger < critical"""
-    ladder = {'safe': 0, 'caution': 1, 'danger': 2, 'critical': 3}
+    ladder = {"safe": 0, "caution": 1, "danger": 2, "critical": 3}
     return ladder.get(curr, 0) > ladder.get(prev, 0)
     # 악화면 즉시 전이, 회복이면 N틱 연속 확정 후 전이 (이중 기준)
 
@@ -466,12 +478,14 @@ def evaluate_worker(worker_id: str, worker_name: str,
 
     # 디버그 로그
     since_last = now - last_alarm_at if last_alarm_at > 0 else -1
-    print(f"[DEBUG] {worker_id} ({x:.1f},{y:.1f}) "
-          f"official={official_state} observed={observed_state} "
-          f"pending={snap['pending_state']}({snap['pending_count']}) "
-          f"since_last={since_last:.1f}s "
-          f"fences={[g.name for g in geofences]} "
-          f"sensor={worst_sensor_status}")
+    print(
+        f"[DEBUG] {worker_id} ({x:.1f},{y:.1f}) "
+        f"official={official_state} observed={observed_state} "
+        f"pending={snap['pending_state']}({snap['pending_count']}) "
+        f"since_last={since_last:.1f}s "
+        f"fences={[g.name for g in geofences]} "
+        f"sensor={worst_sensor_status}"
+    )
 
     # ─── 전이 확정 여부 ───
     confirmed_new_state = None
@@ -506,12 +520,12 @@ def evaluate_worker(worker_id: str, worker_name: str,
 
     if confirmed_new_state is not None:
         should_alarm = True
-        reason = 'transition'
+        reason = "transition"
         target_state = confirmed_new_state
         # 전이 확정 시 즉시 알람 (규칙 1, 4)
     elif official_state != 'safe' and (now - last_alarm_at) >= RE_ALARM_INTERVAL_SEC:
         should_alarm = True
-        reason = 'ongoing'
+        reason = "ongoing"
         target_state = official_state
         # 위험/주의 60초 지속 시 재알림 (규칙 3)
         # safe 면 재알림 안 함 — 정상 상태는 시끄럽게 만들지 않음
@@ -520,13 +534,18 @@ def evaluate_worker(worker_id: str, worker_name: str,
     created = []
 
     if should_alarm:
-        alarm_type, alarm_level = _transition_to_type_and_level(official_state, target_state)
+        alarm_type, alarm_level = _transition_to_type_and_level(
+            official_state, target_state
+        )
         primary_fence = _pick_primary_geofence(geofences, target_state)
         # 다중 소속일 때 메시지에 표시할 대표 지오펜스 1개 선택
         message = _build_message(
-            worker_name, official_state, target_state,
-            primary_fence, worst_sensor_status,
-            influencing_sensors=influencing_sensors,   # B3: 영향 센서 목록 전달
+            worker_name,
+            official_state,
+            target_state,
+            primary_fence,
+            worst_sensor_status,
+            influencing_sensors=influencing_sensors,  # B3: 영향 센서 목록 전달
         )
 
         alarm = Alarm.objects.create(
@@ -543,21 +562,33 @@ def evaluate_worker(worker_id: str, worker_name: str,
         # ⚠️ 매 알람마다 INSERT 1건 — 60초 재알림 + 다수 작업자 환경에서 부하 가능
         #    필요 시 bulk_create 또는 비동기 큐 검토
 
-        created.append({
-            'alarm_id': alarm.id,
-            'alarm_type': alarm_type,
-            'alarm_level': alarm_level,
-            'worker_id': worker_id,
-            'worker_name': worker_name,
-            'geofence_id': primary_fence.id if primary_fence and target_state != 'safe' else None,
-            'geofence_name': primary_fence.name if primary_fence and target_state != 'safe' else '',
-            'message': message,
-            'reason': reason,
-            'state_from': official_state,
-            'state_to': target_state,
-        })
+        created.append(
+            {
+                "alarm_id": alarm.id,
+                "alarm_type": alarm_type,
+                "alarm_level": alarm_level,
+                "worker_id": worker_id,
+                "worker_name": worker_name,
+                "geofence_id": (
+                    primary_fence.id
+                    if primary_fence and target_state != "safe"
+                    else None
+                ),
+                "geofence_name": (
+                    primary_fence.name
+                    if primary_fence and target_state != "safe"
+                    else ""
+                ),
+                "message": message,
+                "reason": reason,
+                "state_from": official_state,
+                "state_to": target_state,
+            }
+        )
 
-        print(f"[ALARM-CREATED] {worker_id} {alarm_type} level={alarm_level} reason={reason}")
+        print(
+            f"[ALARM-CREATED] {worker_id} {alarm_type} level={alarm_level} reason={reason}"
+        )
 
         if confirmed_new_state is not None:
             commit_state(worker_id, target_state, mark_alarmed=True)
@@ -577,8 +608,10 @@ def evaluate_worker(worker_id: str, worker_name: str,
 #   - 회복도 N틱 확인 (작업자와 동일한 Hysteresis 정책)
 #   - 알람 생성 시 _find_sensor_geofence 로 자동 지오펜스 연결
 
-def evaluate_sensor(device_id: str, sensor_type: str,
-                     observed_status: str, detail: str = '') -> list[dict]:
+
+def evaluate_sensor(
+    device_id: str, sensor_type: str, observed_status: str, detail: str = ""
+) -> list[dict]:
     """
     센서 1개의 상태 전이 판정 + 필요 시 알람 생성.
 
@@ -589,8 +622,8 @@ def evaluate_sensor(device_id: str, sensor_type: str,
         # 알 수 없는 상태값 방어 — 잘못된 입력으로 알람 생성 방지
 
     snap = get_sensor_snapshot(device_id)
-    official_state = snap['state']
-    last_alarm_at = snap['last_alarm_at']
+    official_state = snap["state"]
+    last_alarm_at = snap["last_alarm_at"]
 
     now = time.time()
 
@@ -599,14 +632,14 @@ def evaluate_sensor(device_id: str, sensor_type: str,
     confirmed_new_state = None
 
     if observed_status == official_state:
-        if snap['pending_state']:
+        if snap["pending_state"]:
             clear_sensor_pending(device_id)
     elif _is_sensor_escalation(official_state, observed_status):
         confirmed_new_state = observed_status
         # 악화 즉시 전이
     else:
-        if snap['pending_state'] == observed_status:
-            new_count = snap['pending_count'] + 1
+        if snap["pending_state"] == observed_status:
+            new_count = snap["pending_count"] + 1
             if new_count >= RECOVERY_CONFIRM_TICKS:
                 confirmed_new_state = observed_status
             else:
@@ -621,11 +654,11 @@ def evaluate_sensor(device_id: str, sensor_type: str,
 
     if confirmed_new_state is not None:
         should_alarm = True
-        reason = 'transition'
+        reason = "transition"
         target_state = confirmed_new_state
-    elif official_state != 'normal' and (now - last_alarm_at) >= RE_ALARM_INTERVAL_SEC:
+    elif official_state != "normal" and (now - last_alarm_at) >= RE_ALARM_INTERVAL_SEC:
         should_alarm = True
-        reason = 'ongoing'
+        reason = "ongoing"
         target_state = official_state
         # normal 이면 재알림 안 함 — 작업자 'safe' 와 동일 정책
 
@@ -641,7 +674,7 @@ def evaluate_sensor(device_id: str, sensor_type: str,
         )
 
         # 센서 소속 geofence — normal 복귀 외에는 연결
-        fence = _find_sensor_geofence(device_id) if target_state != 'normal' else None
+        fence = _find_sensor_geofence(device_id) if target_state != "normal" else None
 
         alarm = Alarm.objects.create(
             alarm_type=alarm_type,
@@ -652,19 +685,21 @@ def evaluate_sensor(device_id: str, sensor_type: str,
             message=message,
         )
 
-        created.append({
-            'alarm_id': alarm.id,
-            'alarm_type': alarm_type,
-            'alarm_level': alarm_level,
-            'device_id': device_id,
-            'sensor_type': sensor_type,
-            'geofence_id':   fence.id if fence else None,
-            'geofence_name': fence.name if fence else '',
-            'message': message,
-            'reason': reason,
-            'state_from': official_state,
-            'state_to': target_state,
-        })
+        created.append(
+            {
+                "alarm_id": alarm.id,
+                "alarm_type": alarm_type,
+                "alarm_level": alarm_level,
+                "device_id": device_id,
+                "sensor_type": sensor_type,
+                "geofence_id": fence.id if fence else None,
+                "geofence_name": fence.name if fence else "",
+                "message": message,
+                "reason": reason,
+                "state_from": official_state,
+                "state_to": target_state,
+            }
+        )
 
         if confirmed_new_state is not None:
             commit_sensor_state(device_id, target_state, mark_alarmed=True)
@@ -676,52 +711,53 @@ def evaluate_sensor(device_id: str, sensor_type: str,
 
 def _is_sensor_escalation(prev: str, curr: str) -> bool:
     """센서 상태 악화 여부. normal < caution < danger"""
-    ladder = {'normal': 0, 'caution': 1, 'danger': 2}
+    ladder = {"normal": 0, "caution": 1, "danger": 2}
     return ladder.get(curr, 0) > ladder.get(prev, 0)
     # 작업자 사다리와 달리 critical 없음 — 센서는 3단계
 
 
 def _sensor_transition_to_type_and_level(prev: str, curr: str) -> tuple[str, str]:
     """센서 전이 → (alarm_type, alarm_level)."""
-    if prev == 'normal' and curr == 'caution':
-        return 'sensor_caution', 'caution'
-    if prev == 'normal' and curr == 'danger':
-        return 'sensor_danger', 'danger'
-    if prev == 'caution' and curr == 'danger':
-        return 'sensor_danger', 'danger'
-    if prev == 'danger' and curr == 'caution':
-        return 'sensor_recover_partial', 'info'
-    if prev in ('danger', 'caution') and curr == 'normal':
-        return 'sensor_recover_normal', 'info'
+    if prev == "normal" and curr == "caution":
+        return "sensor_caution", "caution"
+    if prev == "normal" and curr == "danger":
+        return "sensor_danger", "danger"
+    if prev == "caution" and curr == "danger":
+        return "sensor_danger", "danger"
+    if prev == "danger" and curr == "caution":
+        return "sensor_recover_partial", "info"
+    if prev in ("danger", "caution") and curr == "normal":
+        return "sensor_recover_normal", "info"
     # 지속
-    if curr == 'danger':
-        return 'sensor_danger', 'danger'
-    if curr == 'caution':
-        return 'sensor_caution', 'caution'
-    return 'sensor_recover_normal', 'info'
+    if curr == "danger":
+        return "sensor_danger", "danger"
+    if curr == "caution":
+        return "sensor_caution", "caution"
+    return "sensor_recover_normal", "info"
 
 
-def _build_sensor_message(device_id: str, sensor_type: str,
-                          prev: str, curr: str, detail: str) -> str:
+def _build_sensor_message(
+    device_id: str, sensor_type: str, prev: str, curr: str, detail: str
+) -> str:
     """센서 전이별 메시지 (간결형)."""
     label_map = {'gas': '가스센서', 'power': '전력센서'}
     label = label_map.get(sensor_type, '센서')
     # 알 수 없는 sensor_type 도 '센서' 로 fallback — 메시지 깨짐 방지
     detail_str = f" [{detail}]" if detail else ''
 
-    if prev == 'normal' and curr == 'caution':
+    if prev == "normal" and curr == "caution":
         return f"{label} {device_id} 주의 수준 감지{detail_str}"
-    if prev == 'normal' and curr == 'danger':
+    if prev == "normal" and curr == "danger":
         return f"{label} {device_id} 위험 수준 감지{detail_str}"
-    if prev == 'caution' and curr == 'danger':
+    if prev == "caution" and curr == "danger":
         return f"{label} {device_id} 상태 악화 — 주의→위험{detail_str}"
-    if prev == 'danger' and curr == 'caution':
+    if prev == "danger" and curr == "caution":
         return f"{label} {device_id} 위험 벗어남 — 주의 수준으로 회복"
-    if prev in ('danger', 'caution') and curr == 'normal':
+    if prev in ("danger", "caution") and curr == "normal":
         return f"{label} {device_id} 정상 복귀 — {prev} 상황 종료"
-    if curr == 'danger':
+    if curr == "danger":
         return f"{label} {device_id} 위험 상황 지속 중{detail_str}"
-    if curr == 'caution':
+    if curr == "caution":
         return f"{label} {device_id} 주의 상황 지속 중{detail_str}"
 
     return f"{label} {device_id} 상태 변화"

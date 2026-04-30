@@ -10,5 +10,5 @@ vr_training/constants.py — VR 교육 콘텐츠 메타 정의
 
 # 3차 시연용 가짜 영상 — 1분 길이
 VR_VIDEO_TITLE = "산업현장 안전 수칙 교육"
-VR_VIDEO_DURATION_SEC = 60    # 1분. 시연용이라 짧게.
+VR_VIDEO_DURATION_SEC = 60  # 1분. 시연용이라 짧게.
 VR_VIDEO_DESCRIPTION = "작업 전 반드시 숙지해야 할 현장 안전 수칙 교육 영상입니다."

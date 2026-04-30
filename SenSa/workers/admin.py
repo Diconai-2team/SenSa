@@ -5,6 +5,7 @@ workers/admin.py — Django Admin 등록
 /admin/workers/workerlocation/    → 위치 이력
 /admin/workers/notificationlog/   → 알림 전송 이력 (Phase 4A)
 """
+
 from django.contrib import admin
 # Django 관리자 페이지 기능을 사용하기 위해 admin 모듈을 불러와
 from .models import NotificationLog, Worker, WorkerLocation
@@ -82,7 +83,7 @@ class NotificationLogAdmin(admin.ModelAdmin):
         # ⚠️ N+1 쿼리 — 목록에 50건 표시되면 50번의 COUNT SQL 발생
         #    개선안: get_queryset 오버라이드해서 .annotate(_recip_count=Count('recipients'))
 
-    @admin.display(description='메시지')
+    @admin.display(description="메시지")
     def message_preview(self, obj):
         # 메시지 본문 미리보기 — 40자 초과 시 말줄임표 추가
         return (obj.message[:40] + '…') if len(obj.message) > 40 else obj.message

@@ -3,6 +3,7 @@ geofence 앱 뷰
 
 - GeoFenceViewSet: 지오펜스 CRUD (소프트 삭제)
 """
+
 from rest_framework import viewsets, status
 # viewsets — ModelViewSet 사용 / status — HTTP 상태 코드 상수 (204 NO_CONTENT 사용)
 from rest_framework.response import Response

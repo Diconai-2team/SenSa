@@ -4,6 +4,7 @@ config.py — 환경 변수 로드 + 상수
 .env 파일을 읽어 런타임 설정을 제공한다.
 다른 모듈은 여기서만 환경 변수를 읽어야 한다 (Single Source of Truth).
 """
+
 import os
 from pathlib import Path
 from dotenv import load_dotenv
@@ -36,7 +37,7 @@ INTERNAL_HEADERS = {
 # ═══════════════════════════════════════════════════════════
 # 시뮬레이션 파라미터
 # ═══════════════════════════════════════════════════════════
-TICK_INTERVAL    = float(os.getenv("TICK_INTERVAL", "1.0"))
+TICK_INTERVAL = float(os.getenv("TICK_INTERVAL", "1.0"))
 DEFAULT_SCENARIO = os.getenv("DEFAULT_SCENARIO", "mixed")
 
 VALID_SCENARIOS = ("normal", "mixed", "danger")

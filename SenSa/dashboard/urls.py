@@ -4,6 +4,7 @@ dashboard 앱 URL 설정
 - 페이지: 관제 지도 화면, 알람 목록
 - API: 공장 평면도 CRUD + 지오펜스 내부 판별
 """
+
 from django.urls import path, include
 # Django에서 URL 경로를 정의하는 path 함수와, 다른 URL 설정을 포함시키는 include 함수를 불러와
 from rest_framework.routers import DefaultRouter

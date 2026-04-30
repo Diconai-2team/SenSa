@@ -10,6 +10,7 @@ alerts/state_store.py — 작업자별 알람 상태 + 안정화 카운터 (Redi
 
 TTL: 5분.
 """
+
 import time
 # Unix timestamp 기록용 — last_alarm_at 필드에 사용해 60초 재알림 주기 계산의 기준이 돼
 import redis
@@ -181,12 +182,12 @@ def commit_sensor_state(device_id: str, state: str, mark_alarmed: bool = False) 
     r = _client()
     key = SENSOR_KEY_FORMAT.format(device_id=device_id)
     mapping = {
-        'state': state,
-        'pending_state': '',
-        'pending_count': '0',
+        "state": state,
+        "pending_state": "",
+        "pending_count": "0",
     }
     if mark_alarmed:
-        mapping['last_alarm_at'] = str(time.time())
+        mapping["last_alarm_at"] = str(time.time())
     r.hset(key, mapping=mapping)
     r.expire(key, TTL_SEC)
 
@@ -196,10 +197,13 @@ def set_sensor_pending(device_id: str, pending_state: str, count: int) -> None:
     # 작업자 set_pending의 센서 버전 — 키 prefix만 다름
     r = _client()
     key = SENSOR_KEY_FORMAT.format(device_id=device_id)
-    r.hset(key, mapping={
-        'pending_state': pending_state,
-        'pending_count': str(count),
-    })
+    r.hset(
+        key,
+        mapping={
+            "pending_state": pending_state,
+            "pending_count": str(count),
+        },
+    )
     r.expire(key, TTL_SEC)
 
 
@@ -208,8 +212,11 @@ def clear_sensor_pending(device_id: str) -> None:
     # 작업자 clear_pending의 센서 버전
     r = _client()
     key = SENSOR_KEY_FORMAT.format(device_id=device_id)
-    r.hset(key, mapping={
-        'pending_state': '',
-        'pending_count': '0',
-    })
+    r.hset(
+        key,
+        mapping={
+            "pending_state": "",
+            "pending_count": "0",
+        },
+    )
     r.expire(key, TTL_SEC)

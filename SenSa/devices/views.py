@@ -18,6 +18,7 @@ devices/views.py — 센서 장비 CRUD + 센서 데이터 수신/저장
   - 판정 로직을 이 파일에서 복제하지 않고 alerts.services 를 신뢰
   - publish_sensor_update 시그니처 불변
 """
+
 from rest_framework import viewsets, status as http_status
 # viewsets — ModelViewSet 사용 / status — HTTP 상태 코드 상수 (이름 충돌 회피 위해 http_status로 alias)
 # 이유: STATUS_CHOICES('status' 변수)와 충돌 방지
@@ -44,6 +45,7 @@ from alerts.services import classify_gas, classify_power
 # ═══════════════════════════════════════════════════════════
 # Device CRUD
 # ═══════════════════════════════════════════════════════════
+
 
 class DeviceViewSet(viewsets.ModelViewSet):
     """
@@ -142,7 +144,9 @@ class SensorDataView(APIView):
         try:
             device = Device.objects.get(device_id=device_id)
         except Device.DoesNotExist:
-            return Response({'error': '센서 없음'}, status=http_status.HTTP_404_NOT_FOUND)
+            return Response(
+                {"error": "센서 없음"}, status=http_status.HTTP_404_NOT_FOUND
+            )
 
         # sensor_type 추출 — 명시되지 않으면 Device.sensor_type 으로 fallback
         sensor_type = request.data.get('sensor_type') or device.sensor_type
@@ -159,14 +163,14 @@ class SensorDataView(APIView):
         # ═══════════════════════════════════════════════════
         # 분기: gas / power 별로 파싱 + 판정 + 저장
         # ═══════════════════════════════════════════════════
-        if sensor_type == 'gas':
+        if sensor_type == "gas":
             sd, s, payload_values = self._save_gas(device, _get_float)
             # sd: SensorData 인스턴스, s: status 판정, payload_values: WS push용 dict
         elif sensor_type == 'power':
             sd, s, payload_values = self._save_power(device, _get_float)
         else:
             return Response(
-                {'error': f'미지원 sensor_type: {sensor_type}'},
+                {"error": f"미지원 sensor_type: {sensor_type}"},
                 status=http_status.HTTP_400_BAD_REQUEST,
             )
             # temperature, motion 타입은 아직 수신 처리 미구현
@@ -219,9 +223,15 @@ class SensorDataView(APIView):
         sd = SensorData.objects.create(
             # DB INSERT 1건 — 측정 시각은 auto_now_add로 자동
             device=device,
-            co=gas['co'],   h2s=gas['h2s'], co2=gas['co2'], o2=gas['o2'],
-            no2=gas['no2'], so2=gas['so2'], o3=gas['o3'],
-            nh3=gas['nh3'], voc=gas['voc'],
+            co=gas["co"],
+            h2s=gas["h2s"],
+            co2=gas["co2"],
+            o2=gas["o2"],
+            no2=gas["no2"],
+            so2=gas["so2"],
+            o3=gas["o3"],
+            nh3=gas["nh3"],
+            voc=gas["voc"],
             status=s,
             # 판정 결과를 측정값과 함께 저장 — 이후 다시 분류할 필요 없음
         )
@@ -236,9 +246,9 @@ class SensorDataView(APIView):
     def _save_power(self, device, _get_float):
         # power 타입 측정값 파싱 + 판정 + DB 저장
         power = {
-            'current': _get_float('current'),
-            'voltage': _get_float('voltage'),
-            'watt':    _get_float('watt'),
+            "current": _get_float("current"),
+            "voltage": _get_float("voltage"),
+            "watt": _get_float("watt"),
         }
         # 판정 — 동적 24h 중앙값 기반 (device_id 전달 필수)
         s = classify_power(power, device.device_id)
@@ -247,9 +257,9 @@ class SensorDataView(APIView):
 
         sd = SensorData.objects.create(
             device=device,
-            current=power['current'],
-            voltage=power['voltage'],
-            watt=power['watt'],
+            current=power["current"],
+            voltage=power["voltage"],
+            watt=power["watt"],
             status=s,
         )
         # 지도 마커용 대표값: watt
