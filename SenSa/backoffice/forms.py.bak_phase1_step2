@@ -42,7 +42,6 @@ from devices.models import (
     STATUS_CHOICES as DEVICE_STATUS_CHOICES,
 )
 from geofence.models import GeoFence, ZONE_TYPE_CHOICES, RISK_LEVEL_CHOICES
-from dashboard.models import MapImage
 
 
 User = get_user_model()
@@ -1328,67 +1327,3 @@ class NoticeForm(forms.Form):
         obj.updated_by = by
         obj.save()
         return obj
-
-
-# ═══════════════════════════════════════════════════════════
-# v7: 평면도 이미지 (MapImage) 관리
-# ═══════════════════════════════════════════════════════════
-
-class MapImageForm(forms.ModelForm):
-    """평면도 이미지 등록/수정.
-
-    동작:
-      - 신규 등록 시 image 필수, 이름은 미입력 시 파일명에서 자동 생성
-      - 이미지 새로 업로드 시 width/height 자동 추출 (Pillow)
-      - sort_order 음수 불가
-    """
-
-    class Meta:
-        model = MapImage
-        fields = ['image', 'name', 'sort_order', 'is_active']
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        # 신규 등록 시만 image 필수, 수정 시는 선택
-        self.fields['image'].required = self.instance.pk is None
-        self.fields['name'].required = False
-
-    def clean_name(self):
-        name = (self.cleaned_data.get('name') or '').strip()
-        if not name:
-            img = self.cleaned_data.get('image')
-            if img and hasattr(img, 'name'):
-                # 파일명에서 확장자 제거
-                base = img.name.rsplit('/', 1)[-1]
-                name = base.rsplit('.', 1)[0][:100] or '평면도'
-            else:
-                name = '평면도'
-        if len(name) > 100:
-            raise forms.ValidationError('지도 이름은 100자 이하로 입력해 주세요.')
-        return name
-
-    def clean_sort_order(self):
-        v = self.cleaned_data.get('sort_order')
-        if v is None:
-            v = 0
-        if v < 0:
-            raise forms.ValidationError('순서는 0 이상이어야 합니다.')
-        return v
-
-    def save(self, commit=True):
-        instance = super().save(commit=False)
-        # 새 이미지가 업로드된 경우 width/height 자동 추출
-        new_image = self.cleaned_data.get('image')
-        # ImageField 의 변경 감지 — 파일 객체에 read 가 있으면 새 업로드
-        if new_image and hasattr(new_image, 'read'):
-            try:
-                from PIL import Image as PILImage
-                pil = PILImage.open(new_image)
-                instance.width = pil.width
-                instance.height = pil.height
-            except Exception:
-                # Pillow 실패 시 0 유지 — 운영자가 수동 입력 가능
-                pass
-        if commit:
-            instance.save()
-        return instance

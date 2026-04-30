@@ -63,27 +63,12 @@
             <span class="bo-snb-label">설비/장비 관리</span>
           </a>
         </li>{% endif %}
-        {% if 'maps' in visible_menus %}
-        {# 지도 편집 관리 — v7: 평면도 이미지 페이지네이션 추가로 그룹화 #}
-        <li class="bo-snb-item bo-snb-group {% if active_menu == 'maps' %}active{% endif %}">
+        {% if 'maps' in visible_menus %}<li class="bo-snb-item {% if active_menu == 'maps' %}active{% endif %}">
           <a href="{% url 'backoffice:map-edit' %}">
             <span class="bo-snb-icon">🗺️</span>
             <span class="bo-snb-label">지도 편집 관리</span>
           </a>
-        </li>
-        <li class="bo-snb-subitem {% if active_menu == 'maps' and active_submenu != 'images' %}active{% endif %}">
-          <a href="{% url 'backoffice:map-edit' %}">
-            <span class="bo-snb-icon"></span>
-            <span class="bo-snb-label">└ 지오펜스 편집</span>
-          </a>
-        </li>
-        <li class="bo-snb-subitem {% if active_submenu == 'images' %}active{% endif %}">
-          <a href="{% url 'backoffice:map-image-list' %}">
-            <span class="bo-snb-icon"></span>
-            <span class="bo-snb-label">└ 평면도 이미지 관리</span>
-          </a>
-        </li>
-        {% endif %}
+        </li>{% endif %}
         {% if 'references' in visible_menus %}
         {# 기준정보 관리 — 4개 하위 메뉴 (v2 활성화) #}
         <li class="bo-snb-item bo-snb-group {% if active_menu in 'codes risks alarm_levels thresholds' %}active{% endif %}">

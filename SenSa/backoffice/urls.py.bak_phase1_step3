@@ -172,13 +172,4 @@ urlpatterns = [
     # ═══════════════════════════════════════════════════════
     path('audit-logs/', views.audit_log_list, name='audit-log-list'),
     path('api/devices/<int:pk>/history/', views.device_history_api, name='api-device-history'),
-
-    # ═══════════════════════════════════════════════════════
-    # v7 — 평면도 이미지 관리 (지도 페이지네이션 백오피스)
-    # ═══════════════════════════════════════════════════════
-    path('maps/images/',                       views.map_image_list,              name='map-image-list'),
-    path('api/maps/images/create/',            views.map_image_create_api,        name='api-map-image-create'),
-    path('api/maps/images/<int:pk>/update/',   views.map_image_update_api,        name='api-map-image-update'),
-    path('api/maps/images/<int:pk>/delete/',   views.map_image_delete_api,        name='api-map-image-delete'),
-    path('api/maps/images/<int:pk>/toggle/',   views.map_image_toggle_active_api, name='api-map-image-toggle'),
 ]

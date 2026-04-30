@@ -1,0 +1,322 @@
+{% extends "backoffice/base.html" %}
+{% load static %}
+{% block title %}평면도 이미지 관리 — 백오피스{% endblock %}
+
+{% block content %}
+<div class="bo-breadcrumb"><span>지도 편집 관리</span> &gt; <span>평면도 이미지 관리</span></div>
+
+<div class="bo-flex-between" style="margin-bottom:8px;">
+    <div>
+        <h1 class="bo-page-title">평면도 이미지 관리</h1>
+        <p class="bo-page-desc">대시보드에서 페이지네이션으로 전환할 평면도를 등록·관리합니다. 활성 상태인 평면도만 대시보드에 노출됩니다.</p>
+    </div>
+    <button type="button" class="bo-btn bo-btn-primary" data-open-create-modal>+ 평면도 등록</button>
+</div>
+
+<div class="bo-card bo-mt-16">
+    <div class="bo-table-toolbar">
+        <div class="bo-table-toolbar-left">
+            <span>전체 평면도 <strong>{{ total }}건</strong></span>
+            <span style="margin-left:12px;color:#9ba3ad;">활성 <strong style="color:#2563eb;">{{ active_count }}건</strong></span>
+        </div>
+    </div>
+
+    <table class="bo-table">
+        <colgroup>
+            <col style="width:80px;">
+            <col style="width:120px;">
+            <col>
+            <col style="width:120px;">
+            <col style="width:80px;">
+            <col style="width:100px;">
+            <col style="width:140px;">
+            <col style="width:200px;">
+        </colgroup>
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>미리보기</th>
+                <th>이름</th>
+                <th>크기 (px)</th>
+                <th>순서</th>
+                <th>활성</th>
+                <th>등록 일시</th>
+                <th>작업</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for img in images %}
+            <tr data-id="{{ img.id }}">
+                <td>{{ img.id }}</td>
+                <td>
+                    {% if img.image %}
+                    <img src="{{ img.image.url }}" alt="" style="width:80px;height:48px;object-fit:cover;border:1px solid #e5e7eb;border-radius:4px;">
+                    {% else %}
+                    <span style="color:#9ba3ad;">-</span>
+                    {% endif %}
+                </td>
+                <td><strong>{{ img.name }}</strong></td>
+                <td>{{ img.width }} × {{ img.height }}</td>
+                <td>{{ img.sort_order }}</td>
+                <td>
+                    {% if img.is_active %}
+                    <span class="bo-badge bo-badge-success">활성</span>
+                    {% else %}
+                    <span class="bo-badge bo-badge-muted">비활성</span>
+                    {% endif %}
+                </td>
+                <td>{{ img.uploaded_at|date:"Y-m-d H:i" }}</td>
+                <td>
+                    <button type="button" class="bo-btn bo-btn-sm" data-edit-id="{{ img.id }}"
+                            data-name="{{ img.name }}"
+                            data-sort-order="{{ img.sort_order }}"
+                            data-is-active="{{ img.is_active|yesno:'1,0' }}"
+                            data-image-url="{{ img.image.url|default:'' }}">수정</button>
+                    <button type="button" class="bo-btn bo-btn-sm {% if img.is_active %}bo-btn-warning{% endif %}"
+                            data-toggle-id="{{ img.id }}">
+                        {% if img.is_active %}비활성{% else %}활성{% endif %}
+                    </button>
+                    <button type="button" class="bo-btn bo-btn-sm bo-btn-danger" data-delete-id="{{ img.id }}" data-name="{{ img.name }}">삭제</button>
+                </td>
+            </tr>
+            {% empty %}
+            <tr>
+                <td colspan="8" style="text-align:center;padding:40px;color:#9ba3ad;">
+                    등록된 평면도가 없습니다. <strong>+ 평면도 등록</strong> 버튼으로 추가하세요.
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<div id="bo-modal" class="bo-modal" style="display:none;">
+    <div class="bo-modal-backdrop"></div>
+    <div class="bo-modal-dialog" style="max-width:520px;">
+        <div class="bo-modal-header">
+            <h2 id="bo-modal-title">평면도 등록</h2>
+            <button type="button" class="bo-modal-close" data-close-modal>&times;</button>
+        </div>
+        <form id="bo-modal-form" enctype="multipart/form-data">
+            {% csrf_token %}
+            <input type="hidden" id="f-id" value="">
+            <div class="bo-modal-body">
+                <div class="bo-field">
+                    <label for="f-image">이미지 파일 <span class="bo-required" id="f-image-required">*</span></label>
+                    <input type="file" name="image" id="f-image" accept="image/*">
+                    <small id="f-image-hint" style="color:#9ba3ad;">PNG, JPG 권장. 업로드 시 가로/세로 크기 자동 추출.</small>
+                    <div id="f-image-preview" style="margin-top:8px;display:none;">
+                        <img id="f-image-preview-img" src="" alt="" style="max-width:100%;max-height:200px;border:1px solid #e5e7eb;border-radius:4px;">
+                    </div>
+                </div>
+                <div class="bo-field">
+                    <label for="f-name">평면도 이름</label>
+                    <input type="text" name="name" id="f-name" placeholder="예: 본관 1층 (미입력 시 파일명 자동 사용)" maxlength="100">
+                </div>
+                <div class="bo-field">
+                    <label for="f-sort-order">표시 순서</label>
+                    <input type="number" name="sort_order" id="f-sort-order" value="0" min="0">
+                    <small style="color:#9ba3ad;">작은 값이 대시보드 페이지네이션에서 먼저 표시됩니다.</small>
+                </div>
+                <div class="bo-field">
+                    <label>
+                        <input type="checkbox" name="is_active" id="f-is-active" value="on" checked>
+                        활성 (대시보드에 표시)
+                    </label>
+                </div>
+                <div id="bo-modal-error" style="display:none;color:#dc2626;background:#fee2e2;padding:8px 12px;border-radius:4px;margin-top:8px;"></div>
+            </div>
+            <div class="bo-modal-footer">
+                <button type="button" class="bo-btn" data-close-modal>취소</button>
+                <button type="submit" class="bo-btn bo-btn-primary" id="bo-modal-submit">저장</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+(function() {
+    'use strict';
+
+    const URL_CREATE  = "{% url 'backoffice:api-map-image-create' %}";
+    const URL_UPDATE  = "{% url 'backoffice:api-map-image-update' 0 %}".replace('/0/', '/__PK__/');
+    const URL_DELETE  = "{% url 'backoffice:api-map-image-delete' 0 %}".replace('/0/', '/__PK__/');
+    const URL_TOGGLE  = "{% url 'backoffice:api-map-image-toggle' 0 %}".replace('/0/', '/__PK__/');
+    const csrftoken   = document.querySelector('[name=csrfmiddlewaretoken]').value;
+
+    const modal       = document.getElementById('bo-modal');
+    const modalTitle  = document.getElementById('bo-modal-title');
+    const modalForm   = document.getElementById('bo-modal-form');
+    const modalError  = document.getElementById('bo-modal-error');
+    const fId         = document.getElementById('f-id');
+    const fImage      = document.getElementById('f-image');
+    const fImageHint  = document.getElementById('f-image-hint');
+    const fImageRequired = document.getElementById('f-image-required');
+    const fImagePreview  = document.getElementById('f-image-preview');
+    const fImagePreviewImg = document.getElementById('f-image-preview-img');
+    const fName       = document.getElementById('f-name');
+    const fSortOrder  = document.getElementById('f-sort-order');
+    const fIsActive   = document.getElementById('f-is-active');
+
+    function openModal(mode, data) {
+        modalError.style.display = 'none';
+        modalError.textContent = '';
+        fImagePreview.style.display = 'none';
+        fImage.value = '';
+
+        if (mode === 'create') {
+            modalTitle.textContent = '평면도 등록';
+            fId.value = '';
+            fName.value = '';
+            fSortOrder.value = 0;
+            fIsActive.checked = true;
+            fImageHint.textContent = 'PNG, JPG 권장. 업로드 시 가로/세로 크기 자동 추출.';
+            fImageRequired.style.display = 'inline';
+            fImage.required = true;
+        } else {
+            modalTitle.textContent = '평면도 수정';
+            fId.value = data.id;
+            fName.value = data.name;
+            fSortOrder.value = data.sortOrder;
+            fIsActive.checked = data.isActive;
+            fImageHint.textContent = '이미지 변경하지 않으려면 비워두세요.';
+            fImageRequired.style.display = 'none';
+            fImage.required = false;
+            if (data.imageUrl) {
+                fImagePreviewImg.src = data.imageUrl;
+                fImagePreview.style.display = 'block';
+            }
+        }
+        modal.style.display = 'flex';
+    }
+    function closeModal() {
+        modal.style.display = 'none';
+    }
+
+    document.querySelector('[data-open-create-modal]').addEventListener('click', function() {
+        openModal('create');
+    });
+
+    document.querySelectorAll('[data-edit-id]').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            openModal('edit', {
+                id: btn.dataset.editId,
+                name: btn.dataset.name,
+                sortOrder: btn.dataset.sortOrder,
+                isActive: btn.dataset.isActive === '1',
+                imageUrl: btn.dataset.imageUrl,
+            });
+        });
+    });
+
+    document.querySelectorAll('[data-close-modal]').forEach(function(btn) {
+        btn.addEventListener('click', closeModal);
+    });
+    document.querySelector('.bo-modal-backdrop').addEventListener('click', closeModal);
+
+    fImage.addEventListener('change', function(e) {
+        const file = e.target.files[0];
+        if (file) {
+            const reader = new FileReader();
+            reader.onload = function(ev) {
+                fImagePreviewImg.src = ev.target.result;
+                fImagePreview.style.display = 'block';
+            };
+            reader.readAsDataURL(file);
+        }
+    });
+
+    modalForm.addEventListener('submit', function(e) {
+        e.preventDefault();
+        modalError.style.display = 'none';
+
+        const formData = new FormData();
+        if (fImage.files.length > 0) {
+            formData.append('image', fImage.files[0]);
+        }
+        formData.append('name', fName.value);
+        formData.append('sort_order', fSortOrder.value);
+        if (fIsActive.checked) formData.append('is_active', 'on');
+        formData.append('csrfmiddlewaretoken', csrftoken);
+
+        const isEdit = !!fId.value;
+        const url = isEdit ? URL_UPDATE.replace('__PK__', fId.value) : URL_CREATE;
+
+        fetch(url, {
+            method: 'POST',
+            body: formData,
+            headers: {'X-CSRFToken': csrftoken},
+        })
+        .then(function(r) { return r.json().then(function(j) { return {ok: r.ok, body: j}; }); })
+        .then(function(res) {
+            if (!res.body.ok) {
+                let msg = '저장에 실패했습니다.';
+                if (res.body.errors) {
+                    const errs = res.body.errors;
+                    const lines = [];
+                    Object.keys(errs).forEach(function(k) {
+                        if (Array.isArray(errs[k])) {
+                            errs[k].forEach(function(e) { lines.push((k === '_form' ? '' : k + ': ') + e); });
+                        }
+                    });
+                    if (lines.length) msg = lines.join('\n');
+                }
+                modalError.textContent = msg;
+                modalError.style.display = 'block';
+                return;
+            }
+            location.reload();
+        })
+        .catch(function(err) {
+            modalError.textContent = '네트워크 오류: ' + err.message;
+            modalError.style.display = 'block';
+        });
+    });
+
+    document.querySelectorAll('[data-toggle-id]').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            const pk = btn.dataset.toggleId;
+            if (!confirm('활성 상태를 변경하시겠습니까?')) return;
+
+            fetch(URL_TOGGLE.replace('__PK__', pk), {
+                method: 'POST',
+                headers: {'X-CSRFToken': csrftoken},
+            })
+            .then(function(r) { return r.json(); })
+            .then(function(j) {
+                if (!j.ok) {
+                    const msg = (j.errors && j.errors._form) ? j.errors._form.join('\n') : '변경 실패';
+                    alert(msg);
+                    return;
+                }
+                location.reload();
+            })
+            .catch(function(err) { alert('오류: ' + err.message); });
+        });
+    });
+
+    document.querySelectorAll('[data-delete-id]').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            const pk = btn.dataset.deleteId;
+            const name = btn.dataset.name;
+            if (!confirm('"' + name + '" 평면도를 삭제하시겠습니까?\n사용 중인 장비/지역이 있으면 삭제되지 않습니다.')) return;
+
+            fetch(URL_DELETE.replace('__PK__', pk), {
+                method: 'POST',
+                headers: {'X-CSRFToken': csrftoken},
+            })
+            .then(function(r) { return r.json(); })
+            .then(function(j) {
+                if (!j.ok) {
+                    const msg = (j.errors && j.errors._form) ? j.errors._form.join('\n') : '삭제 실패';
+                    alert(msg);
+                    return;
+                }
+                location.reload();
+            })
+            .catch(function(err) { alert('오류: ' + err.message); });
+        });
+    });
+})();
+</script>
+{% endblock %}
