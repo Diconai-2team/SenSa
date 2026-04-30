@@ -190,6 +190,7 @@ def alarm_list_view(request):
         "info":     Alarm.objects.filter(alarm_level="info").count(),
         # info(회복) 알람 — 약 50% 비중인데 기존엔 카드에 없어 안 보였음
         # 이제 '전체 = 위험 + 주의 + 정보'로 산술 일관성 성립
+    }
     return render(request, "alerts/alarm_list.html", {
         "alarms":       alarms,
         # 페이지네이션된 알람 객체 (.object_list, .has_next, .number 등 템플릿에서 사용)
