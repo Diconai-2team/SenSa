@@ -23,7 +23,8 @@ def _resolve_qs(target: str, cutoff):
     """target 코드 → 삭제 대상 queryset"""
     if target == 'sensor_data':
         from devices.models import SensorData
-        return SensorData.objects.filter(created_at__lt=cutoff) if hasattr(SensorData, 'created_at') else None
+        # SensorData 의 시간 필드는 timestamp (created_at 아님)
+        return SensorData.objects.filter(timestamp__lt=cutoff) if hasattr(SensorData, 'timestamp') else None
     if target == 'worker_location':
         from workers.models import WorkerLocation
         return WorkerLocation.objects.filter(timestamp__lt=cutoff) if hasattr(WorkerLocation, 'timestamp') else None

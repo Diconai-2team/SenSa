@@ -28,8 +28,16 @@ var geofenceLayerGroup = null, sensorLayerGroup = null, workerLayerGroup = null;
 function initMap(W, H) {
   window.updateMapBounds(W, H);
   if (map) { map.remove(); map = null; }
-  map = L.map('map', { crs: L.CRS.Simple, minZoom: -3, maxZoom: 3, zoomSnap: 0.25 });
+  map = L.map('map', { crs: L.CRS.Simple, minZoom: -3, maxZoom: 5, zoomSnap: 0.25 });
   map.fitBounds([[0, 0], [H, W]]);
+  // [v7] 화면에 딱 맞는 크기보다 더 축소 못하게 minZoom 동적 설정
+  // 확대는 자유 (maxZoom 5 = 32배까지 — 픽셀 깨져도 디테일 확인 가능)
+  setTimeout(function() {
+    var fitZoom = map.getZoom();
+    map.setMinZoom(fitZoom);   // fit 보다 더 축소 불가
+    // 화면에 fit 된 상태에서 시작
+    map.setZoom(fitZoom);
+  }, 100);
   geofenceLayerGroup = L.layerGroup().addTo(map);
   sensorLayerGroup = L.layerGroup().addTo(map);
   workerLayerGroup = L.layerGroup().addTo(map);
