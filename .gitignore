@@ -83,3 +83,10 @@ staticfiles/
 # 환경변수
 .env
 .env.local
+
+# 작업 중 만들어지는 백업 파일
+*.bak
+*.bak_*
+*.before_*
+*.broken
+_work_backup/
