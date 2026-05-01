@@ -2195,3 +2195,227 @@ def map_image_toggle_active_api(request, pk):
     obj.save(update_fields=['is_active'])
     return JsonResponse({'ok': True, 'is_active': obj.is_active})
 
+# v7: 운영 데이터 백업 + 초기화 + 조회
+# ═══════════════════════════════════════════════════════════
+
+from .utils import backup as backup_util
+
+
+def _audit_log_backup_action(request, action, target, filename=None, count=None):
+    """백업/초기화 동작을 감사 로그에 기록.
+
+    audit.py 의 일반 모델 변경 추적과 별도로, 운영 데이터 관리 액션을
+    명시적으로 기록 (법정 요구).
+    """
+    try:
+        from .models import AuditLog
+        AuditLog.objects.create(
+            actor=request.user if request.user.is_authenticated else None,
+            actor_username_snapshot=getattr(request.user, 'username', '') or '',
+            action=action,  # 예: 'data_backup', 'data_init'
+            target_app='backoffice',
+            target_model='DataRetentionPolicy',
+            target_pk=None,
+            target_repr=f'{target} ({filename or "-"})',
+            changes={'target': target, 'filename': filename, 'count': count},
+            ip_address=request.META.get('REMOTE_ADDR', ''),
+            request_path=request.path,
+            extra_message=f'운영 데이터 {action}: {target}',
+        )
+    except Exception:
+        # 감사 로그 실패가 본 작업을 막지 않도록 swallow
+        pass
+
+
+@super_admin_required_api(menu_code='retention', action='write')
+@require_POST
+def retention_backup_api(request, pk):
+    """단건 정책의 데이터를 .json.gz 로 백업.
+
+    동작:
+    1. 서버 _backups/{target}/ 에 파일 저장
+    2. 정책당 KEEP_BACKUPS (10개) 초과 시 가장 오래된 것 자동 삭제
+    3. 응답 — 파일명/카운트/크기 (다운로드는 별도 API 로)
+    """
+    p = get_object_or_404(DataRetentionPolicy, pk=pk)
+    target = p.target
+
+    if target not in backup_util.TARGET_REGISTRY:
+        return JsonResponse({
+            'ok': False,
+            'errors': {'_form': [f'백업 미지원 target: {target}']},
+        }, status=400)
+
+    try:
+        result = backup_util.stream_backup_to_file(target)
+        # 오래된 백업 자동 정리
+        deleted_old = backup_util.cleanup_old_backups(target)
+
+        # 감사 로그
+        _audit_log_backup_action(
+            request, 'data_backup', target,
+            filename=result['filename'], count=result['count'],
+        )
+
+        return JsonResponse({
+            'ok': True,
+            'count': result['count'],
+            'filename': result['filename'],
+            'size_bytes': result['size_bytes'],
+            'size_human': backup_util._human_size(result['size_bytes']),
+            'cleaned_old_backups': deleted_old,
+            'message': f'{result["count"]:,}건을 백업했습니다.',
+        })
+    except Exception as e:
+        return JsonResponse({
+            'ok': False,
+            'errors': {'_form': [f'백업 실패: {e}']},
+        }, status=500)
+
+
+@super_admin_required_api(menu_code='retention', action='write')
+@require_POST
+def retention_init_with_backup_api(request, pk):
+    """단건 정책의 모든 데이터를 백업 후 삭제 (초기화).
+
+    안전장치:
+    1. 클라이언트가 confirm 필드에 'DELETE' 보내야 진행
+    2. 백업 먼저 → 성공해야 삭제
+    3. 모든 동작 감사 로그 기록
+    """
+    p = get_object_or_404(DataRetentionPolicy, pk=pk)
+    target = p.target
+
+    # 안전장치 — confirm 텍스트 검증
+    data = _parse_json(request)
+    confirm = (data.get('confirm') or '').strip().upper()
+    if confirm != 'DELETE':
+        return JsonResponse({
+            'ok': False,
+            'errors': {'_form': ['확인 텍스트가 일치하지 않습니다. "DELETE" 를 정확히 입력하세요.']},
+        }, status=400)
+
+    if target not in backup_util.TARGET_REGISTRY:
+        return JsonResponse({
+            'ok': False,
+            'errors': {'_form': [f'초기화 미지원 target: {target}']},
+        }, status=400)
+
+    # Step 1: 백업
+    try:
+        backup_result = backup_util.stream_backup_to_file(target)
+        backup_util.cleanup_old_backups(target)
+    except Exception as e:
+        return JsonResponse({
+            'ok': False,
+            'errors': {'_form': [f'백업 실패 (삭제 미진행): {e}']},
+        }, status=500)
+
+    _audit_log_backup_action(
+        request, 'data_backup_pre_init', target,
+        filename=backup_result['filename'], count=backup_result['count'],
+    )
+
+    # Step 2: 삭제
+    try:
+        deleted_count = backup_util.delete_all_data(target)
+    except Exception as e:
+        return JsonResponse({
+            'ok': False,
+            'errors': {'_form': [f'백업은 성공했으나 삭제 실패: {e}']},
+            'backup': {
+                'filename': backup_result['filename'],
+                'count': backup_result['count'],
+            },
+        }, status=500)
+
+    _audit_log_backup_action(
+        request, 'data_init', target,
+        filename=backup_result['filename'], count=deleted_count,
+    )
+
+    return JsonResponse({
+        'ok': True,
+        'backup': {
+            'filename': backup_result['filename'],
+            'count': backup_result['count'],
+            'size_bytes': backup_result['size_bytes'],
+            'size_human': backup_util._human_size(backup_result['size_bytes']),
+        },
+        'deleted_count': deleted_count,
+        'message': f'{deleted_count:,}건을 백업 후 삭제했습니다.',
+    })
+
+
+@super_admin_required(menu_code='retention')
+def backup_list(request):
+    """백업 파일 조회 페이지."""
+    files = backup_util.list_backup_files()
+    return render(request, 'backoffice/operations/backup_list.html', {
+        'active_menu': 'retention',
+        'active_submenu': 'backups',
+        'files': files,
+        'total_count': len(files),
+        'targets': backup_util.TARGET_REGISTRY,
+    })
+
+
+@super_admin_required_api(menu_code='retention', action='read')
+@require_GET
+def backup_preview_api(request, target, filename):
+    """백업 파일 미리보기 (앞 100건)."""
+    file_path = backup_util.find_backup_file(target, filename)
+    if file_path is None:
+        return JsonResponse({'ok': False, 'errors': {'_form': ['파일을 찾을 수 없습니다.']}}, status=404)
+
+    limit = int(request.GET.get('limit', 100))
+    limit = min(max(limit, 1), 500)  # 1~500 제한
+
+    preview = backup_util.preview_backup(target, filename, limit=limit)
+    if preview is None or 'error' in preview:
+        return JsonResponse({
+            'ok': False,
+            'errors': {'_form': [preview.get('error', '미리보기 실패') if preview else '파일 없음']},
+        }, status=500)
+
+    return JsonResponse({
+        'ok': True,
+        'target': target,
+        'filename': filename,
+        'preview': preview,
+    })
+
+
+@super_admin_required_api(menu_code='retention', action='read')
+@require_GET
+def backup_download_api(request, target, filename):
+    """백업 파일 다운로드."""
+    file_path = backup_util.find_backup_file(target, filename)
+    if file_path is None:
+        raise Http404('백업 파일을 찾을 수 없습니다.')
+
+    # FileResponse 사용 — 큰 파일도 스트리밍
+    from django.http import FileResponse
+    response = FileResponse(
+        open(file_path, 'rb'),
+        as_attachment=True,
+        filename=filename,
+        content_type='application/gzip',
+    )
+
+    _audit_log_backup_action(request, 'backup_download', target, filename=filename)
+
+    return response
+
+
+@super_admin_required_api(menu_code='retention', action='write')
+@require_POST
+def backup_delete_api(request, target, filename):
+    """백업 파일 삭제."""
+    if not backup_util.delete_backup_file(target, filename):
+        return JsonResponse({'ok': False, 'errors': {'_form': ['파일을 찾을 수 없습니다.']}}, status=404)
+
+    _audit_log_backup_action(request, 'backup_delete', target, filename=filename)
+
+    return JsonResponse({'ok': True, 'message': f'{filename} 삭제 완료'})
+

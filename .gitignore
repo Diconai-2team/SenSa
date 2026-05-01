@@ -90,3 +90,6 @@ staticfiles/
 *.before_*
 *.broken
 _work_backup/
+
+# 운영 데이터 백업 (서버 보관 — git 추적 불필요)
+_backups/
