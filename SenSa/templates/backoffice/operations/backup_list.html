@@ -1,0 +1,237 @@
+{% extends "backoffice/base.html" %}
+{% load static %}
+{% block title %}백업 파일 조회 — 백오피스{% endblock %}
+
+{% block content %}
+<div class="bo-breadcrumb">
+    <a href="{% url 'backoffice:retention-list' %}">운영 데이터 관리</a> &gt; <span>백업 파일 조회</span>
+</div>
+
+<div class="bo-flex-between" style="margin-bottom:8px;">
+    <div>
+        <h1 class="bo-page-title">백업 파일 조회</h1>
+        <p class="bo-page-desc">서버에 저장된 운영 데이터 백업 파일을 조회·다운로드·삭제할 수 있습니다. 정책당 최근 10개만 보관됩니다.</p>
+    </div>
+    <a href="{% url 'backoffice:retention-list' %}" class="bo-btn">← 보관 정책으로</a>
+</div>
+
+<div class="bo-card bo-mt-16">
+    <div class="bo-table-toolbar">
+        <div class="bo-table-toolbar-left">
+            <span>전체 백업 <strong>{{ total_count }}건</strong></span>
+        </div>
+    </div>
+
+    <table class="bo-table">
+        <colgroup>
+            <col style="width:140px;">
+            <col>
+            <col style="width:100px;">
+            <col style="width:160px;">
+            <col style="width:240px;">
+        </colgroup>
+        <thead>
+            <tr>
+                <th>대상</th>
+                <th>파일명</th>
+                <th>크기</th>
+                <th>생성 일시</th>
+                <th>작업</th>
+            </tr>
+        </thead>
+        <tbody id="bo-backup-tbody">
+            {% for f in files %}
+            <tr data-target="{{ f.target }}" data-filename="{{ f.filename }}">
+                <td>
+                    <span class="bo-badge bo-badge-status-active">{{ f.target_display }}</span>
+                </td>
+                <td>
+                    <code style="font-size:12px;color:#374151;">{{ f.filename }}</code>
+                </td>
+                <td style="font-variant-numeric:tabular-nums;">{{ f.size_human }}</td>
+                <td style="font-size:12px;color:var(--bo-text-muted);">
+                    {{ f.created_at|date:"Y-m-d H:i:s" }}
+                </td>
+                <td style="white-space:nowrap;">
+                    <button type="button" class="bo-btn bo-btn-sm bo-btn-primary" data-preview>조회</button>
+                    <button type="button" class="bo-btn bo-btn-sm" data-download style="background:#10b981;color:#fff;border-color:#10b981;">다운로드</button>
+                    <button type="button" class="bo-btn bo-btn-sm bo-btn-danger" data-delete>삭제</button>
+                </td>
+            </tr>
+            {% empty %}
+            <tr>
+                <td colspan="5" style="text-align:center;padding:40px;color:var(--bo-text-muted);">
+                    저장된 백업 파일이 없습니다.<br>
+                    <a href="{% url 'backoffice:retention-list' %}" style="color:#2563eb;text-decoration:underline;margin-top:8px;display:inline-block;">운영 데이터 보관 정책</a> 페이지에서 [백업] 버튼으로 생성할 수 있습니다.
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+{# ═══════════════════════════════════════════════════════════ #}
+{# 미리보기 모달 #}
+{# ═══════════════════════════════════════════════════════════ #}
+<div class="bo-modal-backdrop" id="bo-preview-modal">
+    <div class="bo-modal" style="max-width:1100px;max-height:90vh;display:flex;flex-direction:column;">
+        <div class="bo-modal-header">
+            <h2 class="bo-modal-title">백업 파일 미리보기</h2>
+            <p class="bo-modal-desc" id="bo-preview-target">-</p>
+        </div>
+        <div class="bo-modal-body" style="overflow-y:auto;flex:1;">
+            <div id="bo-preview-stats" style="background:#f3f4f6;padding:8px 12px;border-radius:4px;margin-bottom:12px;font-size:12px;">
+                전체 <strong id="bo-preview-total">-</strong>건 중 앞 <strong id="bo-preview-shown">-</strong>건 미리보기
+            </div>
+            <div id="bo-preview-loading" style="text-align:center;padding:40px;color:var(--bo-text-muted);">
+                ⏳ 압축 파일을 풀고 있습니다...
+            </div>
+            <div id="bo-preview-content" style="display:none;">
+                <div style="overflow-x:auto;border:1px solid #e5e7eb;border-radius:4px;">
+                    <table id="bo-preview-table" style="width:100%;border-collapse:collapse;font-size:12px;">
+                        <thead style="background:#f9fafb;position:sticky;top:0;">
+                            <tr id="bo-preview-thead-row"></tr>
+                        </thead>
+                        <tbody id="bo-preview-tbody"></tbody>
+                    </table>
+                </div>
+            </div>
+            <div id="bo-preview-error" style="display:none;color:#dc2626;background:#fee2e2;padding:12px;border-radius:4px;"></div>
+        </div>
+        <div class="bo-modal-footer">
+            <button type="button" class="bo-btn" data-close-preview>닫기</button>
+        </div>
+    </div>
+</div>
+
+<script>
+(function() {
+    'use strict';
+
+    const tbody = document.getElementById('bo-backup-tbody');
+    const previewModal = document.getElementById('bo-preview-modal');
+    const previewTarget = document.getElementById('bo-preview-target');
+    const previewTotal = document.getElementById('bo-preview-total');
+    const previewShown = document.getElementById('bo-preview-shown');
+    const previewLoading = document.getElementById('bo-preview-loading');
+    const previewContent = document.getElementById('bo-preview-content');
+    const previewError = document.getElementById('bo-preview-error');
+    const previewTheadRow = document.getElementById('bo-preview-thead-row');
+    const previewTbody = document.getElementById('bo-preview-tbody');
+
+    // ─── 모달 닫기 ───
+    document.querySelectorAll('[data-close-preview]').forEach(btn => {
+        btn.addEventListener('click', () => {
+            previewModal.classList.remove('is-open');
+        });
+    });
+
+    // ─── 행의 행동 위임 ───
+    tbody.addEventListener('click', async e => {
+        const tr = e.target.closest('tr[data-target]');
+        if (!tr) return;
+        const target = tr.dataset.target;
+        const filename = tr.dataset.filename;
+
+        // 조회 (미리보기)
+        if (e.target.closest('[data-preview]')) {
+            await openPreview(target, filename);
+            return;
+        }
+
+        // 다운로드
+        if (e.target.closest('[data-download]')) {
+            const url = `/backoffice/api/backups/${target}/${filename}/download/`;
+            window.location.href = url;
+            return;
+        }
+
+        // 삭제
+        if (e.target.closest('[data-delete]')) {
+            if (!confirm(`"${filename}" 백업 파일을 삭제하시겠습니까?`)) return;
+            const { ok, data } = await BO.fetchJSON(
+                `/backoffice/api/backups/${target}/${filename}/delete/`,
+                { method:'POST', body:JSON.stringify({}) },
+            );
+            if (!ok) {
+                BO.toast((data.errors && data.errors._form) ? data.errors._form.join('\n') : '삭제 실패', 'error');
+                return;
+            }
+            BO.toast('백업 파일이 삭제되었습니다.', 'success');
+            tr.remove();
+            // 빈 상태 처리
+            if (!tbody.querySelector('tr[data-target]')) {
+                setTimeout(() => location.reload(), 600);
+            }
+        }
+    });
+
+    // ─── 미리보기 열기 ───
+    async function openPreview(target, filename) {
+        previewTarget.textContent = `${target} / ${filename}`;
+        previewLoading.style.display = 'block';
+        previewContent.style.display = 'none';
+        previewError.style.display = 'none';
+        previewModal.classList.add('is-open');
+
+        try {
+            const { ok, data } = await BO.fetchJSON(
+                `/backoffice/api/backups/${target}/${filename}/preview/?limit=100`,
+                { method:'GET' },
+            );
+
+            previewLoading.style.display = 'none';
+
+            if (!ok) {
+                previewError.textContent = (data.errors && data.errors._form) ? data.errors._form.join('\n') : '미리보기 실패';
+                previewError.style.display = 'block';
+                return;
+            }
+
+            const preview = data.preview;
+            previewTotal.textContent = (preview.total_in_file || 0).toLocaleString();
+            previewShown.textContent = (preview.count_preview || 0).toLocaleString();
+
+            // 테이블 헤더 — 첫 레코드의 키 추출
+            const records = preview.records || [];
+            if (records.length === 0) {
+                previewError.textContent = '데이터가 없습니다.';
+                previewError.style.display = 'block';
+                return;
+            }
+
+            const keys = Object.keys(records[0]);
+            previewTheadRow.innerHTML = keys.map(k => 
+                `<th style="padding:6px 10px;border-bottom:1px solid #e5e7eb;text-align:left;font-weight:600;">${escapeHtml(k)}</th>`
+            ).join('');
+
+            // 본문
+            previewTbody.innerHTML = records.map(rec => {
+                const cells = keys.map(k => {
+                    let v = rec[k];
+                    if (v === null) v = '-';
+                    else if (typeof v === 'object') v = JSON.stringify(v);
+                    else v = String(v);
+                    if (v.length > 80) v = v.substring(0, 80) + '...';
+                    return `<td style="padding:4px 10px;border-bottom:1px solid #f3f4f6;font-family:ui-monospace,monospace;">${escapeHtml(v)}</td>`;
+                }).join('');
+                return `<tr>${cells}</tr>`;
+            }).join('');
+
+            previewContent.style.display = 'block';
+
+        } catch (err) {
+            previewLoading.style.display = 'none';
+            previewError.textContent = '네트워크 오류: ' + err.message;
+            previewError.style.display = 'block';
+        }
+    }
+
+    function escapeHtml(s) {
+        const div = document.createElement('div');
+        div.textContent = String(s);
+        return div.innerHTML;
+    }
+})();
+</script>
+{% endblock %}

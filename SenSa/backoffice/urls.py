@@ -181,4 +181,17 @@ urlpatterns = [
     path('api/maps/images/<int:pk>/update/',   views.map_image_update_api,        name='api-map-image-update'),
     path('api/maps/images/<int:pk>/delete/',   views.map_image_delete_api,        name='api-map-image-delete'),
     path('api/maps/images/<int:pk>/toggle/',   views.map_image_toggle_active_api, name='api-map-image-toggle'),
+
+    # ═══════════════════════════════════════════════════════
+    # v7 — 운영 데이터 백업 + 초기화 + 조회
+    # ═══════════════════════════════════════════════════════
+    # 정책 단위 액션 (운영 데이터 보관 정책 페이지)
+    path('api/retention/<int:pk>/backup/',     views.retention_backup_api,            name='api-retention-backup'),
+    path('api/retention/<int:pk>/init/',       views.retention_init_with_backup_api,  name='api-retention-init'),
+
+    # 백업 파일 관리 (백업 조회 페이지)
+    path('operations/backups/',                                  views.backup_list,           name='backup-list'),
+    path('api/backups/<str:target>/<str:filename>/preview/',     views.backup_preview_api,    name='api-backup-preview'),
+    path('api/backups/<str:target>/<str:filename>/download/',    views.backup_download_api,   name='api-backup-download'),
+    path('api/backups/<str:target>/<str:filename>/delete/',      views.backup_delete_api,     name='api-backup-delete'),
 ]

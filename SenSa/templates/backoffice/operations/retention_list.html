@@ -4,8 +4,13 @@
 
 {% block content %}
 <div class="bo-breadcrumb"><span>운영 데이터 관리</span></div>
-<h1 class="bo-page-title">운영 데이터 보관 정책</h1>
-<p class="bo-page-desc">시스템 누적 데이터의 보관 기간을 관리합니다. 정책 변경은 다음 정리 작업 사이클부터 반영됩니다.</p>
+<div class="bo-flex-between" style="margin-bottom:8px;">
+    <div>
+        <h1 class="bo-page-title">운영 데이터 보관 정책</h1>
+        <p class="bo-page-desc">시스템 누적 데이터의 보관 기간을 관리합니다. 정책 변경은 다음 정리 작업 사이클부터 반영됩니다.</p>
+    </div>
+    <a href="{% url 'backoffice:backup-list' %}" class="bo-btn bo-btn-primary">📦 백업 파일 조회</a>
+</div>
 
 <div class="bo-card" style="background:#fffbeb;border-color:#fde68a;color:#92400e;font-size:13px;">
     💡 보관 기간을 짧게 잡으면 디스크 사용량이 줄지만, 장기 분석/감사 추적에 영향이 있을 수 있습니다.
@@ -60,11 +65,13 @@
                         <span class="bo-text-subtle">미실행</span>
                     {% endif %}
                 </td>
-                <td>
+                <td style="white-space:nowrap;">
                     <button type="button" class="bo-btn bo-btn-sm bo-btn-primary" data-edit="{{ r.id }}">수정</button>
                     {% if r.is_active %}
                     <button type="button" class="bo-btn bo-btn-sm bo-btn-warning" data-run="{{ r.id }}" data-target-name="{{ r.get_target_display }}">지금 실행</button>
                     {% endif %}
+                    <button type="button" class="bo-btn bo-btn-sm" data-backup="{{ r.id }}" data-target-name="{{ r.get_target_display }}" style="background:#10b981;color:#fff;border-color:#10b981;">백업</button>
+                    <button type="button" class="bo-btn bo-btn-sm bo-btn-danger" data-init="{{ r.id }}" data-target-name="{{ r.get_target_display }}">초기화</button>
                 </td>
             </tr>
             {% endfor %}
@@ -109,6 +116,65 @@
 {% endblock %}
 
 {% block extra_js %}
+{# ═══════════════════════════════════════════════════════════ #}
+{# 백업 확인 모달 #}
+{# ═══════════════════════════════════════════════════════════ #}
+<div class="bo-modal-backdrop" id="bo-backup-modal">
+    <div class="bo-modal">
+        <div class="bo-modal-header">
+            <h2 class="bo-modal-title">데이터 백업</h2>
+            <p class="bo-modal-desc" id="bo-backup-target">-</p>
+        </div>
+        <div class="bo-modal-body">
+            <p style="color:var(--bo-text-muted);font-size:13px;line-height:1.6;">
+                선택한 정책의 <strong>전체 데이터를 .json.gz 형식으로 압축</strong>하여 서버에 저장합니다.<br>
+                저장된 백업은 <strong>백업 파일 조회</strong> 페이지에서 확인하거나 다운로드할 수 있습니다.
+            </p>
+            <div style="background:#f3f4f6;padding:12px;border-radius:4px;margin-top:12px;font-size:12px;">
+                <div>📦 정책당 최근 <strong>10개</strong> 만 보관됩니다.</div>
+                <div>🗓️ 파일명 형식: <code>{target}_YYYYMMDD_HHMMSS.json.gz</code></div>
+            </div>
+            <div id="bo-backup-progress" style="display:none;margin-top:16px;color:#2563eb;">
+                ⏳ 백업 중입니다... 데이터가 많으면 시간이 걸릴 수 있습니다.
+            </div>
+        </div>
+        <div class="bo-modal-footer">
+            <button type="button" class="bo-btn" data-close-backup>취소</button>
+            <button type="button" class="bo-btn bo-btn-primary" id="bo-backup-confirm">백업 시작</button>
+        </div>
+    </div>
+</div>
+
+{# ═══════════════════════════════════════════════════════════ #}
+{# 초기화 (백업 + 삭제) 모달 #}
+{# ═══════════════════════════════════════════════════════════ #}
+<div class="bo-modal-backdrop" id="bo-init-modal">
+    <div class="bo-modal">
+        <div class="bo-modal-header">
+            <h2 class="bo-modal-title" style="color:#dc2626;">⚠️ 데이터 초기화</h2>
+            <p class="bo-modal-desc" id="bo-init-target">-</p>
+        </div>
+        <div class="bo-modal-body">
+            <div style="background:#fee2e2;border:1px solid #fca5a5;padding:12px;border-radius:4px;color:#7f1d1d;font-size:13px;line-height:1.6;">
+                <strong>⚠️ 위험한 작업입니다.</strong><br>
+                선택한 정책의 <strong>모든 데이터가 삭제</strong>됩니다.<br>
+                삭제 직전 자동으로 백업이 생성되며, 필요 시 백업 파일에서 복원 가능합니다.
+            </div>
+            <div style="margin-top:16px;font-size:13px;">
+                <p>아래 입력란에 <strong style="color:#dc2626;">DELETE</strong> 를 정확히 입력하세요.</p>
+                <input type="text" id="bo-init-confirm-text" placeholder="DELETE" style="width:100%;margin-top:8px;padding:8px 12px;border:2px solid #dc2626;border-radius:4px;font-size:14px;">
+            </div>
+            <div id="bo-init-progress" style="display:none;margin-top:16px;color:#dc2626;">
+                ⏳ 백업 중입니다... 백업이 완료되면 데이터가 삭제됩니다.
+            </div>
+        </div>
+        <div class="bo-modal-footer">
+            <button type="button" class="bo-btn" data-close-init>취소</button>
+            <button type="button" class="bo-btn bo-btn-danger" id="bo-init-confirm" disabled>백업 후 삭제</button>
+        </div>
+    </div>
+</div>
+
 <script>
 (function() {
     'use strict';
@@ -181,6 +247,135 @@
         BO.toast('수정되었습니다.', 'success');
         close();
         setTimeout(() => location.reload(), 400);
+    });
+    // ════════════════════════════════════════════════════════
+    // [백업] 버튼 핸들러
+    // ════════════════════════════════════════════════════════
+    const backupModal = document.getElementById('bo-backup-modal');
+    const backupTarget = document.getElementById('bo-backup-target');
+    const backupConfirm = document.getElementById('bo-backup-confirm');
+    const backupProgress = document.getElementById('bo-backup-progress');
+    let currentBackupId = null;
+
+    function openBackupModal(id, targetName) {
+        currentBackupId = id;
+        backupTarget.textContent = '대상: ' + targetName;
+        backupProgress.style.display = 'none';
+        backupConfirm.disabled = false;
+        backupConfirm.textContent = '백업 시작';
+        backupModal.classList.add('is-open');
+        document.body.style.overflow = 'hidden';
+    }
+    function closeBackupModal() {
+        backupModal.classList.remove('is-open');
+        document.body.style.overflow = '';
+        currentBackupId = null;
+    }
+
+    document.querySelectorAll('[data-close-backup]').forEach(btn => {
+        btn.addEventListener('click', closeBackupModal);
+    });
+
+    backupConfirm.addEventListener('click', async () => {
+        if (!currentBackupId) return;
+        backupProgress.style.display = 'block';
+        backupConfirm.disabled = true;
+        backupConfirm.textContent = '백업 중...';
+
+        const { ok, data } = await BO.fetchJSON(
+            `/backoffice/api/retention/${currentBackupId}/backup/`,
+            { method:'POST', body:JSON.stringify({}) },
+        );
+        if (!ok) {
+            const msg = (data.errors && data.errors._form) ? data.errors._form.join('\n') : (data.error || '백업 실패');
+            BO.toast(msg, 'error');
+            backupProgress.style.display = 'none';
+            backupConfirm.disabled = false;
+            backupConfirm.textContent = '백업 시작';
+            return;
+        }
+        BO.toast(`${data.message} (${data.size_human})`, 'success');
+        closeBackupModal();
+    });
+
+    // 행의 [백업] 버튼 클릭
+    tbody.addEventListener('click', e => {
+        const btn = e.target.closest('[data-backup]');
+        if (btn) {
+            openBackupModal(btn.dataset.backup, btn.dataset.targetName);
+        }
+    });
+
+    // ════════════════════════════════════════════════════════
+    // [초기화] 버튼 핸들러 (백업 + 삭제)
+    // ════════════════════════════════════════════════════════
+    const initModal = document.getElementById('bo-init-modal');
+    const initTarget = document.getElementById('bo-init-target');
+    const initConfirm = document.getElementById('bo-init-confirm');
+    const initConfirmText = document.getElementById('bo-init-confirm-text');
+    const initProgress = document.getElementById('bo-init-progress');
+    let currentInitId = null;
+
+    function openInitModal(id, targetName) {
+        currentInitId = id;
+        initTarget.textContent = '대상: ' + targetName;
+        initConfirmText.value = '';
+        initConfirm.disabled = true;
+        initConfirm.textContent = '백업 후 삭제';
+        initProgress.style.display = 'none';
+        initModal.classList.add('is-open');
+        document.body.style.overflow = 'hidden';
+        setTimeout(() => initConfirmText.focus(), 100);
+    }
+    function closeInitModal() {
+        initModal.classList.remove('is-open');
+        document.body.style.overflow = '';
+        currentInitId = null;
+    }
+
+    document.querySelectorAll('[data-close-init]').forEach(btn => {
+        btn.addEventListener('click', closeInitModal);
+    });
+
+    // DELETE 입력 시 버튼 활성화
+    initConfirmText.addEventListener('input', () => {
+        initConfirm.disabled = initConfirmText.value.trim().toUpperCase() !== 'DELETE';
+    });
+
+    initConfirm.addEventListener('click', async () => {
+        if (!currentInitId) return;
+        const confirmText = initConfirmText.value.trim().toUpperCase();
+        if (confirmText !== 'DELETE') {
+            BO.toast('확인 텍스트가 일치하지 않습니다.', 'error');
+            return;
+        }
+        initProgress.style.display = 'block';
+        initConfirm.disabled = true;
+        initConfirm.textContent = '백업 중...';
+
+        const { ok, data } = await BO.fetchJSON(
+            `/backoffice/api/retention/${currentInitId}/init/`,
+            { method:'POST', body:JSON.stringify({ confirm: 'DELETE' }) },
+        );
+        if (!ok) {
+            const msg = (data.errors && data.errors._form) ? data.errors._form.join('\n') : (data.error || '초기화 실패');
+            BO.toast(msg, 'error');
+            initProgress.style.display = 'none';
+            initConfirm.disabled = false;
+            initConfirm.textContent = '백업 후 삭제';
+            return;
+        }
+        BO.toast(`백업: ${data.backup.count.toLocaleString()}건 (${data.backup.size_human}), 삭제: ${data.deleted_count.toLocaleString()}건`, 'success');
+        closeInitModal();
+        setTimeout(() => location.reload(), 1500);
+    });
+
+    // 행의 [초기화] 버튼 클릭
+    tbody.addEventListener('click', e => {
+        const btn = e.target.closest('[data-init]');
+        if (btn) {
+            openInitModal(btn.dataset.init, btn.dataset.targetName);
+        }
     });
 })();
 </script>
