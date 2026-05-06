@@ -24,6 +24,7 @@ document.querySelectorAll('.tab-btn').forEach(function (btn) {
 // ─── Leaflet 초기화 ───
 var map = null, imageOverlay = null;
 var geofenceLayerGroup = null, sensorLayerGroup = null, workerLayerGroup = null;
+var mapH = 0;
 
 function initMap(W, H) {
   window.updateMapBounds(W, H);
@@ -68,7 +69,7 @@ function makeSensorIcon(device, status) {
 // [P2+] 단일 센서 마커 생성 — initSensorMarkers 와 sensorListChanged 핸들러 양쪽에서 재사용
 function addSensorMarker(d) {
   if (sensorMarkerCache[d.device_id]) return;   // 이미 있음 — 중복 방지
-  var m = L.marker([d.location.y, d.location.x], { icon: makeSensorIcon(d, 'normal') });
+  var m = L.marker([mapH - d.location.y, d.location.x], { icon: makeSensorIcon(d, 'normal') });
   m.device = d; m.currentData = null;
   m.on('click', function () {
     if (!m.currentData) return;
@@ -93,7 +94,7 @@ function removeSensorMarker(deviceId) {
 function moveSensorMarker(d) {
   var m = sensorMarkerCache[d.device_id];
   if (!m) return;
-  m.setLatLng([d.location.y, d.location.x]);
+  m.setLatLng([mapH - d.location.y, d.location.x]);
   m.device = d;   // 메타 갱신 (device_name 등 변경 대비)
 }
 
@@ -134,7 +135,7 @@ function initWorkerMarkers() {
   workerMarkerCache = {};
 
   WORKERS.forEach(function (w) {
-    var m = L.marker([w.y, w.x], { icon: WORKER_ICON })
+    var m = L.marker([mapH - w.y, w.x], { icon: WORKER_ICON })
       .bindTooltip(w.name + (w.department ? ' (' + w.department + ')' : ''), { permanent: false, direction: 'top' });
     workerLayerGroup.addLayer(m);
     workerMarkerCache[w.worker_id] = m;
@@ -161,10 +162,10 @@ SenSa.on('workerMove', function (d) {
   d.workers.forEach(function (w) {
     var m = workerMarkerCache[w.worker_id];
     if (m) {
-      m.setLatLng([w.y, w.x]);
+      m.setLatLng([mapH - w.y, w.x]);
     } else {
       // 아직 마커가 없는 신규 작업자 → 마커 추가
-      var newM = L.marker([w.y, w.x], { icon: WORKER_ICON })
+      var newM = L.marker([mapH - w.y, w.x], { icon: WORKER_ICON })
         .bindTooltip(w.name, { permanent: false, direction: 'top' });
       workerLayerGroup.addLayer(newM);
       workerMarkerCache[w.worker_id] = newM;
@@ -184,6 +185,7 @@ SenSa.on('alarm', function (alarm) {
 
 // ─── 이미지 업로드 ───
 function displayMap(url, W, H, name) {
+  mapH = H;
   initMap(W, H);
   if (imageOverlay) imageOverlay.remove();
   /* 이미지 로드 가능한지 먼저 확인 */
@@ -264,7 +266,7 @@ function finishPolygon() {
   if (drawPoints.length < 3) return;
   if (pendingPolygon) pendingPolygon.remove();
   pendingPolygon = L.polygon(drawPoints, { color: '#e67e22', fillColor: '#e67e22', fillOpacity: 0.25, weight: 2 }).addTo(map);
-  pendingCoords = drawPoints.map(function (p) { return [Math.round(p.lng), Math.round(p.lat)]; });
+  pendingCoords = drawPoints.map(function (p) { return [Math.round(p.lng), mapH - Math.round(p.lat)]; });
   drawMarkers.forEach(function (m) { m.remove(); }); drawMarkers = [];
   if (drawPolyline) { drawPolyline.remove(); drawPolyline = null; } drawPoints = [];
   isDrawing = false;
@@ -300,7 +302,7 @@ async function loadGeoFences() {
 }
 
 function renderGeoFence(fence) {
-  var latlngs = fence.polygon.map(function (p) { return [p[1], p[0]]; }), color = ZONE_COLORS[fence.zone_type] || '#aaa';
+  var latlngs = fence.polygon.map(function (p) { return [mapH - p[1], p[0]]; }), color = ZONE_COLORS[fence.zone_type] || '#aaa';
   var poly = L.polygon(latlngs, { color: color, fillColor: color, fillOpacity: 0.2, weight: 2 });
   poly.bindPopup('<div class="popup-title">' + fence.name + '</div><div class="popup-row"><span class="label">유형</span><span class="value">' + fence.zone_type + '</span></div><div class="popup-row"><span class="label">위험도</span><span class="value">' + fence.risk_level + '</span></div>');
   poly.fenceId = fence.id; geofenceLayerGroup.addLayer(poly);
