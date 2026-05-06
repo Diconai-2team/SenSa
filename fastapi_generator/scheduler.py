@@ -194,9 +194,9 @@ async def _tick_once(
     # 5. 알람 판정 트리거
     # ═══════════════════════════════════════════════════════
     #
-    # 작업자 0명이면 스킵 — evaluate_worker 호출할 대상 없음.
-    # sensor_summary 가 비어도 POST 는 보냄 (작업자-지오펜스 진입 알람은 생성됨).
-    if worker_summary:
+    # sensor_summary 가 있으면 작업자 유무와 무관하게 항상 POST.
+    # 작업자 없어도 센서 이상 알람은 발생해야 한다.
+    if worker_summary or sensor_summary:
         await post_check_geofence(client, worker_summary, sensor_summary)
 
 

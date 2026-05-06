@@ -57,7 +57,7 @@ def commit_state(worker_id: str, state: str, mark_alarmed: bool = False) -> None
     공식 상태 확정 + pending 초기화.
     mark_alarmed=True 면 last_alarm_at 도 now 로 갱신.
     """
-    if state not in ("safe", "caution", "danger"):
+    if state not in ("safe", "caution", "danger", "critical"):
         raise ValueError(f"invalid state: {state}")
     
     r = _client()

@@ -1710,6 +1710,8 @@ def map_edit(request):
     우측 패널 (지오펜스 목록·등록·수정).
     """
     active_map = MapImage.objects.filter(is_active=True).first() or MapImage.objects.first()
+    if active_map and not active_map.image:
+        active_map = None
     geofences = list(GeoFence.objects.all().order_by('-created_at'))
     devices_with_geo = list(Device.objects.filter(is_active=True).select_related('geofence'))
     return render(request, 'backoffice/maps/edit.html', {
