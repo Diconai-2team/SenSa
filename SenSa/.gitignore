@@ -1,0 +1,95 @@
+# Python 기본 캐시 및 가상환경 파일 제외
+.venv/
+venv/
+env/
+
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# 환경 변수 파일 (보안 중요)
+.env
+
+# 개발중에만 사용
+
+# 데이터베이스 파일 제외 (SQLite 등)
+db.sqlite3
+*.sqlite3
+
+# Django 마이그레이션 캐시 제외
+**/migrations/*.pyc
+!**/migrations/__init__.py
+
+# 로그 파일 제외
+*.log
+*.out
+*.err
+
+# 미디어 및 정적 파일 (수동 업로드 방지)
+# media/
+# staticfiles/
+# static/
+node_modules/
+
+# VS Code 및 IDE 설정 파일 제외
+.vscode/
+.idea/
+*.sublime-workspace
+
+# Docker 관련 파일 제외 (사용할 경우)
+docker-compose.override.yml
+
+# Mac 시스템 파일
+.DS_Store
+# 백업 폴더 (절대 푸쉬 금지)
+SenSa_backup_*/
+fastapi_generator_backup_*/
+
+# 배포 zip 및 스크립트 (개인 환경용)
+backoffice_v*.zip
+backoffice_all.zip
+apply.sh
+apply.sh.*
+apply.bat
+README_v*.md
+
+# 템플릿 백업
+*.before_fix
+*.broken
+*.original
+
+# git 임시
+FETCH_HEAD
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Django DB (절대 푸쉬 금지)
+*.sqlite3
+*.sqlite3.backup*
+*.db
+
+# 가상환경
+venv/
+.venv/
+
+# 미디어/정적
+media/
+staticfiles/
+
+# 환경변수
+.env
+.env.local
+
+# 작업 중 만들어지는 백업 파일
+*.bak
+*.bak_*
+*.before_*
+*.broken
+_work_backup/
+
+# 운영 데이터 백업 (서버 보관 — git 추적 불필요)
+_backups/
