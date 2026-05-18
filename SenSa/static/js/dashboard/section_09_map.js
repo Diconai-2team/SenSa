@@ -42,7 +42,7 @@ function initMap(W, H) {
   geofenceLayerGroup = L.layerGroup().addTo(map);
   sensorLayerGroup = L.layerGroup().addTo(map);
   workerLayerGroup = L.layerGroup().addTo(map);
-  map.on('mousemove', function (e) { document.getElementById('coord-display').textContent = 'x: ' + Math.round(e.latlng.lng) + ', y: ' + Math.round(e.latlng.lat); });
+  map.on('mousemove', function (e) { document.getElementById('coord-display').textContent = 'x: ' + Math.round(e.latlng.lng) + ', y: ' + Math.round(mapH - e.latlng.lat); });
   map.on('click', function (e) { if (isDrawing) addDrawPoint(e.latlng); });
   loadGeoFences();
   initSensorMarkers();
@@ -60,10 +60,13 @@ function initMap(W, H) {
 var sensorMarkerCache = {};
 
 function makeSensorIcon(device, status) {
-  var color = SENSOR_COLORS[device.sensor_type] || '#aaa', icon = SENSOR_ICONS[device.sensor_type] || '📡';
-  var border = status === 'danger' ? '#e74c3c' : status === 'caution' ? '#f1c40f' : color;
-  var glow = status === 'danger' ? 'box-shadow:0 0 8px ' + border + ';' : '';
-  return L.divIcon({ className: '', html: '<div style="background:' + color + '22;border:2px solid ' + border + ';border-radius:50%;width:30px;height:30px;display:flex;align-items:center;justify-content:center;font-size:14px;' + glow + '">' + icon + '</div>', iconSize: [30, 30], iconAnchor: [15, 15] });
+  var icon = SENSOR_ICONS[device.sensor_type] || '📡';
+  // status 기반 색: normal=녹색, caution=노랑, danger=빨강 (작업자 마커와 시각 일관성)
+  var statusColor = status === 'danger' ? '#e74c3c'
+                  : status === 'caution' ? '#f1c40f'
+                  : '#2ecc71';
+  var glow = status === 'danger' ? 'box-shadow:0 0 8px ' + statusColor + ';' : '';
+  return L.divIcon({ className: '', html: '<div style="background:' + statusColor + '22;border:2px solid ' + statusColor + ';border-radius:50%;width:30px;height:30px;display:flex;align-items:center;justify-content:center;font-size:14px;' + glow + '">' + icon + '</div>', iconSize: [30, 30], iconAnchor: [15, 15] });
 }
 
 // [P2+] 단일 센서 마커 생성 — initSensorMarkers 와 sensorListChanged 핸들러 양쪽에서 재사용
@@ -71,13 +74,21 @@ function addSensorMarker(d) {
   if (sensorMarkerCache[d.device_id]) return;   // 이미 있음 — 중복 방지
   var m = L.marker([mapH - d.location.y, d.location.x], { icon: makeSensorIcon(d, 'normal') });
   m.device = d; m.currentData = null;
-  m.on('click', function () {
+
+  // ★ bindPopup 은 마커 생성 시 1번만 호출 (Leaflet click→토글 핸들러 1번만 등록)
+  //   기존: 매 click 마다 bindPopup 호출 → 토글 핸들러 중복 등록 → 2번째 클릭에서
+  //         사용자 핸들러(open) + 누적된 내장 토글(close) 충돌로 popup 즉시 닫힘
+  m.bindPopup('', { maxWidth: 220 });
+
+  // ★ popupopen 이벤트로 내용을 매번 동적 갱신 (최신 currentData 반영)
+  m.on('popupopen', function () {
     if (!m.currentData) return;
     var data = m.currentData, sc = 'status-' + data.status, rows = '';
     if (data.gas) rows = Object.entries(data.gas).map(function (e) { return '<div class="popup-row"><span class="label">' + e[0].toUpperCase() + '</span><span class="value">' + e[1] + (e[0] === 'o2' ? ' %' : ' ppm') + '</span></div>'; }).join('');
     else if (data.power) rows = '<div class="popup-row"><span class="label">전류</span><span class="value">' + data.power.current + ' A</span></div><div class="popup-row"><span class="label">전압</span><span class="value">' + data.power.voltage + ' V</span></div><div class="popup-row"><span class="label">전력</span><span class="value">' + data.power.watt + ' W</span></div>';
-    m.bindPopup('<div class="popup-title">' + SENSOR_ICONS[d.sensor_type] + ' ' + d.device_name + '</div><div class="popup-row"><span class="label">상태</span><span class="value"><span class="status-badge ' + sc + '">' + data.status + '</span></span></div>' + rows, { maxWidth: 220 }).openPopup();
+    m.setPopupContent('<div class="popup-title">' + SENSOR_ICONS[d.sensor_type] + ' ' + d.device_name + '</div><div class="popup-row"><span class="label">상태</span><span class="value"><span class="status-badge ' + sc + '">' + data.status + '</span></span></div>' + rows);
   });
+
   if (sensorLayerGroup) sensorLayerGroup.addLayer(m);
   sensorMarkerCache[d.device_id] = m;
 }
@@ -182,6 +193,54 @@ SenSa.on('alarm', function (alarm) {
   t.onclick = function () { t.remove(); }; c.appendChild(t);
   setTimeout(function () { if (t.parentNode) t.remove(); }, 5000);
 });
+
+
+// ═══════════════════════════════════════════════════════════
+// [Live 갱신] 동적 zone WebSocket 이벤트 처리
+//   백엔드 publish_zone_event → base.js handleZoneEvent → 이 구독
+//   event_type:
+//     'created'             → polygon 신규 등장
+//     'upgraded_to_*'       → polygon 갱신 (tier 색상 등)
+//     'expired'             → polygon 제거 (정상 회복 또는 TTL 만료)
+// ═══════════════════════════════════════════════════════════
+SenSa.on('zoneEvent', function (msg) {
+  if (!msg || !msg.zone_id) return;
+  var zoneId = msg.zone_id;
+
+  // 1. 기존 polygon + sidebar 항목 제거 (created/upgraded 갱신 시에도 한 번 청소)
+  if (geofenceLayerGroup) {
+    var toRemove = [];
+    geofenceLayerGroup.eachLayer(function (l) {
+      if (l.fenceId === zoneId) toRemove.push(l);
+    });
+    toRemove.forEach(function (l) { geofenceLayerGroup.removeLayer(l); });
+  }
+  var item = document.querySelector('.geofence-item[data-id="' + zoneId + '"]');
+  if (item) item.remove();
+
+  // 2. expired 이벤트면 제거만 하고 종료
+  if (msg.event_type === 'expired') {
+    var list = document.getElementById('geofence-list');
+    if (list && !list.children.length) {
+      list.innerHTML = '<p style="font-size:10px;color:#3a3f55;text-align:center;padding:10px;">지오펜스가 없습니다.</p>';
+    }
+    return;
+  }
+
+  // 3. created / upgraded_to_* → polygon 다시 그림 (renderGeoFence 재사용)
+  if (msg.polygon && msg.polygon.length >= 3) {
+    var fence = {
+      id:         zoneId,
+      name:       msg.zone_name,
+      polygon:    msg.polygon,
+      zone_type:  msg.zone_type,
+      risk_level: msg.risk_level,
+    };
+    renderGeoFence(fence);
+    addToSidebarList(fence);
+  }
+});
+
 
 // ─── 이미지 업로드 ───
 function displayMap(url, W, H, name) {

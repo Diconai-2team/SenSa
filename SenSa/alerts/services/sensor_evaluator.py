@@ -3,16 +3,9 @@ alerts/services/sensor_evaluator.py — 장비 1개의 알람 판정 (메인 진
 
 Public API: evaluate_sensor(device_id, sensor_type, observed_status, detail='')
 사용처: dashboard/views.py 의 sensor data 처리 핸들러.
-
-내부 헬퍼:
-  _is_sensor_escalation              — 악화 여부 (normal < caution < danger)
-  _sensor_transition_to_type_and_level — 전이 → (alarm_type, alarm_level)
-  _build_sensor_message              — 전이별 메시지 (간결형)
-
-worker_evaluator 와 별개의 axis. 둘 다 state_store 만 공유, 함수 호출은 안 함.
 """
 import time
-
+from .anomaly_detector import detect_anomaly
 from ..models import Alarm
 from ..state_store import (
     get_sensor_snapshot, commit_sensor_state,
@@ -23,11 +16,16 @@ from .geofence_utils import _find_sensor_geofence
 
 
 def evaluate_sensor(device_id: str, sensor_type: str,
-                     observed_status: str, detail: str = '') -> list[dict]:
+                     observed_status: str, detail: str = '',
+                     raw_value: float | None = None,
+                     is_ai: bool = False,
+                     ai_detail: str = '') -> list[dict]:
     """
     센서 1개의 상태 전이 판정 + 필요 시 알람 생성.
 
-    [Gas 병합] 알람 생성 시 _find_sensor_geofence 로 소속 geofence 자동 연결.
+    Args:
+        is_ai     : ARIMA 탐지로 격상된 경우 True
+        ai_detail : 이상 탐지된 센서 종류 문자열 (예: "CO, H2S")
     """
     if observed_status not in ("normal", "caution", "danger"):
         return []
@@ -78,10 +76,10 @@ def evaluate_sensor(device_id: str, sensor_type: str,
             official_state, target_state
         )
         message = _build_sensor_message(
-            device_id, sensor_type, official_state, target_state, detail
+            device_id, sensor_type, official_state, target_state,
+            detail, is_ai, ai_detail
         )
 
-        # 센서 소속 geofence — normal 복귀 외에는 연결
         fence = _find_sensor_geofence(device_id) if target_state != 'normal' else None
 
         alarm = Alarm.objects.create(
@@ -91,20 +89,22 @@ def evaluate_sensor(device_id: str, sensor_type: str,
             sensor_type=sensor_type,
             geofence=fence,
             message=message,
+            is_ai=is_ai,
         )
 
         created.append({
-            'alarm_id': alarm.id,
-            'alarm_type': alarm_type,
-            'alarm_level': alarm_level,
-            'device_id': device_id,
-            'sensor_type': sensor_type,
+            'alarm_id':      alarm.id,
+            'alarm_type':    alarm_type,
+            'alarm_level':   alarm_level,
+            'device_id':     device_id,
+            'sensor_type':   sensor_type,
             'geofence_id':   fence.id if fence else None,
             'geofence_name': fence.name if fence else '',
-            'message': message,
-            'reason': reason,
-            'state_from': official_state,
-            'state_to': target_state,
+            'message':       message,
+            'reason':        reason,
+            'state_from':    official_state,
+            'state_to':      target_state,
+            'is_ai':         is_ai,
         })
 
         if confirmed_new_state is not None:
@@ -116,13 +116,11 @@ def evaluate_sensor(device_id: str, sensor_type: str,
 
 
 def _is_sensor_escalation(prev: str, curr: str) -> bool:
-    """센서 상태 악화 여부. normal < caution < danger"""
     ladder = {'normal': 0, 'caution': 1, 'danger': 2}
     return ladder.get(curr, 0) > ladder.get(prev, 0)
 
 
 def _sensor_transition_to_type_and_level(prev: str, curr: str) -> tuple[str, str]:
-    """센서 전이 → (alarm_type, alarm_level)."""
     if prev == 'normal' and curr == 'caution':
         return 'sensor_caution', 'caution'
     if prev == 'normal' and curr == 'danger':
@@ -133,7 +131,6 @@ def _sensor_transition_to_type_and_level(prev: str, curr: str) -> tuple[str, str
         return 'sensor_recover_partial', 'info'
     if prev in ('danger', 'caution') and curr == 'normal':
         return 'sensor_recover_normal', 'info'
-    # 지속
     if curr == 'danger':
         return 'sensor_danger', 'danger'
     if curr == 'caution':
@@ -142,12 +139,31 @@ def _sensor_transition_to_type_and_level(prev: str, curr: str) -> tuple[str, str
 
 
 def _build_sensor_message(device_id: str, sensor_type: str,
-                          prev: str, curr: str, detail: str) -> str:
-    """센서 전이별 메시지 (간결형)."""
+                          prev: str, curr: str, detail: str,
+                          is_ai: bool = False,
+                          ai_detail: str = '') -> str:
+    """
+    센서 전이별 메시지.
+
+    is_ai=True 시:
+      "AI예측 - sensor_01 CO, H2S 이상!"
+      "AI예측 - power_01 전력 이상!"
+    is_ai=False 시: 기존 메시지 유지.
+    """
     label_map = {'gas': '가스센서', 'power': '전력센서'}
     label = label_map.get(sensor_type, '센서')
     detail_str = f" [{detail}]" if detail else ''
 
+    # ─── ARIMA AI 탐지 메시지 ───
+    if is_ai and ai_detail:
+        if curr == 'caution':
+            return f"AI예측 - {device_id} {ai_detail} 이상!"
+        if curr == 'danger':
+            return f"AI예측 - {device_id} {ai_detail} 위험 수준 이상!"
+        if curr == 'normal':
+            return f"AI예측 - {device_id} {ai_detail} 정상 복귀"
+
+    # ─── 기존 고정 임계치 메시지 ───
     if prev == 'normal' and curr == 'caution':
         return f"{label} {device_id} 주의 수준 감지{detail_str}"
     if prev == 'normal' and curr == 'danger':

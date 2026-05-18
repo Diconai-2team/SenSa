@@ -114,6 +114,55 @@
       return;
     }
     selectDevice(keepIdx);
+    preloadDeviceValues(devices);
+  }
+
+  // ═════════════════════════════════════════════════════════
+  // [preload_sensor_data] 디바이스 목록 받자마자 각 sensor 최근 1건 시드
+  //
+  //   배경:
+  //     applyDeviceList 직후 selectDevice(0) → lastValueByDevice 가 비어
+  //     renderEmpty() 가 "—" 표시. WebSocket 첫 gasData 도착까지 빈 패널.
+  //     (4차 세션 핸드오프 8.2 — 페이지 첫 로드 시 빈 패널 방지)
+  //
+  //   동작:
+  //     - 각 디바이스에 대해 /dashboard/api/sensor-data/?device_id=X&limit=1
+  //     - 응답 row 를 gas 객체로 변환해 lastValueByDevice 시드
+  //     - 차트 buf 에도 단일 포인트로 시드 (페이지 전환 즉시 점 1개라도 보임)
+  //     - 현재 보고 있는 sensor 면 즉시 renderTable + refreshChartFromBuf
+  //
+  //   가드:
+  //     - 이미 캐시 있으면 skip → sensorListChanged 5초 폴링 중복 fetch 방지
+  //     - fail 은 silent (서버 다운 시 콘솔만 더럽히지 않게)
+  // ═════════════════════════════════════════════════════════
+  function preloadDeviceValues(deviceList) {
+    deviceList.forEach(function (dev) {
+      if (lastValueByDevice[dev.device_id]) return;
+      var url = '/dashboard/api/sensor-data/?device_id=' +
+                encodeURIComponent(dev.device_id) + '&limit=1';
+      fetch(url)
+        .then(function (r) { return r.json(); })
+        .then(function (resp) {
+          var arr = resp && resp.data;
+          if (!arr || !arr.length) return;
+          var row = arr[0];
+
+          // 9종 가스 값만 추출 → gasData 이벤트와 동일 shape
+          var gas = {};
+          GAS_KEYS.forEach(function (k) {
+            if (row[k] !== undefined && row[k] !== null) gas[k] = row[k];
+          });
+
+          lastValueByDevice[dev.device_id] = gas;
+          pushBuf(dev.device_id, gas);
+
+          if (dev.device_id === currentDeviceId) {
+            renderTable(gas);
+            refreshChartFromBuf();
+          }
+        })
+        .catch(function () { /* silent */ });
+    });
   }
 
   // ─── 가스 센서 목록 로드 (페이지 첫 진입 시 1회) ───

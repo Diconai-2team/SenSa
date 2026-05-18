@@ -182,7 +182,7 @@ loadWorkersFromAPI();
 // ═══════════════════════════════════════════════════════════
 // 색상/아이콘 상수
 // ═══════════════════════════════════════════════════════════
-window.ZONE_COLORS   = { danger: '#e74c3c', caution: '#f1c40f', restricted: '#9b59b6' };
+window.ZONE_COLORS   = { normal: '#2ecc71', caution: '#f1c40f', danger: '#e74c3c', restricted: '#9b59b6' };
 window.SENSOR_COLORS = { gas: '#e74c3c', power: '#f39c12', temperature: '#3498db', motion: '#2ecc71' };
 window.SENSOR_ICONS  = { gas: '💨', power: '⚡', temperature: '🌡️', motion: '🔊' };
 
@@ -325,6 +325,11 @@ function connectWebSocket() {
         handleSensorUpdate(msg.payload);
         break;
 
+      case 'zone.event':
+        // [Live 갱신] 동적 zone 라이프사이클 — 새로고침 없이 평면도 polygon 갱신
+        handleZoneEvent(msg.payload);
+        break;
+
       case 'connection.established':
         console.log('[WS] auth ok, groups:', msg.payload || msg.groups);
         break;
@@ -441,6 +446,26 @@ function handleSensorUpdate(payload) {
 
   SenSa.emit('sensorUpdate', { device: device, data: data });
 }
+
+
+/**
+ * zone.event payload → sensa:zoneEvent
+ *
+ * payload 구조 (geofence/events.py _emit):
+ *   {
+ *     event_id, event_type ('created' | 'upgraded_to_*' | 'expired'),
+ *     zone_id, zone_name, polygon (Array of [x,y]),
+ *     zone_type, risk_level, tier, is_dynamic,
+ *     from_tier, to_tier, trigger_source, detail, created_at
+ *   }
+ *
+ * 평면도 (section_09_map.js) 가 구독하여 polygon 즉시 갱신
+ * (새로고침 없이 시나리오/AI 이상 시 zone 실시간 등장/사라짐).
+ */
+function handleZoneEvent(payload) {
+  SenSa.emit('zoneEvent', payload);
+}
+
 
 // 페이지 로드 직후 연결
 connectWebSocket();

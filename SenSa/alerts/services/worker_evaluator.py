@@ -7,18 +7,27 @@ Public API: evaluate_worker(worker_id, worker_name, x, y, ...)
 내부 헬퍼 (이 모듈 안에서만 사용):
   _classify_state              — 좌표·센서 → 상태 ('safe'/'caution'/'danger'/'critical')
   _pick_primary_geofence       — 알람 메시지용 대표 지오펜스 선택
-  _build_message               — 전이별 메시지 조립 (B3 인자: influencing_sensors)
+  _dynamic_zone_prefix         — [Phase I-3] 동적 zone 의 tier/trigger 라벨
+  _build_message_core          — [Phase I-3] 기존 메시지 빌더 (core 로 분리)
+  _build_message               — [Phase I-3] core + prefix wrapping
   _transition_to_type_and_level — 전이 → (alarm_type, alarm_level) 매핑
   _is_escalation               — 악화 여부 (safe < caution < danger < critical)
 
 상태 정의:
   'safe' < 'caution' < 'danger' < 'critical'
-  critical = restricted(출입금지) 구역 안 (Gas 병합)
+  critical = restricted(출입금지) 구역 안 OR 동적 critical tier zone 안 [Phase I-3]
 
 Hysteresis 정책:
   - 악화 (escalation): 즉시 전이
   - 회복 (recovery)  : RECOVERY_CONFIRM_TICKS 회 연속 관측 후 전이
+
+[Phase I-3 변경 요약]
+  - _classify_state: 동적 critical tier zone 도 critical 상태 트리거
+  - _build_message: 동적 zone 의 tier/trigger 정보를 메시지에 prefix 로 반영
+    예: "[잠정][사전경고] worker_01 주의구역 진입"
+        "[긴급][실측] worker_02 출입금지구역 진입"
 """
+import logging
 import time
 
 from ..models import Alarm
@@ -27,6 +36,8 @@ from ..state_store import (
 )
 from ._common import RE_ALARM_INTERVAL_SEC, RECOVERY_CONFIRM_TICKS
 from .geofence_utils import _find_containing_geofences
+
+logger = logging.getLogger(__name__)
 
 
 # ═══════════════════════════════════════════════════════════
@@ -38,11 +49,17 @@ def _classify_state(geofences: list, worst_sensor_status: str) -> str:
     현재 상태 판정.
     반환: 'safe' | 'caution' | 'danger' | 'critical'
 
-    critical 승격 조건: 작업자가 restricted(출입금지) 구역 안에 있을 때.
+    critical 승격 조건 (둘 중 하나):
+      1) 작업자가 restricted(출입금지) 구역 안에 있을 때 (기존)
+      2) [Phase I-3] 동적 critical tier zone 안에 있을 때
     """
     zone_types = {g.zone_type for g in geofences}
 
     if 'restricted' in zone_types:
+        return 'critical'
+
+    # [Phase I-3] 동적 critical tier zone 도 critical 상태로 분류
+    if any(g.is_dynamic and g.tier == 'critical' for g in geofences):
         return 'critical'
 
     if 'danger' in zone_types or worst_sensor_status == 'danger':
@@ -67,19 +84,60 @@ def _pick_primary_geofence(geofences: list, target_state: str):
     return geofences[0] if geofences else None
 
 
+def _dynamic_zone_prefix(geofence) -> str:
+    """[Phase I-3] 동적 zone 의 tier/trigger 라벨 prefix.
+
+    예시:
+      tier=critical, trigger=ttm_anomaly  → "[긴급][실측] "
+      tier=tentative, trigger=ttm_forecast → "[잠정][사전경고] "
+      tier=confirmed, trigger=manual       → "[확인] "
+      정적 zone                            → ""
+    """
+    if not geofence or not getattr(geofence, 'is_dynamic', False):
+        return ''
+
+    tier_label = {
+        'tentative': '[잠정]',
+        'confirmed': '[확인]',
+        'critical':  '[긴급]',
+    }.get(geofence.tier, '')
+
+    trigger_label = {
+        'ttm_anomaly':  '실측',
+        'ttm_forecast': '사전경고',
+        'threshold':    '임계초과',
+    }.get(geofence.trigger_source, '')
+
+    if tier_label and trigger_label:
+        return f"{tier_label}[{trigger_label}] "
+    if tier_label:
+        return f"{tier_label} "
+    return ''
+
+
 def _build_message(worker_name: str, prev: str, curr: str,
                     geofence, sensor_status: str,
                     influencing_sensors: list | None = None) -> str:
     """
-    전이별 메시지 조립.
+    [Phase I-3] wrapper — 기존 메시지 빌더 + 동적 zone prefix.
+    """
+    base_msg = _build_message_core(
+        worker_name, prev, curr, geofence, sensor_status,
+        influencing_sensors=influencing_sensors,
+    )
+    prefix = _dynamic_zone_prefix(geofence)
+    return prefix + base_msg if prefix else base_msg
+
+
+def _build_message_core(worker_name: str, prev: str, curr: str,
+                    geofence, sensor_status: str,
+                    influencing_sensors: list | None = None) -> str:
+    """
+    전이별 메시지 조립 (기존 로직, Phase I-3 에서 _core 로 분리).
 
     [팀원 병합 v1 — B3]
       influencing_sensors 인자 추가. 알람 원인 센서가 있으면
       지오펜스 이름 대신 "(sensor_01 danger, sensor_03 caution)" 형태로 표기.
-      근거: 산업안전 ISO 45001 — 사고 조사 시 근본 원인 추적성 강화.
-
-      우선순위: zone_name (지오펜스) > 영향 센서 ID > 기본 "(센서 주의)"
-      → 지오펜스 기반 알람은 기존 포맷 그대로, 센서 기반 알람만 구체화됨.
     """
     zone_name = geofence.name if geofence else ''
     influencing_sensors = influencing_sensors or []
@@ -206,15 +264,6 @@ def evaluate_worker(worker_id: str, worker_name: str,
 
     now = time.time()
 
-    # 디버그 로그
-    since_last = now - last_alarm_at if last_alarm_at > 0 else -1
-    print(f"[DEBUG] {worker_id} ({x:.1f},{y:.1f}) "
-          f"official={official_state} observed={observed_state} "
-          f"pending={snap['pending_state']}({snap['pending_count']}) "
-          f"since_last={since_last:.1f}s "
-          f"fences={[g.name for g in geofences]} "
-          f"sensor={worst_sensor_status}")
-
     # ─── 전이 확정 여부 ───
     confirmed_new_state = None
 
@@ -284,7 +333,10 @@ def evaluate_worker(worker_id: str, worker_name: str,
             'state_to': target_state,
         })
 
-        print(f"[ALARM-CREATED] {worker_id} {alarm_type} level={alarm_level} reason={reason}")
+        logger.info(
+            "[ALARM-CREATED] %s %s level=%s reason=%s",
+            worker_id, alarm_type, alarm_level, reason,
+        )
 
         if confirmed_new_state is not None:
             commit_state(worker_id, target_state, mark_alarmed=True)

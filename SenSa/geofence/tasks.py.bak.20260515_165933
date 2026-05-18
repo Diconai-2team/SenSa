@@ -1,0 +1,49 @@
+"""
+geofence/tasks.py — Celery 비동기 task.
+
+Phase G: 동적 zone tick 자동화.
+
+[설계]
+- 기존 동기 zone_lifecycle.tick() 을 그대로 호출 (로직 재사용)
+- 기존 tick_dynamic_zones 관리 명령은 보존 (디버깅·수동 실행용)
+- Celery beat 가 30 초 주기로 자동 호출 (settings.py 의 CELERY_BEAT_SCHEDULE)
+
+[운영]
+이 task 가 호출될 때마다 다음을 수행:
+    1. 만료된 zone 비활성화 (expire_zones)
+    2. 활성 zone 의 반경 갱신 (update_all_active_zones)
+    3. tier 승격 검사 (check_all_active_zones_upgrade)
+       - TTM 추론 호출 발생 (이웃 센서별)
+       - 첫 호출 시 모델 로딩 수십 초, 이후 1~2초/추론
+
+[idempotency]
+같은 zone 에 대해 동시 호출되어도 안전 (`update_fields` 사용, 시간 비교 기반).
+"""
+from celery import shared_task
+
+from geofence.zone_lifecycle import tick, scan_forecast_warnings
+
+
+@shared_task(name='geofence.tasks.tick_zones')
+def tick_zones() -> dict:
+    """동적 zone 의 반경 진화 + 만료 + 승격 검사 (Celery beat 자동 호출).
+
+    Returns:
+        {'updated': N, 'expired': M,
+         'upgraded_to_confirmed': X, 'upgraded_to_critical': Y}
+    """
+    return tick(check_upgrade=True)
+
+
+@shared_task(name='geofence.tasks.scan_forecast_warnings')
+def scan_forecast_warnings_task() -> dict:
+    """가스 센서 대상 TTM forecast_warn 스캔 → 사전 경고 zone 자동 생성.
+
+    Phase L 추가. TTM 추론 부담이 크므로 tick 보다 긴 주기 (예: 5분) 권장.
+    settings.py 의 CELERY_BEAT_SCHEDULE 에서 'scan-forecast-warnings' 항목 참조.
+
+    Returns:
+        {'scanned': N, 'warned': X, 'zones_created': Y, ...}
+    """
+    return scan_forecast_warnings()
+from .tasks_scenario import sustain_spike_task  # noqa: F401

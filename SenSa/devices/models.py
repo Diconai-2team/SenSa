@@ -92,6 +92,23 @@ class SensorData(models.Model):
     status      = models.CharField(max_length=20, choices=STATUS_CHOICES, default='normal')
     timestamp   = models.DateTimeField(auto_now_add=True)
 
+    # ─── R&D 시나리오 라벨 (5차 세션 C′-3a, v2.1 디자인) ───
+    # 토글 5 device (sensor_01~03, power_01~02): scenario_id="G3"/"G4"/"G1"/"P1"/"P3"
+    # 레거시 모드 (normal/mixed/danger): scenario_id="legacy:<mode>", expected_* 는 null
+    # 비매핑 device (sensor_04~07, power_03): scenario_id="legacy:<mode>", expected_* 는 null
+    scenario_id     = models.CharField(
+        max_length=20, null=True, blank=True, db_index=True,
+        help_text='시나리오 매핑 또는 레거시 모드명 (G3, P1, legacy:normal 등)',
+    )
+    expected_phase  = models.IntegerField(
+        null=True, blank=True,
+        help_text='6-phase 라벨 (0~5). 레거시 모드는 null',
+    )
+    expected_status = models.CharField(
+        max_length=10, null=True, blank=True,
+        help_text='정답 라벨: normal | caution | danger. 레거시 모드는 null',
+    )
+
     class Meta:
         ordering = ['-timestamp']
         indexes = [

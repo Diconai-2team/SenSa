@@ -1,0 +1,64 @@
+"""
+관리 명령: TTM 사전 경고 수동 스캔 (Phase L 검증용).
+
+Celery beat 가 5분 주기로 자동 호출하지만, 검증·디버깅 시 즉시 실행하려면
+이 명령 사용.
+
+사용:
+    python manage.py scan_forecast
+    python manage.py scan_forecast --gases co h2s
+    python manage.py scan_forecast --gases co --verbose
+"""
+from django.core.management.base import BaseCommand
+
+from geofence.zone_lifecycle import (
+    scan_forecast_warnings,
+    FORECAST_SCAN_GASES,
+)
+
+
+class Command(BaseCommand):
+    help = 'TTM forecast_warn 신호 스캔 + 사전 경고 zone 자동 생성'
+
+    def add_arguments(self, parser):
+        parser.add_argument(
+            '--gases',
+            nargs='+',
+            default=None,
+            help=f'검사할 가스 종류 (기본: {FORECAST_SCAN_GASES})',
+        )
+        parser.add_argument(
+            '--verbose',
+            action='store_true',
+            help='상세 출력',
+        )
+
+    def handle(self, *args, **options):
+        gases = options['gases']
+        verbose = options['verbose']
+
+        if verbose:
+            self.stdout.write(
+                f"검사 대상 가스: {gases or FORECAST_SCAN_GASES}"
+            )
+
+        result = scan_forecast_warnings(gas_types=gases)
+
+        self.stdout.write(
+            f"\nforecast 스캔 결과:\n"
+            f"  총 검사:       {result['scanned']}\n"
+            f"  사전 경고:     {result['warned']}\n"
+            f"  zone 생성:     {result['zones_created']}\n"
+            f"  기존 zone:     {result['existing']}\n"
+            f"  데이터 부족:   {result['insufficient']}\n"
+            f"  에러:          {result['errors']}"
+        )
+
+        if result['zones_created'] > 0:
+            self.stdout.write(self.style.SUCCESS(
+                f"\n✓ {result['zones_created']}개 zone 사전 경고로 자동 생성됨"
+            ))
+        elif result['warned'] == 0 and result['insufficient'] == result['scanned']:
+            self.stdout.write(self.style.WARNING(
+                "\n⚠ 모든 센서 데이터 부족 (608건 미만) — TTM 호출 안 됨"
+            ))

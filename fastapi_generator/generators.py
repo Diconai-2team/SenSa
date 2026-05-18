@@ -178,11 +178,13 @@ GAS_OU_PARAMS = {
 # 이렇게 분산하면 long-run 평균 발생 빈도는 v1 과 동등하지만
 # 모든 센서가 동시에 발생할 확률은 (3.3%)^4 ≒ 0.0001%.
 GAS_EVENTS = {
-    "co":  {"prob": 1/45, "duration": 6,  "active_center": 32,  "active_sigma": 3   },
-    "h2s": {"prob": 1/60, "duration": 6,  "active_center": 18,  "active_sigma": 2   },
-    "o2":  {"prob": 1/45, "duration": 6,  "active_center": 16.5,"active_sigma": 0.6 },
-    "voc": {"prob": 1/45, "duration": 4,  "active_center": 0.7, "active_sigma": 0.08},
-    "nh3": {"prob": 1/60, "duration": 6,  "active_center": 35,  "active_sigma": 3   },
+    # active_center + 3*active_sigma < caution 임계 (3σ rule)
+    # 정상 모드에서 가끔 미세 변동 시각화하되 caution lock 안 일으키도록 보정
+    "co":  {"prob": 1/45, "duration": 6,  "active_center": 20,   "active_sigma": 1.5 },  # 임계 25, max=24.5
+    "h2s": {"prob": 1/60, "duration": 6,  "active_center": 6,    "active_sigma": 1.0 },  # 임계 10, max=9
+    "o2":  {"prob": 1/45, "duration": 6,  "active_center": 19,   "active_sigma": 0.3 },  # 정상 18~21.5, 19.9 max
+    "voc": {"prob": 1/45, "duration": 4,  "active_center": 0.35, "active_sigma": 0.04},  # 임계 0.5, max=0.47
+    "nh3": {"prob": 1/60, "duration": 6,  "active_center": 20,   "active_sigma": 1.5 },  # 임계 25, max=24.5
 }
 
 

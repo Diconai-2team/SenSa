@@ -1,0 +1,138 @@
+"""
+debug_d1.py — Phase D-1 SingleLeak 실패 원인 진단.
+
+시나리오와 *동일* device 좌표·데이터 패턴으로 핵심 호출 분리 검증:
+    1. neighbor_graph 가 두 device 를 인식하는가
+    2. _fallback_residual 이 어떤 값을 반환하는가
+    3. has_anomaly 가 True 인가
+
+사용:
+    python manage.py shell -c "exec(open('debug_d1.py').read())"
+"""
+from datetime import timedelta
+from django.utils import timezone
+
+from devices.models import Device, SensorData
+from devices.neighbor_graph import (
+    invalidate_neighbor_cache,
+    get_neighbors_within_devices,
+    cache_stats,
+)
+from geofence.anomaly_detector import (
+    has_anomaly, get_recent_residual, _fallback_residual,
+)
+from geofence.diffusion import diffusion_radius
+
+
+print("\n" + "═" * 60)
+print("  Phase D-1 진단 — SingleLeak 실패 원인")
+print("═" * 60)
+
+# ── 0. 기존 debug device 정리 ──
+SensorData.objects.filter(
+    device__device_id__startswith='sensa_debug_',
+).delete()
+Device.objects.filter(device_id__startswith='sensa_debug_').delete()
+
+# ── 1. device 두 개 생성 (시나리오와 동일 좌표) ──
+src = Device.objects.create(
+    device_id='sensa_debug_src',
+    device_name='debug_src',
+    sensor_type='gas', x=200.0, y=200.0, is_active=True,
+)
+nbr = Device.objects.create(
+    device_id='sensa_debug_nbr',
+    device_name='debug_nbr',
+    sensor_type='gas', x=208.0, y=200.0, is_active=True,
+)
+print(f"\n[1] device 생성")
+print(f"    src.id={src.id} ({src.x},{src.y}) sensor_type={src.sensor_type} active={src.is_active}")
+print(f"    nbr.id={nbr.id} ({nbr.x},{nbr.y}) sensor_type={nbr.sensor_type} active={nbr.is_active}")
+
+
+# ── 2. neighbor의 데이터 주입 (시나리오와 동일 패턴) ──
+now = timezone.now()
+for i in range(10):
+    sd = SensorData.objects.create(device=nbr, status='normal', co=12.0)
+    SensorData.objects.filter(pk=sd.pk).update(
+        timestamp=now - timedelta(seconds=500 + i * 120),
+    )
+for i in range(3):
+    sd = SensorData.objects.create(device=nbr, status='caution', co=60.0)
+    SensorData.objects.filter(pk=sd.pk).update(
+        timestamp=now - timedelta(seconds=5 + i),
+    )
+
+nbr_data_count = SensorData.objects.filter(device=nbr).count()
+print(f"\n[2] nbr SensorData 주입: {nbr_data_count}건 (baseline 10 + spike 3)")
+
+
+# ── 3. neighbor_graph 캐시 갱신 + 진단 ──
+invalidate_neighbor_cache()
+stats = cache_stats()
+print(f"\n[3] neighbor cache")
+print(f"    {stats}")
+
+radius = diffusion_radius('co', 10.0)
+print(f"    diffusion_radius(co, 10s) = {radius:.2f} px")
+
+neighbors = get_neighbors_within_devices(src.id, radius)
+print(f"    src 이웃 (radius={radius:.2f}):")
+for d, dist in neighbors:
+    print(f"      - {d.device_id} (id={d.id}) dist={dist:.2f}px")
+if not neighbors:
+    print("      ⚠ 비어있음")
+
+# nbr 가 후보 안에 있는지
+nbr_in_candidates = any(d.id == nbr.id for d, _ in neighbors)
+print(f"    nbr 가 후보에 포함됐는가: {nbr_in_candidates}")
+
+
+# ── 4. fallback 잔차 직접 ──
+print(f"\n[4] anomaly_detector 직접 호출 (nbr, co)")
+fb = _fallback_residual(nbr, 'co')
+print(f"    _fallback_residual    = {fb}")
+
+gr = get_recent_residual(nbr, 'co')
+print(f"    get_recent_residual   = {gr}")
+
+ha = has_anomaly(nbr, 'co')
+print(f"    has_anomaly           = {ha}  (CO threshold=20)")
+
+
+# ── 5. 잔차 윈도우 분석 ──
+print(f"\n[5] SensorData 윈도우 분포 (now 기준)")
+recent_start = now - timedelta(seconds=300)
+baseline_start = now - timedelta(seconds=1800)
+
+recent_qs = SensorData.objects.filter(
+    device=nbr, timestamp__gte=recent_start,
+).exclude(co__isnull=True)
+baseline_qs = SensorData.objects.filter(
+    device=nbr,
+    timestamp__gte=baseline_start,
+    timestamp__lt=recent_start,
+).exclude(co__isnull=True)
+
+print(f"    recent 윈도우 (0~300s 전):    {recent_qs.count()}건, 값={list(recent_qs.values_list('co', flat=True))}")
+print(f"    baseline 윈도우 (300~1800s 전): {baseline_qs.count()}건, 값={list(baseline_qs.values_list('co', flat=True))}")
+
+
+# ── 6. 진단 결론 ──
+print(f"\n[6] 진단")
+if not nbr_in_candidates:
+    print("    ✗ (A) 가설: neighbor 가 candidates 에 없음 → 캐시/거리 문제")
+elif not ha:
+    print("    ✗ (B) 가설: has_anomaly=False → 잔차 계산 또는 임계 문제")
+else:
+    print("    ✓ 두 가지 모두 정상 — 시나리오 자체의 흐름에 다른 문제")
+
+
+# ── cleanup ──
+SensorData.objects.filter(device=nbr).delete()
+Device.objects.filter(pk__in=[src.pk, nbr.pk]).delete()
+invalidate_neighbor_cache()
+
+print("\n" + "═" * 60)
+print("  진단 종료")
+print("═" * 60 + "\n")

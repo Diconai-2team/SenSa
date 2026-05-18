@@ -86,6 +86,72 @@
       return;
     }
     selectDevice(keepIdx);
+    preloadDeviceValues(devices);
+  }
+
+  // ═════════════════════════════════════════════════════════
+  // [preload_sensor_data] 디바이스 목록 받자마자 각 sensor 최근 1건 시드
+  //
+  //   배경:
+  //     applyDeviceList 직후 selectDevice(0) → lastValueByDevice 가 비어
+  //     renderEmpty() 가 "—" 표시. WebSocket 첫 powerData 도착까지 빈 패널.
+  //     (4차 세션 핸드오프 8.2 — 페이지 첫 로드 시 빈 패널 방지)
+  //
+  //   동작:
+  //     - 각 디바이스에 대해 /dashboard/api/sensor-data/?device_id=X&limit=1
+  //     - 응답 row 를 powerData 이벤트와 동일 shape 으로 변환해 캐시
+  //     - 차트 buf 시드 + 헤더 합산 와트 즉시 갱신
+  //     - 현재 보고 있는 sensor 면 renderRow + refreshChartFromBuf
+  //
+  //   가드:
+  //     - 이미 캐시 있으면 skip
+  //     - fail silent
+  // ═════════════════════════════════════════════════════════
+  function preloadDeviceValues(deviceList) {
+    deviceList.forEach(function (dev) {
+      if (lastValueByDevice[dev.device_id]) return;
+      var url = '/dashboard/api/sensor-data/?device_id=' +
+                encodeURIComponent(dev.device_id) + '&limit=1';
+      fetch(url)
+        .then(function (r) { return r.json(); })
+        .then(function (resp) {
+          var arr = resp && resp.data;
+          if (!arr || !arr.length) return;
+          var row = arr[0];
+
+          // powerData 이벤트와 동일 shape: { device_id, power:{}, status }
+          var pseudo = {
+            device_id: dev.device_id,
+            power: {
+              current: row.current,
+              voltage: row.voltage,
+              watt:    row.watt,
+            },
+            status: row.status || 'normal',
+          };
+
+          lastValueByDevice[dev.device_id] = pseudo;
+          pushBuf(dev.device_id, pseudo.power);
+
+          // 헤더 합산 와트 — 시드 직후 즉시 반영 (powerData 핸들러 로직과 동일)
+          var total = 0;
+          for (var k in lastValueByDevice) {
+            total += (lastValueByDevice[k].power && lastValueByDevice[k].power.watt) || 0;
+          }
+          if (totalWattEl) {
+            var firstNode = totalWattEl.firstChild;
+            if (firstNode && firstNode.nodeType === Node.TEXT_NODE) {
+              firstNode.nodeValue = total.toFixed(0) + ' ';
+            }
+          }
+
+          if (dev.device_id === currentDeviceId) {
+            renderRow(pseudo);
+            refreshChartFromBuf();
+          }
+        })
+        .catch(function () { /* silent */ });
+    });
   }
 
   // ─── 전력 센서 목록 로드 (페이지 첫 진입 시 1회) ───

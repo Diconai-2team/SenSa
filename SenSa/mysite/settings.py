@@ -220,4 +220,28 @@ INTERNAL_API_ALLOWED_PATHS = [
 ]
 
 ALARM_RE_ALARM_INTERVAL_SEC = 60   # 상태 지속 시 재알림 주기
-ALARM_RECOVERY_CONFIRM_TICKS = 3   # 회복 전이에 필요한 연속 관측 횟수 (3 = 약 3초)
+ALARM_RECOVERY_CONFIRM_TICKS = 3   # 회복 전이에 필요한 연속 관측 횟수 (3 = 약 3초)# ─────────────────────────────────────────────
+# Celery / Redis (Phase G)
+# ─────────────────────────────────────────────
+# 이 블록을 mysite/settings.py 의 가장 아래에 추가하세요.
+# TIME_ZONE 변수는 이미 settings.py 위에 정의되어 있을 것입니다.
+
+CELERY_BROKER_URL = 'redis://localhost:6379/0'
+CELERY_RESULT_BACKEND = 'redis://localhost:6379/0'
+CELERY_TIMEZONE = TIME_ZONE
+CELERY_TASK_TRACK_STARTED = True
+CELERY_TASK_TIME_LIMIT = 5 * 60       # 5분 (TTM 추론 여유)
+CELERY_TASK_SOFT_TIME_LIMIT = 4 * 60
+
+# ── Beat 스케줄 ──
+# 30초마다 동적 zone 의 반경 갱신 + 만료 + 승격 검사
+CELERY_BEAT_SCHEDULE = {
+    'tick-dynamic-zones': {
+        'task': 'geofence.tasks.tick_zones',
+        'schedule': 30.0,
+    },
+    # ─── 5차 세션 C′-3b-1: Phase L (TTM 사전 경고) 항목 제거 ──────────
+    # 'scan-forecast-warnings' 항목은 TTM 폐기에 따라 삭제됨.
+    # Isolation Forest 기반 IF 분석기 (C′-3b-2) 는 Celery 가 아닌
+    # SensorDataView.post 안에서 실시간 호출됨 → beat 스케줄 불필요.
+}

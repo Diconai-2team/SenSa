@@ -21,14 +21,30 @@
 
   <div id="map"></div>
 
-  <!-- 시뮬레이션 오버레이 -->
-  <div id="sim-overlay">
-    <div class="scenario-btns">
-      <div class="scenario-btn normal" onclick="setScenario('normal')">✅ 정상</div>
-      <div class="scenario-btn mixed active" onclick="setScenario('mixed')">⚠️ 혼합</div>
-      <div class="scenario-btn danger" onclick="setScenario('danger')">🚨 위험</div>
-    </div>
-    <div id="sim-tick-display">경과: <span id="sim-tick">0</span>초</div>
+  <!-- ═══════════════════════════════════════════════════════════
+       R&D 시나리오 오버레이 (Phase J — 확산 모델 기반)
+       운영 sensor 기반 시연. 누출원 1개 → 그레이엄 확산 → 영향 sensor
+       자동 detect → spike SensorData 주입 + zone 생성.
+       90~120초 후 자연 만료.
+       ═══════════════════════════════════════════════════════════ -->
+  <div id="rd-scenario-overlay">
+    <div class="rd-header">🧪 R&D 시나리오 (운영)</div>
+    <button class="rd-scenario-btn confirmed" data-scenario="op_single"
+            onclick="runRdScenario('op_single', this)">
+      🟡 단일 누출 <small>외곽 sensor 격리 누출</small>
+    </button>
+    <button class="rd-scenario-btn critical" data-scenario="op_multi"
+            onclick="runRdScenario('op_multi', this)">
+      🔴 다중 누출 <small>확산 → 다수 sensor 영향</small>
+    </button>
+    <button class="rd-scenario-btn critical" data-scenario="op_h2s"
+            onclick="runRdScenario('op_h2s', this)">
+      💀 H2S 급격 <small>다른 가스 도메인</small>
+    </button>
+    <button class="rd-cleanup-btn" onclick="cleanupRdScenarios(this)">
+      🧹 시나리오 정리
+    </button>
+    <div id="rd-scenario-status">대기 중</div>
   </div>
 
   <!-- 레이어 토글 -->

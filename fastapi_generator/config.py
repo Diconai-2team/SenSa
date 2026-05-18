@@ -37,6 +37,6 @@ INTERNAL_HEADERS = {
 # 시뮬레이션 파라미터
 # ═══════════════════════════════════════════════════════════
 TICK_INTERVAL    = float(os.getenv("TICK_INTERVAL", "1.0"))
-DEFAULT_SCENARIO = os.getenv("DEFAULT_SCENARIO", "mixed")
+DEFAULT_SCENARIO = os.getenv("DEFAULT_SCENARIO", "normal")
 
 VALID_SCENARIOS = ("normal", "mixed", "danger")

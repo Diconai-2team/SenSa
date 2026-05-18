@@ -1,0 +1,7 @@
+jupyter
+ipykernel
+numpy
+pandas
+matplotlib
+torch
+granite-tsfm

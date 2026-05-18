@@ -73,8 +73,9 @@ function addAlarmToPanel(alarm, fromDB) {
     ? new Date(alarm.created_at).toLocaleTimeString('ko-KR')
     : new Date().toLocaleTimeString('ko-KR');
 
+  var aiBadge = alarm.is_ai ? ' <span class="ai-badge">🤖 AI</span>' : '';
   item.innerHTML =
-    '<div class="alarm-msg">' + (EMOJI[alarm.alarm_level] || '⚠️') + ' ' + alarm.message + '</div>' +
+    '<div class="alarm-msg">' + (EMOJI[alarm.alarm_level] || '⚠️') + ' ' + alarm.message + aiBadge + '</div>' +
     '<div class="alarm-meta">' + ts + (alarm.worker_name ? ' · ' + alarm.worker_name : '') + '</div>';
 
   item.onclick = function () {

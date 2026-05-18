@@ -16,6 +16,8 @@
   <link rel="stylesheet" href="{% static 'css/dashboard/section_11_workers.css' %}">
   <link rel="stylesheet" href="{% static 'css/dashboard/section_12_13_gas.css' %}">
   <link rel="stylesheet" href="{% static 'css/dashboard/section_14_15_power.css' %}">
+  <!-- Phase D 시연용 R&D 시나리오 패널 -->
+  <link rel="stylesheet" href="{% static 'css/dashboard/scenario_panel.css' %}">
 </head>
 <body>
 
@@ -35,6 +37,8 @@
         <p style="font-size:10px;color:#3a3f55;text-align:center;padding:10px;">지오펜스가 없습니다.</p>
       </div>
     </div>
+    <!-- ⑯ AI 예측 성능 (5차 세션) -->
+    {% include "dashboard/sections/section_16_ai_performance.html" %}
   </aside>
 
   <!-- ═══════════ 중앙 영역 (⑨ 탭 + 지도) ═══════════ -->
@@ -71,6 +75,8 @@
 <script src="{% static 'js/dashboard/section_11_workers.js' %}"></script>
 <script src="{% static 'js/dashboard/section_12_13_gas.js' %}"></script>
 <script src="{% static 'js/dashboard/section_14_15_power.js' %}"></script>
+<!-- Phase D 시연용 R&D 시나리오 패널 -->
+<script src="{% static 'js/dashboard/scenario_panel.js' %}"></script>
 
 </body>
 </html>

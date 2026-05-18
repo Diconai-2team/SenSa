@@ -206,4 +206,53 @@
     updateChart(workersMaster);
   });
 
+  // ═════════════════════════════════════════════════════════
+  // [worker_zone_sync] zoneEvent → fences 즉시 동기화 + 작업자 재분류
+  //
+  //   배경:
+  //     fences 는 페이지 로드 시 loadFences() 1회로만 채워졌고,
+  //     이후 critical zone 생성/만료가 일어나도 새로고침 전까지 stale.
+  //     → 도넛 + 사이드바가 "zone 있는데 작업자 안전" or 그 반대로 보임.
+  //     (4차 세션 사용자 짚음 #15 — "zone 사라져도 작업자 그래프 위험 유지")
+  //
+  //   동작:
+  //     - expired 이벤트   → 해당 zone_id 의 fence 제거
+  //     - created / upgraded_to_* → 해당 zone_id 의 fence upsert
+  //     - 어느 쪽이든 끝에 updateChart(workersMaster) 재호출
+  //       → classifyWorkerZone 이 갱신된 fences 로 재판정
+  //       → 도넛 카운트 + 사이드바 배지 즉시 변함
+  //
+  //   patch 구조는 section_09_map.js 의 SenSa.on('zoneEvent') 와 동일.
+  // ═════════════════════════════════════════════════════════
+  SenSa.on('zoneEvent', function (msg) {
+    if (!msg || !msg.zone_id) return;
+    var zoneId = msg.zone_id;
+
+    // 1) 기존 fence 항목 제거 (id 또는 zone_id 양쪽 호환)
+    fences = fences.filter(function (f) {
+      var fid = (f.id !== undefined) ? f.id : f.zone_id;
+      return fid !== zoneId;
+    });
+
+    // 2) expired 가 아니면 polygon 받아 upsert
+    if (msg.event_type !== 'expired' && msg.polygon && msg.polygon.length >= 3) {
+      fences.push({
+        id:         zoneId,
+        name:       msg.zone_name,
+        polygon:    msg.polygon,
+        zone_type:  msg.zone_type,
+        risk_level: msg.risk_level,
+      });
+    }
+
+    // 3) 작업자 마스터 목록으로 재분류 → 도넛 + 사이드바 즉시 갱신
+    //    (workersMaster 가 비어있으면 의미 없으므로 skip)
+    if (workersMaster.length > 0) {
+      updateChart(workersMaster);
+    }
+
+    console.log('[section_11] zoneEvent 반영:', msg.event_type, zoneId,
+                '→ fences', fences.length, '개');
+  });
+
 })();

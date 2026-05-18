@@ -46,3 +46,17 @@
 .event-summary { padding: 8px 14px; border-top: 1px solid var(--border); flex-shrink: 0; font-size: 11px; color: var(--text-dim); background: var(--bg-card); }
 .event-summary .count-danger  { color: var(--color-danger);  font-weight: 600; }
 .event-summary .count-caution { color: var(--color-caution); font-weight: 600; }
+/* AI(ARIMA) 탐지 알람 뱃지 */
+.ai-badge {
+  display: inline-block;
+  font-size: 9px;
+  font-weight: 700;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: linear-gradient(135deg, #1e3a5f, #0d2340);
+  color: #58a6ff;
+  border: 1px solid #58a6ff55;
+  margin-left: 4px;
+  vertical-align: middle;
+  letter-spacing: 0.3px;
+}
