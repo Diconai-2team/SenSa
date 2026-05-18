@@ -52,6 +52,7 @@ INSTALLED_APPS = [
     'safety',
     'vr_training',     # ← 추가
     'backoffice',      # ← 백오피스 (슈퍼관리자 채널)
+    'ml_engine',       # ← AI 이상 탐지 파이프라인
 ]
 
 # ==========================================================
@@ -102,6 +103,9 @@ DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.sqlite3',
         'NAME': BASE_DIR / 'db.sqlite3',
+        'OPTIONS': {
+            'timeout': 20,   # lock 대기 최대 20초 (기본 5초)
+        },
     }
 }
 
@@ -213,10 +217,11 @@ INTERNAL_API_ALLOWED_PATHS = [
     '/dashboard/api/sensor-data/',
     '/dashboard/api/worker-location/',
     '/dashboard/api/check-geofence/',
-    '/dashboard/api/device/',       # ← 추가: FastAPI 기동 시 장비 목록 GET
-    '/dashboard/api/worker/',       # ← 추가: 작업자 목록 GET + /worker/<pk>/latest/
-    '/dashboard/api/geofence/',     # ← 추가: (현재 scheduler 에서 호출 안 하지만 django_loader 에 load_geofences 있음)
-    '/dashboard/api/thresholds/',   # ← 추가: 임계치 DB → FastAPI 동기화
+    '/dashboard/api/device/',       # FastAPI 기동 시 장비 목록 GET
+    '/dashboard/api/worker/',       # 작업자 목록 GET + /worker/<pk>/latest/
+    '/dashboard/api/geofence/',     # django_loader.load_geofences
+    '/dashboard/api/thresholds/',   # 임계치 DB → FastAPI 동기화
+    '/dashboard/api/alarm/',        # AI 테스트 스크립트 알람 조회
 ]
 
 ALARM_RE_ALARM_INTERVAL_SEC = 60   # 상태 지속 시 재알림 주기

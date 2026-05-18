@@ -104,7 +104,7 @@ async function loadAlarmsFromDB() {
     var res = await fetch('/dashboard/api/alarm/', { credentials: 'include' });
     if (!res.ok) return;
     var data = await res.json();
-    var alarms = (data.results || data).slice().reverse(); // 오래된 순 → 아래 쌓임
+    var alarms = (data.results || data).slice(); // 최신순(API) → 위부터 쌓임
     alarms.forEach(function (a) { addAlarmToPanel(a, true); });
     updateBadge();
   } catch (e) {}

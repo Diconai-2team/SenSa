@@ -1,0 +1,333 @@
+{% extends "backoffice/base.html" %}
+{% block title %}AI 성능 지표 — 백오피스{% endblock %}
+
+{% block content %}
+<div class="bo-breadcrumb"><span>AI 성능 지표</span></div>
+<div style="display:flex;align-items:center;gap:12px;margin-bottom:4px;">
+  <h1 class="bo-page-title" style="margin-bottom:0;">🤖 AI 탐지 성능 지표</h1>
+  <span id="refresh-badge" style="font-size:11px;color:var(--bo-text-muted);white-space:nowrap;">
+    자동 새로고침 <span id="refresh-countdown">30</span>초
+  </span>
+</div>
+<p class="bo-page-desc">
+  IsolationForest · ARIMA · CUSUM · Z-score 기반 AI 탐지 현황 및 모델 학습 상태를 확인합니다.
+</p>
+
+<!-- ── 요약 카드 ──────────────────────────────────── -->
+<div class="bo-stat-grid" style="grid-template-columns: repeat(5, 1fr);">
+  <div class="bo-stat-card">
+    <div class="bo-stat-label">AI 알람 (24h)</div>
+    <div class="bo-stat-value">{{ stats.total_24h }}</div>
+  </div>
+  <div class="bo-stat-card">
+    <div class="bo-stat-label">AI 알람 (전체)</div>
+    <div class="bo-stat-value">{{ stats.total_all }}</div>
+  </div>
+  <div class="bo-stat-card">
+    <div class="bo-stat-label">학습 완료 모델 (IF)</div>
+    <div class="bo-stat-value">{{ stats.total_models }}</div>
+  </div>
+  <div class="bo-stat-card">
+    <div class="bo-stat-label">가장 활성 센서 (24h)</div>
+    <div class="bo-stat-value" style="font-size:14px;">{{ stats.active_sensor }}</div>
+  </div>
+  <div class="bo-stat-card {% if stats.escalated_24h %}bo-stat-value-warn{% endif %}">
+    <div class="bo-stat-label">에스컬레이션 (24h)</div>
+    <div class="bo-stat-value {% if stats.escalated_24h %}bo-stat-value-warn{% endif %}">
+      {{ stats.escalated_24h }}
+    </div>
+  </div>
+</div>
+
+<!-- ── AI 알람 유형별 현황 ──────────────────────────── -->
+<div class="bo-card" style="margin-top:20px;">
+  <h3 style="font-size:14px;font-weight:600;margin-bottom:14px;">AI 알람 유형별 현황 (최근 7일)</h3>
+  <table class="bo-table">
+    <thead>
+      <tr>
+        <th>유형</th>
+        <th>알고리즘</th>
+        <th style="text-align:right;">24h</th>
+        <th style="text-align:right;">7일</th>
+        <th>마지막 발생</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in type_stats %}
+      <tr>
+        <td>
+          <span style="font-weight:600;color:var(--bo-text);">{{ row.label }}</span>
+          <span style="font-size:10px;color:var(--bo-text-muted);margin-left:6px;">{{ row.type }}</span>
+        </td>
+        <td style="font-size:11px;color:var(--bo-text-muted);">
+          {% if row.type == 'ai_ml_anomaly' %}IsolationForest
+          {% elif row.type == 'ai_anomaly_warning' %}Z-score
+          {% elif row.type == 'ai_trend_shift' %}Change Point
+          {% elif row.type == 'ai_predictive_alert' or row.type == 'ai_predictive_warning' %}ARIMA
+          {% elif row.type == 'ai_drift_alert' %}CUSUM
+          {% elif row.type == 'ai_correlation' %}상관관계
+          {% endif %}
+        </td>
+        <td style="text-align:right;font-weight:{% if row.count_24h %}600{% else %}400{% endif %};">
+          {{ row.count_24h }}
+        </td>
+        <td style="text-align:right;">{{ row.count_7d }}</td>
+        <td style="font-size:11px;color:var(--bo-text-muted);">
+          {% if row.last_created %}{{ row.last_created|date:"m/d H:i" }}{% else %}—{% endif %}
+        </td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="5" style="text-align:center;color:var(--bo-text-muted);padding:20px;">AI 알람 없음</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<!-- ── 센서별 AI 알람 TOP 10 ─────────────────────── -->
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:16px;">
+
+<div class="bo-card">
+  <h3 style="font-size:14px;font-weight:600;margin-bottom:14px;">센서별 AI 알람 TOP 10 (최근 7일)</h3>
+  <table class="bo-table">
+    <thead>
+      <tr>
+        <th>센서</th>
+        <th>메트릭</th>
+        <th style="text-align:right;">건수</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in top_sensors %}
+      <tr>
+        <td style="font-weight:600;">{{ row.device_id }}</td>
+        <td style="font-size:11px;color:var(--bo-text-muted);">{{ row.sensor_type|upper }}</td>
+        <td style="text-align:right;">{{ row.cnt }}</td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="3" style="text-align:center;color:var(--bo-text-muted);padding:20px;">데이터 없음</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<!-- ── 모델 학습 상태 ─────────────────────────────── -->
+<div class="bo-card">
+  <h3 style="font-size:14px;font-weight:600;margin-bottom:14px;">
+    모델 학습 상태
+    <span style="font-size:11px;font-weight:400;color:var(--bo-text-muted);margin-left:8px;">
+      (현재 프로세스 메모리 기준)
+    </span>
+  </h3>
+  {% if model_status %}
+  <table class="bo-table">
+    <thead>
+      <tr>
+        <th>센서 : 메트릭</th>
+        <th style="text-align:center;">IF</th>
+        <th style="text-align:center;">ARIMA</th>
+        <th style="text-align:center;">CUSUM</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for m in model_status %}
+      <tr>
+        <td style="font-size:11px;font-family:monospace;">{{ m.key }}</td>
+        <td style="text-align:center;">
+          {% if m.if_trained %}<span style="color:#2ecc71;">✓</span>{% else %}<span style="color:var(--bo-text-muted);">—</span>{% endif %}
+        </td>
+        <td style="text-align:center;">
+          {% if m.arima_trained %}<span style="color:#2ecc71;">✓</span>{% else %}<span style="color:var(--bo-text-muted);">—</span>{% endif %}
+        </td>
+        <td style="text-align:center;">
+          {% if m.cusum_ready %}<span style="color:#2ecc71;">✓</span>{% else %}<span style="color:var(--bo-text-muted);">—</span>{% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p style="color:var(--bo-text-muted);font-size:13px;">
+    아직 학습된 모델 없음 — 센서 데이터가 수신되면 자동으로 학습됩니다.
+  </p>
+  {% endif %}
+</div>
+
+</div>
+
+<!-- ── Proxy Label 성능 평가 (AJAX 비동기 로딩) ──── -->
+<div class="bo-card" style="margin-top:16px;" id="eval-metrics-card">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
+    <h3 style="font-size:14px;font-weight:600;margin:0;">
+      AI 모델 성능 평가
+      <span style="font-size:11px;font-weight:400;color:var(--bo-text-muted);margin-left:8px;">
+        (임계치 초과를 정답으로 사용한 proxy label 기준)
+      </span>
+    </h3>
+    <!-- 평가 기간 선택 -->
+    <div style="display:flex;gap:6px;align-items:center;">
+      <span style="font-size:11px;color:var(--bo-text-muted);">평가 기간:</span>
+      <button class="eval-days-btn" data-days="1"  style="font-size:11px;padding:3px 10px;border-radius:4px;border:1px solid var(--bo-border);cursor:pointer;background:var(--bo-bg-2);color:var(--bo-text);">1일</button>
+      <button class="eval-days-btn" data-days="3"  style="font-size:11px;padding:3px 10px;border-radius:4px;border:1px solid var(--bo-border);cursor:pointer;background:var(--bo-bg-2);color:var(--bo-text);">3일</button>
+      <button class="eval-days-btn" data-days="7"  style="font-size:11px;padding:3px 10px;border-radius:4px;border:1px solid var(--bo-border);cursor:pointer;background:var(--bo-primary);color:#fff;font-weight:600;">7일</button>
+      <button class="eval-days-btn" data-days="30" style="font-size:11px;padding:3px 10px;border-radius:4px;border:1px solid var(--bo-border);cursor:pointer;background:var(--bo-bg-2);color:var(--bo-text);">30일</button>
+    </div>
+  </div>
+  <p style="font-size:11px;color:var(--bo-text-muted);margin-bottom:14px;margin-top:8px;">
+    TP: ML 알람 후 임계치 초과 (즉각탐지 10분·누적예측 30분 이내) &nbsp;|&nbsp;
+    FP: ML 알람 발생했으나 임계치 미초과 (오탐 후보) &nbsp;|&nbsp;
+    FN: 임계치 초과했으나 ML 알람 없음 (미탐지)
+  </p>
+  <div id="eval-metrics-body">
+    <p style="color:var(--bo-text-muted);font-size:13px;">⏳ 지표 계산 중…</p>
+  </div>
+</div>
+
+<!-- ── 최근 AI 알람 20건 ──────────────────────────── -->
+<div class="bo-card" style="margin-top:16px;">
+  <h3 style="font-size:14px;font-weight:600;margin-bottom:14px;">최근 AI 알람 20건</h3>
+  <table class="bo-table">
+    <thead>
+      <tr>
+        <th>발생 시각</th>
+        <th>레벨</th>
+        <th>유형</th>
+        <th>센서</th>
+        <th>메시지</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for alarm in recent_alarms %}
+      <tr>
+        <td style="font-size:11px;white-space:nowrap;color:var(--bo-text-muted);">
+          {{ alarm.created_at|date:"m/d H:i:s" }}
+        </td>
+        <td>
+          {% if alarm.alarm_level == 'danger' %}
+            <span style="color:#e74c3c;font-weight:600;font-size:11px;">🔴 위험</span>
+          {% elif alarm.alarm_level == 'critical' %}
+            <span style="color:#9b59b6;font-weight:600;font-size:11px;">🚨 심각</span>
+          {% elif alarm.alarm_level == 'caution' %}
+            <span style="color:#f1c40f;font-weight:600;font-size:11px;">⚠️ 주의</span>
+          {% else %}
+            <span style="color:#3498db;font-size:11px;">ℹ️ 정보</span>
+          {% endif %}
+        </td>
+        <td style="font-size:11px;">
+          {% if alarm.alarm_type == 'ai_ml_anomaly' %}AI ML 이상
+          {% elif alarm.alarm_type == 'ai_anomaly_warning' %}AI 통계 이상
+          {% elif alarm.alarm_type == 'ai_trend_shift' %}AI 급변 탐지
+          {% elif alarm.alarm_type == 'ai_predictive_alert' %}AI 예측 위험
+          {% elif alarm.alarm_type == 'ai_predictive_warning' %}AI 예측 주의
+          {% elif alarm.alarm_type == 'ai_drift_alert' %}AI 드리프트
+          {% elif alarm.alarm_type == 'ai_correlation' %}AI 상관관계
+          {% else %}{{ alarm.alarm_type }}{% endif %}
+        </td>
+        <td style="font-size:11px;font-family:monospace;">
+          {{ alarm.device_id }}{% if alarm.sensor_type %} / {{ alarm.sensor_type|upper }}{% endif %}
+        </td>
+        <td style="font-size:11px;max-width:380px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+          {{ alarm.message }}
+        </td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="5" style="text-align:center;color:var(--bo-text-muted);padding:20px;">AI 알람 없음</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function () {
+  // ── 자동 새로고침 카운트다운 ───────────────────────────
+  const INTERVAL = 30;
+  let remaining = INTERVAL;
+  const el = document.getElementById('refresh-countdown');
+  setInterval(function () {
+    remaining -= 1;
+    if (el) el.textContent = remaining;
+    if (remaining <= 0) location.reload();
+  }, 1000);
+
+  // ── AI 성능 평가 AJAX 로딩 ────────────────────────────
+  var _evalDays = 7;
+  var _evalRetry = null;
+
+  function hintStyle(hint) {
+    if (hint === 'lower') return 'background:#fdf0ee;border:1px solid #e74c3c;color:#c0392b;';
+    if (hint === 'raise') return 'background:#eef9f0;border:1px solid #2ecc71;color:#27ae60;';
+    if (hint === 'ok')    return 'background:#eef6fd;border:1px solid #3498db;color:#2980b9;';
+    return 'background:var(--bo-bg-2);border:1px solid var(--bo-border);color:var(--bo-text-muted);';
+  }
+
+  function renderEvalMetrics(d) {
+    var fpColor = (d.fp_rate !== null && d.fp_rate > 50) ? 'color:#e74c3c;' : 'color:var(--bo-text);';
+    var slowWin = d.proxy_window_slow_min || 30;
+    return '<div style="display:grid;grid-template-columns:repeat(6,1fr);gap:12px;margin-bottom:16px;">'
+      + '<div class="bo-stat-card"><div class="bo-stat-label">TP</div>'
+      + '<div class="bo-stat-value" style="color:#2ecc71;">' + d.tp + '</div></div>'
+      + '<div class="bo-stat-card"><div class="bo-stat-label">FP (오탐)</div>'
+      + '<div class="bo-stat-value" style="' + fpColor + '">' + d.fp + '</div></div>'
+      + '<div class="bo-stat-card"><div class="bo-stat-label">FN (미탐지)</div>'
+      + '<div class="bo-stat-value" style="color:#e67e22;">' + d.fn + '</div></div>'
+      + '<div class="bo-stat-card"><div class="bo-stat-label">Precision</div>'
+      + '<div class="bo-stat-value" style="font-size:16px;">' + (d.precision !== null ? d.precision + '%' : '—') + '</div></div>'
+      + '<div class="bo-stat-card"><div class="bo-stat-label">Recall</div>'
+      + '<div class="bo-stat-value" style="font-size:16px;">' + (d.recall !== null ? d.recall + '%' : '—') + '</div></div>'
+      + '<div class="bo-stat-card"><div class="bo-stat-label">F1 Score</div>'
+      + '<div class="bo-stat-value" style="font-size:16px;">' + (d.f1 !== null ? d.f1 + '%' : '—') + '</div></div>'
+      + '</div>'
+      + '<div style="padding:10px 14px;border-radius:6px;font-size:12px;' + hintStyle(d.contamination_hint) + '">'
+      + '<strong>contamination 진단:</strong> ' + d.hint_message + '</div>'
+      + '<p style="font-size:11px;color:var(--bo-text-muted);margin-top:10px;">'
+      + 'ML 알람 ' + d.ml_total + '건 · 임계치 알람 ' + d.threshold_total + '건 분석'
+      + ' &nbsp;|&nbsp; 판정 윈도우: 즉각탐지 ' + d.proxy_window_min + '분 / 누적·예측 ' + slowWin + '분'
+      + ' &nbsp;|&nbsp; <span style="color:#2ecc71;">운영자 피드백 ' + d.feedback_used + '건</span> 반영 ·'
+      + ' <span style="color:var(--bo-text-muted);">proxy label ' + d.proxy_used + '건</span></p>';
+  }
+
+  function setActiveDaysBtn(days) {
+    document.querySelectorAll('.eval-days-btn').forEach(function(btn) {
+      var active = parseInt(btn.dataset.days) === days;
+      btn.style.background = active ? 'var(--bo-primary)' : 'var(--bo-bg-2)';
+      btn.style.color      = active ? '#fff' : 'var(--bo-text)';
+      btn.style.fontWeight = active ? '600' : '400';
+    });
+  }
+
+  function loadEvalMetrics(days) {
+    days = days || _evalDays;
+    if (_evalRetry) { clearTimeout(_evalRetry); _evalRetry = null; }
+    var body = document.getElementById('eval-metrics-body');
+    if (body) body.innerHTML = '<p style="color:var(--bo-text-muted);font-size:13px;">⏳ 지표 계산 중…</p>';
+    fetch('/backoffice/api/eval-metrics/?days=' + days)
+      .then(function(r) { return r.json(); })
+      .then(function(d) {
+        if (!body) return;
+        if (d.error && !d.computing) {
+          body.innerHTML = '<p style="color:#e74c3c;font-size:13px;">⚠ ' + d.error + '</p>';
+        } else if (d.computing) {
+          _evalRetry = setTimeout(function() { loadEvalMetrics(days); }, 3000);
+        } else {
+          body.innerHTML = renderEvalMetrics(d);
+        }
+      })
+      .catch(function() {
+        if (body) body.innerHTML = '<p style="color:var(--bo-text-muted);font-size:13px;">평가 데이터를 불러오지 못했습니다.</p>';
+      });
+  }
+
+  // 기간 선택 버튼 이벤트
+  document.querySelectorAll('.eval-days-btn').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      _evalDays = parseInt(this.dataset.days);
+      setActiveDaysBtn(_evalDays);
+      loadEvalMetrics(_evalDays);
+    });
+  });
+
+  loadEvalMetrics(_evalDays);
+})();
+</script>
+{% endblock %}

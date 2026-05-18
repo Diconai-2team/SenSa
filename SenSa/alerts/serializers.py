@@ -15,5 +15,6 @@ class AlarmSerializer(serializers.ModelSerializer):
             'geofence', 'geofence_name',
             'device_id', 'sensor_type',
             'message', 'is_read', 'created_at',
+            'feedback', 'feedback_at',
         ]
         read_only_fields = ['id', 'created_at']

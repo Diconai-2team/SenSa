@@ -57,7 +57,7 @@ async def post_sensor_data(
     payload = {"device_id": device_id, "sensor_type": sensor_type, **values}
 
     try:
-        res = await client.post(url, json=payload, headers=INTERNAL_HEADERS, timeout=3.0)
+        res = await client.post(url, json=payload, headers=INTERNAL_HEADERS, timeout=10.0)
         if res.status_code >= 400:
             print(f"[poster] sensor-data {device_id} {res.status_code}: {res.text[:200]}")
             return None
@@ -86,7 +86,7 @@ async def post_worker_location(
     }
 
     try:
-        res = await client.post(url, json=payload, headers=INTERNAL_HEADERS, timeout=3.0)
+        res = await client.post(url, json=payload, headers=INTERNAL_HEADERS, timeout=10.0)
         if res.status_code >= 400:
             print(f"[poster] worker-location pk={worker_db_pk} {res.status_code}: {res.text[:200]}")
     except httpx.HTTPError as e:
@@ -113,7 +113,7 @@ async def post_check_geofence(
     payload = {"workers": workers, "sensors": sensors}
 
     try:
-        res = await client.post(url, json=payload, headers=INTERNAL_HEADERS, timeout=3.0)
+        res = await client.post(url, json=payload, headers=INTERNAL_HEADERS, timeout=10.0)
         if res.status_code >= 400:
             print(f"[poster] check-geofence {res.status_code}: {res.text[:200]}")
     except httpx.HTTPError as e:

@@ -28,6 +28,7 @@ alerts/services.py — 상태 전이 기반 알람 서비스
     (B2/B4 는 검토 결과 제외. 자세한 근거는 docs/merge_history.md 참조)
 """
 import statistics
+import threading
 import time
 from datetime import timedelta
 
@@ -66,8 +67,14 @@ GAS_THRESHOLDS = {
     'o3':  {'caution': 0.05,  'danger': 0.1  },  # ACGIH TLV (light / heavy work)
     'nh3': {'caution': 25,    'danger': 50   },  # ACGIH TWA / 고노출 기준
     'voc': {'caution': 0.5,   'danger': 2.0  },  # TVOC 실내기준
-    # o2 는 구간형 — classify_gas 내부 처리
+    # o2 는 구간형 — classify_gas 내부 처리, 아래 O2_* 상수가 단일 출처
 }
+
+# O2 구간형 임계치 단일 출처 — 근거: 산업안전보건기준 제618조 + KOSHA
+# ml_engine/*, devices/views.py 에서 이 상수를 lazy import 하여 사용
+O2_DANGER_LOW   = 16.0   # 산소 결핍 위험 (%)
+O2_CAUTION_LOW  = 18.0   # 산소 결핍 주의 (%)
+O2_DANGER_HIGH  = 23.5   # 과산소 위험 (%)
 
 
 def classify_gas(gas: dict) -> str:
@@ -123,21 +130,27 @@ _POWER_CAUTION_MULT  = _POWER_RATED_RATIO * 1.1   # 1.65
 _POWER_DANGER_MULT   = _POWER_RATED_RATIO * 1.5   # 2.25
 
 # 동적 판정에 필요한 최소 샘플 수
-# 개발/테스트: 초당 1건 × 180초 = 3분 치
-# 운영 환경 : 초당 1건 × 86400 = 24시간 치 (상수 조정 필요)
 _POWER_MIN_SAMPLES   = 180
+
+# 24h 중앙값 캐시 — 매 POST마다 전체 조회 방지
+# {device_id: {'value': float|None, 'ts': float}}
+_watt_cache: dict = {}
+_watt_lock = threading.Lock()
+_WATT_CACHE_TTL = 300  # 5분마다 재계산
 
 
 def _get_24h_avg_watt(device_id: str) -> float | None:
     """
     최근 24시간 전력(watt) 측정값의 중앙값 반환.
-
-    샘플이 _POWER_MIN_SAMPLES 미만이면 None 반환 → 호출자가 고정 임계치로 fallback.
-    기동직후·리셋직후에 잘못된 동적 판정이 쌓이지 않도록 방어.
+    결과를 5분간 캐싱 — POST마다 전체 행 스캔 방지.
     """
-    # 순환 import 방지 — 함수 내부 import
-    from devices.models import SensorData
+    now = time.monotonic()
+    with _watt_lock:
+        cached = _watt_cache.get(device_id)
+        if cached and now - cached['ts'] < _WATT_CACHE_TTL:
+            return cached['value']
 
+    from devices.models import SensorData
     cutoff = timezone.now() - timedelta(hours=24)
     values = list(
         SensorData.objects.filter(
@@ -146,9 +159,12 @@ def _get_24h_avg_watt(device_id: str) -> float | None:
             watt__isnull=False,
         ).values_list('watt', flat=True)
     )
-    if len(values) < _POWER_MIN_SAMPLES:
-        return None
-    return statistics.median(values)
+    result = statistics.median(values) if len(values) >= _POWER_MIN_SAMPLES else None
+
+    with _watt_lock:
+        _watt_cache[device_id] = {'value': result, 'ts': time.monotonic()}
+
+    return result
 
 
 def classify_power(power: dict, device_id: str = '') -> str:

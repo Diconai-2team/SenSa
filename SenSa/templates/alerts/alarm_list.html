@@ -231,6 +231,7 @@
         <th class="hide-mobile">유형</th>
         <th class="hide-mobile">작업자</th>
         <th class="hide-mobile">구역</th>
+        <th style="font-size:11px;">AI 피드백</th>
       </tr>
     </thead>
     <tbody>
@@ -275,6 +276,17 @@
             {% elif alarm.alarm_type == 'sensor_caution' %}센서 주의
             {% elif alarm.alarm_type == 'sensor_danger' %}센서 위험
             {% elif alarm.alarm_type == 'combined' %}복합 위험
+            {% elif alarm.alarm_type == 'sensor_recover_normal' %}센서 정상 복귀
+            {% elif alarm.alarm_type == 'sensor_recover_partial' %}센서 부분 회복
+            {% elif alarm.alarm_type == 'state_recover_safe' %}상태 안전 복귀
+            {% elif alarm.alarm_type == 'state_recover_partial' %}상태 부분 회복
+            {% elif alarm.alarm_type == 'ai_ml_anomaly' %}AI ML 이상
+            {% elif alarm.alarm_type == 'ai_anomaly_warning' %}AI 통계 이상
+            {% elif alarm.alarm_type == 'ai_trend_shift' %}AI 급변 탐지
+            {% elif alarm.alarm_type == 'ai_predictive_alert' %}AI 예측 위험
+            {% elif alarm.alarm_type == 'ai_predictive_warning' %}AI 예측 주의
+            {% elif alarm.alarm_type == 'ai_drift_alert' %}AI 드리프트
+            {% elif alarm.alarm_type == 'ai_correlation' %}AI 상관관계
             {% else %}{{ alarm.alarm_type }}{% endif %}
           </span>
         </td>
@@ -294,6 +306,36 @@
             <span style="color:var(--text);">{{ alarm.geofence.name }}</span>
           {% else %}
             <span style="color:var(--border);">—</span>
+          {% endif %}
+        </td>
+
+        <!-- 피드백 (AI 알람만) -->
+        <td style="white-space:nowrap;">
+          {% if alarm.alarm_type|slice:":3" == "ai_" %}
+            {% if alarm.feedback == 'tp' %}
+              <span style="font-size:11px;color:#2ecc71;font-weight:600;">✓ 정탐</span>
+              <button class="fb-btn" data-id="{{ alarm.id }}" data-result="fp"
+                style="margin-left:6px;font-size:10px;padding:2px 6px;background:transparent;border:1px solid #555;color:#888;border-radius:4px;cursor:pointer;">
+                오탐으로 변경
+              </button>
+            {% elif alarm.feedback == 'fp' %}
+              <span style="font-size:11px;color:#e74c3c;font-weight:600;">✗ 오탐</span>
+              <button class="fb-btn" data-id="{{ alarm.id }}" data-result="tp"
+                style="margin-left:6px;font-size:10px;padding:2px 6px;background:transparent;border:1px solid #555;color:#888;border-radius:4px;cursor:pointer;">
+                정탐으로 변경
+              </button>
+            {% else %}
+              <button class="fb-btn" data-id="{{ alarm.id }}" data-result="tp"
+                style="font-size:11px;padding:3px 8px;background:transparent;border:1px solid #2ecc71;color:#2ecc71;border-radius:4px;cursor:pointer;margin-right:4px;">
+                정탐
+              </button>
+              <button class="fb-btn" data-id="{{ alarm.id }}" data-result="fp"
+                style="font-size:11px;padding:3px 8px;background:transparent;border:1px solid #e74c3c;color:#e74c3c;border-radius:4px;cursor:pointer;">
+                오탐
+              </button>
+            {% endif %}
+          {% else %}
+            <span style="color:var(--border);font-size:11px;">—</span>
           {% endif %}
         </td>
       </tr>
@@ -339,6 +381,35 @@ function getCsrfToken() {
   var c = document.cookie.split(';').find(function(c) { return c.trim().startsWith('csrftoken='); });
   return c ? c.split('=')[1] : '';
 }
+
+// ── AI 피드백 버튼 ──────────────────────────────────
+document.addEventListener('click', async function(e) {
+  var btn = e.target.closest('.fb-btn');
+  if (!btn) return;
+  var id     = btn.dataset.id;
+  var result = btn.dataset.result;
+  try {
+    var res = await fetch('/dashboard/api/alarm/' + id + '/feedback/', {
+      method: 'PATCH',
+      headers: { 'X-CSRFToken': getCsrfToken(), 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ result: result }),
+    });
+    if (res.ok) {
+      // 해당 행의 피드백 셀만 즉시 갱신
+      var cell = btn.closest('td');
+      if (result === 'tp') {
+        cell.innerHTML = '<span style="font-size:11px;color:#2ecc71;font-weight:600;">✓ 정탐</span>'
+          + '<button class="fb-btn" data-id="' + id + '" data-result="fp"'
+          + ' style="margin-left:6px;font-size:10px;padding:2px 6px;background:transparent;border:1px solid #555;color:#888;border-radius:4px;cursor:pointer;">오탐으로 변경</button>';
+      } else {
+        cell.innerHTML = '<span style="font-size:11px;color:#e74c3c;font-weight:600;">✗ 오탐</span>'
+          + '<button class="fb-btn" data-id="' + id + '" data-result="tp"'
+          + ' style="margin-left:6px;font-size:10px;padding:2px 6px;background:transparent;border:1px solid #555;color:#888;border-radius:4px;cursor:pointer;">정탐으로 변경</button>';
+      }
+    }
+  } catch (e) {}
+});
 
 async function markAllRead() {
   try {

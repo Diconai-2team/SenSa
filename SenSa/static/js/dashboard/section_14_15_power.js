@@ -202,9 +202,12 @@
   });
 
   // ═════════════════════════════════════════════════════════
-  // ⑮ 차트 — 디바이스별 buf
+  // ⑮ 차트 (전류 중심 + ARIMA 예측 오버레이) — 디바이스별 buf
   // ═════════════════════════════════════════════════════════
   var POWER_CHART_MAX = 20;
+
+  // 디바이스별 ARIMA 예측값 저장 { deviceId: [v1, v2, ...] }
+  var predByDevice = {};
 
   function bufFor(deviceId) {
     if (!chartBufByDevice[deviceId]) {
@@ -218,9 +221,10 @@
     data: {
       labels: [],
       datasets: [
-        { label: '전류(A)', data: [], borderColor: '#ffaa00', backgroundColor: 'rgba(255,170,0,0.08)', fill: true, tension: 0.4, borderWidth: 2, pointRadius: 1 },
-        { label: '주의',    data: [], borderColor: '#ffcc00', borderWidth: 1, borderDash: [4, 3], pointRadius: 0, fill: false },
-        { label: '위험',    data: [], borderColor: '#ff4444', borderWidth: 1, borderDash: [4, 3], pointRadius: 0, fill: false },
+        { label: '전류(A)',    data: [], borderColor: '#ffaa00', backgroundColor: 'rgba(255,170,0,0.08)', fill: true,  tension: 0.4, borderWidth: 2,   pointRadius: 1 },
+        { label: '주의',      data: [], borderColor: '#ffcc00', borderWidth: 1,   borderDash: [4, 3], pointRadius: 0, fill: false },
+        { label: '위험',      data: [], borderColor: '#ff4444', borderWidth: 1,   borderDash: [4, 3], pointRadius: 0, fill: false },
+        { label: '전류 예측', data: [], borderColor: 'rgba(255,170,0,0.45)', borderWidth: 1.5, borderDash: [5, 4], pointRadius: 0, fill: false, tension: 0.4, spanGaps: false },
       ]
     },
     options: {
@@ -252,15 +256,43 @@
       chartPower.data.datasets[0].data = [];
       chartPower.data.datasets[1].data = [];
       chartPower.data.datasets[2].data = [];
+      chartPower.data.datasets[3].data = [];
       chartPower.update();
       return;
     }
-    var buf = bufFor(currentDeviceId);
-    chartPower.data.labels = buf.labels;
-    chartPower.data.datasets[0].data = buf.current;
-    chartPower.data.datasets[1].data = Array(buf.labels.length).fill(15);   // caution 임계 근사
-    chartPower.data.datasets[2].data = Array(buf.labels.length).fill(25);   // danger 임계 근사
+    var buf   = bufFor(currentDeviceId);
+    var preds = predByDevice[currentDeviceId];
+    var steps = (preds && preds.length) ? preds.length : 0;
+
+    // 라벨: 실측 + 예측 슬롯
+    var allLabels = buf.labels.slice();
+    for (var i = 1; i <= steps; i++) allLabels.push('예측+' + i);
+
+    // dataset[0] 실측: 20개 + steps개 null
+    var realData = buf.current.concat(new Array(steps).fill(null));
+
+    // dataset[3] 예측: 마지막 실측값에서 매끄럽게 연결
+    var predData = [];
+    if (steps > 0) {
+      var lastReal = buf.current.length > 0 ? buf.current[buf.current.length - 1] : null;
+      predData = new Array(buf.current.length - 1).fill(null)
+                   .concat([lastReal])   // 연결 기준점 (마지막 실측)
+                   .concat(preds);
+    }
+
+    chartPower.data.labels           = allLabels;
+    chartPower.data.datasets[0].data = realData;
+    chartPower.data.datasets[1].data = Array(allLabels.length).fill(15);   // caution 임계 근사
+    chartPower.data.datasets[2].data = Array(allLabels.length).fill(25);   // danger 임계 근사
+    chartPower.data.datasets[3].data = predData;
     chartPower.update();
   }
+
+  // ARIMA 예측값 수신 — current 메트릭만 처리
+  SenSa.on('aiPrediction', function (d) {
+    if (!d || !d.device_id || d.metric !== 'current' || !d.predicted_values) return;
+    predByDevice[d.device_id] = d.predicted_values;
+    if (d.device_id === currentDeviceId) refreshChartFromBuf();
+  });
 
 })();

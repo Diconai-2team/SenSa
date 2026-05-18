@@ -94,6 +94,21 @@ def publish_worker_position(worker_data: dict) -> None:
     _send("dashboard.workers", "worker.position", worker_data)
 
 
+def publish_ai_prediction(pred_data: dict) -> None:
+    """
+    AI 예측값(ARIMA)을 dashboard.sensors 그룹에 방송.
+
+    pred_data 예시:
+      {
+        "device_id": "gas-001",
+        "metric": "co",
+        "predicted_values": [1.2, 1.5, 1.8, ...],  # FORECAST_STEPS개
+        "steps": 10,
+      }
+    """
+    _send("dashboard.sensors", "ai.prediction", pred_data)
+
+
 def publish_sensor_update(sensor_data: dict) -> None:
     """
     센서 1개의 최신 측정값을 dashboard.sensors 그룹에 방송.

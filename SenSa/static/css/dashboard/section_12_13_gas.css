@@ -6,6 +6,36 @@
    ════════════════════════════════════════════════════════════════ */
 
 
+/* ─── ⑬ 메트릭 선택 버튼 그룹 ─── */
+.gas-metric-selector {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 4px 8px 2px;
+}
+.gas-metric-btn {
+  padding: 2px 7px;
+  font-size: 10px;
+  background: #0d1a2e;
+  color: #5a8aaa;
+  border: 1px solid #1e3050;
+  border-radius: 3px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+  white-space: nowrap;
+}
+.gas-metric-btn:hover {
+  background: #16263d;
+  color: #9abbd4;
+  border-color: #2e5080;
+}
+.gas-metric-btn.active {
+  background: #0a3a60;
+  color: #00c8ff;
+  border-color: #00c8ff;
+  font-weight: 600;
+}
+
 /* ─── ⑫ 가스 테이블: 9종이 세로로 많아서 스크롤 처리 ─── */
 #section-12-gas-table .data-table {
   display: block;

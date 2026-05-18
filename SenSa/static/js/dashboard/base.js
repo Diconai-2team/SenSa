@@ -325,6 +325,10 @@ function connectWebSocket() {
         handleSensorUpdate(msg.payload);
         break;
 
+      case 'ai.prediction':
+        SenSa.emit('aiPrediction', msg.payload);
+        break;
+
       case 'connection.established':
         console.log('[WS] auth ok, groups:', msg.payload || msg.groups);
         break;

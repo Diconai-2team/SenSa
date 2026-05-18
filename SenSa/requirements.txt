@@ -50,3 +50,9 @@ txaio==25.12.2
 typing-extensions==4.15.0
 virtualenv==21.2.0
 zope-interface==8.3
+# AI/ML 파이프라인 (ml_engine)
+numpy>=2.0
+pandas>=2.0
+scikit-learn>=1.4
+statsmodels>=0.14
+scipy>=1.12

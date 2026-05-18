@@ -24,14 +24,39 @@ class AlarmViewSet(viewsets.ReadOnlyModelViewSet):
 
     def get_queryset(self):
         qs = super().get_queryset()
-        level = self.request.query_params.get("level", "")
-        if self.request.query_params.get("unread") == "true":
+        p = self.request.query_params
+
+        level = p.get("level", "")
+        if p.get("unread") == "true":
             qs = qs.filter(is_read=False)
         if level == "danger":
             qs = qs.filter(alarm_level__in=["danger", "critical"])
         elif level in ("caution", "critical", "info"):
             qs = qs.filter(alarm_level=level)
-        return qs[:50]
+
+        device_id = p.get("device_id", "")
+        if device_id:
+            qs = qs.filter(device_id=device_id)
+
+        alarm_type = p.get("alarm_type", "")
+        if alarm_type:
+            if alarm_type == "ai":
+                qs = qs.filter(alarm_type__startswith="ai_")
+            elif alarm_type == "threshold":
+                qs = qs.filter(alarm_type__in=["sensor_caution", "sensor_danger"])
+            else:
+                qs = qs.filter(alarm_type=alarm_type)
+
+        created_after = p.get("created_after", "")
+        if created_after:
+            try:
+                from dateutil.parser import isoparse
+                qs = qs.filter(created_at__gte=isoparse(created_after))
+            except Exception:
+                pass
+
+        limit = min(int(p.get("limit", 50)), 200)
+        return qs[:limit]
 
     @action(detail=False, methods=["get"])
     def stats(self, request):
@@ -57,6 +82,22 @@ class AlarmViewSet(viewsets.ReadOnlyModelViewSet):
         """전체 알람 읽음 처리 — PATCH /dashboard/api/alarm/read_all/"""
         Alarm.objects.filter(is_read=False).update(is_read=True)
         return Response({"status": "all read"})
+
+    @action(detail=True, methods=["patch"])
+    def feedback(self, request, pk=None):
+        """AI 알람 피드백 저장 — PATCH /dashboard/api/alarm/{id}/feedback/
+        body: {"result": "tp" | "fp"}
+        """
+        alarm = self.get_object()
+        if not alarm.alarm_type.startswith('ai_'):
+            return Response({'error': 'AI 알람에만 피드백을 줄 수 있습니다'}, status=400)
+        result = request.data.get('result')
+        if result not in ('tp', 'fp'):
+            return Response({'error': '유효하지 않은 피드백 (tp 또는 fp)'}, status=400)
+        alarm.feedback = result
+        alarm.feedback_at = timezone.now()
+        alarm.save(update_fields=['feedback', 'feedback_at'])
+        return Response({'status': 'ok', 'feedback': result, 'id': alarm.id})
 
 
 @login_required(login_url="/accounts/login/")

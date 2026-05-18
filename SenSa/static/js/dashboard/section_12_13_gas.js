@@ -11,20 +11,13 @@
  *   현행 : 페이지 로드 시 /dashboard/api/device/?sensor_type=gas 호출하여
  *          DB의 가스 센서 목록을 받아오고, ‹ / › 버튼으로 순회.
  *
- *   설계 선택지와 근거:
- *     - 디바이스별 최신값 캐시(lastValueByDevice):
- *         WS는 모든 센서 데이터를 받아오므로, 페이지 전환 시 즉시
- *         이전 캐시값을 표시할 수 있어 빈 화면 방지.
- *     - 디바이스별 차트 buf(chartBufByDevice):
- *         차트도 디바이스별로 분리 누적하여 페이지 전환 시 그 센서의
- *         최근 N틱 히스토리가 즉시 보임.
- *     - 빈 데이터 표시("—"):
- *         아직 첫 데이터를 받지 못한 디바이스로 전환하면 "—" 로 노출.
+ * [Step 2 — 메트릭 선택 버튼]
+ *   차트 위 버튼(CO / O₂ / CO₂ / H₂S / …)으로 표시 가스 종류 전환.
+ *   모든 가스 버퍼를 동시에 쌓아두므로 전환 즉시 히스토리가 표시됨.
+ *   ARIMA 예측선도 선택된 메트릭에 맞춰 전환.
  *
  * [P2+ — 새 센서 자동 인식]
  *   sensa:sensorListChanged 구독으로 5초 폴링 결과 반영.
- *   새 가스 센서 추가 → 5초 내 페이지네이션 확장 (‹ N/M+1 ›).
- *   현재 보고 있는 센서 제거 → 0번으로 복귀.
  */
 (function () {
 
@@ -39,8 +32,16 @@
     o3:  { w: 0.05, d: 0.1  },   // ACGIH TLV 0.05~0.1ppm
     nh3: { w: 25,   d: 50   },   // ACGIH TWA 25ppm, STEL 35ppm
     voc: { w: 0.5,  d: 2.0  },   // TVOC 실내기준
+    // O2: 낮을수록 위험 — 차트에는 하한 임계만 표시
+    o2:  { w: 18,   d: 16   },
   };
   var LABELS = { normal: '정상', caution: '주의', danger: '위험' };
+
+  // 차트 레이블 (표시용)
+  var GAS_CHART_LABEL = {
+    o2: 'O₂(%)', co: 'CO(ppm)', co2: 'CO₂(ppm)', h2s: 'H₂S(ppm)',
+    no2: 'NO₂(ppm)', so2: 'SO₂(ppm)', o3: 'O₃(ppm)', nh3: 'NH₃(ppm)', voc: 'VOC(ppm)',
+  };
 
   // 9종 가스 키 목록
   var GAS_KEYS = ['o2', 'co', 'co2', 'h2s', 'no2', 'so2', 'o3', 'nh3', 'voc'];
@@ -68,7 +69,7 @@
   var currentDeviceId = null;
 
   var lastValueByDevice = {};        // device_id → 최신 gas 값 객체
-  var chartBufByDevice = {};         // device_id → { labels: [], co: [] }
+  var chartBufByDevice = {};         // device_id → { labels: [], o2: [], co: [], ... }
 
   // ─── DOM 참조 ───
   var prevBtn = document.getElementById('gas-pager-prev');
@@ -86,14 +87,11 @@
   });
 
   // ─── 가스 센서 목록 적용 (초기 fetch + sensorListChanged 양쪽에서 재사용) ───
-  // [P2+] 5초 폴링으로 새 가스 센서가 추가되면 페이지네이션이 자동 확장.
-  //       현재 보고 있는 센서가 제거되면 0번으로 복귀.
   function applyDeviceList(arr) {
     var fresh = arr
       .filter(function (d) { return d.sensor_type === 'gas'; })
       .sort(function (a, b) { return a.device_id.localeCompare(b.device_id); });
 
-    // 보고 있던 센서가 새 목록에도 있으면 그 인덱스 유지, 없으면 0 으로 복귀
     var keepIdx = 0;
     if (currentDeviceId) {
       var found = fresh.findIndex(function (d) { return d.device_id === currentDeviceId; });
@@ -120,7 +118,6 @@
   fetch('/dashboard/api/device/?sensor_type=gas')
     .then(function (r) { return r.json(); })
     .then(function (data) {
-      // DRF 페이지네이션 on/off 양쪽 호환
       var arr = Array.isArray(data) ? data : (data.results || []);
       applyDeviceList(arr);
     })
@@ -146,7 +143,6 @@
     if (prevBtn) prevBtn.disabled = (idx === 0);
     if (nextBtn) nextBtn.disabled = (idx === devices.length - 1);
 
-    // 캐시된 최신값이 있으면 즉시 렌더, 없으면 dash
     if (lastValueByDevice[currentDeviceId]) {
       renderTable(lastValueByDevice[currentDeviceId]);
     } else {
@@ -167,7 +163,6 @@
         badge.className = 'status-badge status-' + s;
         badge.textContent = LABELS[s];
 
-        // 해당 행(<tr>)에도 위험도 클래스 적용
         var tr = badge.closest('tr');
         if (tr) {
           tr.classList.remove('row-normal', 'row-caution', 'row-danger');
@@ -193,9 +188,6 @@
 
   // ═════════════════════════════════════════════════════════
   // gasData 이벤트 수신
-  //   - 모든 센서 데이터를 캐시에 저장 (페이지 전환 시 즉시 표시용)
-  //   - 차트 buf 도 디바이스별로 누적
-  //   - 화면 갱신은 현재 보고 있는 센서만
   // ═════════════════════════════════════════════════════════
   SenSa.on('gasData', function (d) {
     if (!d || !d.device_id || !d.gas) return;
@@ -209,13 +201,30 @@
   });
 
   // ═════════════════════════════════════════════════════════
-  // ⑬ 차트 (CO 중심) — 디바이스별 buf
+  // ⑬ 차트 — 메트릭 선택 버튼 + ARIMA 예측 오버레이
   // ═════════════════════════════════════════════════════════
   var GAS_CHART_MAX = 20;
+  var selectedMetric = 'co';   // 현재 차트에 표시 중인 가스 종류
+
+  // 디바이스별, 메트릭별 ARIMA 예측값 저장 { device_id: { metric: [...] } }
+  var predByDevice = {};
+
+  // ─── 메트릭 선택 버튼 이벤트 ───
+  var metricBtns = document.querySelectorAll('#section-13-gas-chart .gas-metric-btn');
+  metricBtns.forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      metricBtns.forEach(function (b) { b.classList.remove('active'); });
+      btn.classList.add('active');
+      selectedMetric = btn.dataset.metric;
+      refreshChartFromBuf();
+    });
+  });
 
   function bufFor(deviceId) {
     if (!chartBufByDevice[deviceId]) {
-      chartBufByDevice[deviceId] = { labels: [], co: [] };
+      var init = { labels: [] };
+      GAS_KEYS.forEach(function (k) { init[k] = []; });
+      chartBufByDevice[deviceId] = init;
     }
     return chartBufByDevice[deviceId];
   }
@@ -225,9 +234,10 @@
     data: {
       labels: [],
       datasets: [
-        { label: 'CO',   data: [], borderColor: '#00c8ff', backgroundColor: 'rgba(0,200,255,0.08)', fill: true, tension: 0.4, borderWidth: 2, pointRadius: 1 },
-        { label: '주의', data: [], borderColor: '#ffcc00', borderWidth: 1, borderDash: [4, 3], pointRadius: 0, fill: false },
-        { label: '위험', data: [], borderColor: '#ff4444', borderWidth: 1, borderDash: [4, 3], pointRadius: 0, fill: false },
+        { label: 'CO(ppm)',    data: [], borderColor: '#00c8ff', backgroundColor: 'rgba(0,200,255,0.08)', fill: true,  tension: 0.4, borderWidth: 2,   pointRadius: 1 },
+        { label: '주의',       data: [], borderColor: '#ffcc00', borderWidth: 1,   borderDash: [4, 3], pointRadius: 0, fill: false },
+        { label: '위험',       data: [], borderColor: '#ff4444', borderWidth: 1,   borderDash: [4, 3], pointRadius: 0, fill: false },
+        { label: 'CO(ppm) 예측', data: [], borderColor: 'rgba(0,200,255,0.45)', borderWidth: 1.5, borderDash: [5, 4], pointRadius: 0, fill: false, tension: 0.4, spanGaps: false },
       ]
     },
     options: {
@@ -246,28 +256,64 @@
     var buf = bufFor(deviceId);
     var now = new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
     buf.labels.push(now);
-    buf.co.push(gas.co);
+    GAS_KEYS.forEach(function (k) {
+      buf[k].push(gas[k] !== undefined && gas[k] !== null ? gas[k] : null);
+    });
     if (buf.labels.length > GAS_CHART_MAX) {
       buf.labels.shift();
-      buf.co.shift();
+      GAS_KEYS.forEach(function (k) { buf[k].shift(); });
     }
   }
 
   function refreshChartFromBuf() {
     if (!currentDeviceId) {
       chartGas.data.labels = [];
-      chartGas.data.datasets[0].data = [];
-      chartGas.data.datasets[1].data = [];
-      chartGas.data.datasets[2].data = [];
+      chartGas.data.datasets.forEach(function (ds) { ds.data = []; });
       chartGas.update();
       return;
     }
-    var buf = bufFor(currentDeviceId);
-    chartGas.data.labels = buf.labels;
-    chartGas.data.datasets[0].data = buf.co;
-    chartGas.data.datasets[1].data = Array(buf.labels.length).fill(25);
-    chartGas.data.datasets[2].data = Array(buf.labels.length).fill(200);
+    var buf    = bufFor(currentDeviceId);
+    var devPreds = predByDevice[currentDeviceId];
+    var preds  = devPreds && devPreds[selectedMetric];
+    var steps  = (preds && preds.length) ? preds.length : 0;
+
+    // 라벨: 실측 + 예측 슬롯
+    var allLabels = buf.labels.slice();
+    for (var i = 1; i <= steps; i++) allLabels.push('예측+' + i);
+
+    // dataset[0] 실측
+    var metricBuf = buf[selectedMetric] || [];
+    var realData  = metricBuf.concat(new Array(steps).fill(null));
+
+    // dataset[3] 예측: 마지막 실측값에서 매끄럽게 연결
+    var predData = [];
+    if (steps > 0) {
+      var lastReal = metricBuf.length > 0 ? metricBuf[metricBuf.length - 1] : null;
+      predData = new Array(metricBuf.length - 1).fill(null)
+                   .concat([lastReal])
+                   .concat(preds);
+    }
+
+    // 선택된 메트릭 임계치 + 레이블 반영
+    var th    = TH[selectedMetric] || {};
+    var lbl   = GAS_CHART_LABEL[selectedMetric] || selectedMetric;
+
+    chartGas.data.labels              = allLabels;
+    chartGas.data.datasets[0].label   = lbl;
+    chartGas.data.datasets[0].data    = realData;
+    chartGas.data.datasets[1].data    = th.w !== undefined ? Array(allLabels.length).fill(th.w) : [];
+    chartGas.data.datasets[2].data    = th.d !== undefined ? Array(allLabels.length).fill(th.d) : [];
+    chartGas.data.datasets[3].label   = lbl + ' 예측';
+    chartGas.data.datasets[3].data    = predData;
     chartGas.update();
   }
+
+  // ARIMA 예측값 수신 — 모든 가스 메트릭 처리
+  SenSa.on('aiPrediction', function (d) {
+    if (!d || !d.device_id || !d.metric || !d.predicted_values) return;
+    if (!predByDevice[d.device_id]) predByDevice[d.device_id] = {};
+    predByDevice[d.device_id][d.metric] = d.predicted_values;
+    if (d.device_id === currentDeviceId && d.metric === selectedMetric) refreshChartFromBuf();
+  });
 
 })();

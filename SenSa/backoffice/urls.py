@@ -194,4 +194,8 @@ urlpatterns = [
     path('api/backups/<str:target>/<str:filename>/preview/',     views.backup_preview_api,    name='api-backup-preview'),
     path('api/backups/<str:target>/<str:filename>/download/',    views.backup_download_api,   name='api-backup-download'),
     path('api/backups/<str:target>/<str:filename>/delete/',      views.backup_delete_api,     name='api-backup-delete'),
+
+    # AI 성능 지표
+    path('ai-metrics/',              views.ai_metrics_view,         name='ai-metrics'),
+    path('api/eval-metrics/',        views.eval_metrics_api,        name='api-eval-metrics'),
 ]

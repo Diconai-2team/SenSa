@@ -167,6 +167,14 @@
           </a>
         </li>
         {% endif %}
+        {% if 'ai_metrics' in visible_menus %}
+        <li class="bo-snb-item {% if active_menu == 'ai_metrics' %}active{% endif %}">
+          <a href="{% url 'backoffice:ai-metrics' %}">
+            <span class="bo-snb-icon">🤖</span>
+            <span class="bo-snb-label">AI 성능 지표</span>
+          </a>
+        </li>
+        {% endif %}
       </ul>
     </nav>
 

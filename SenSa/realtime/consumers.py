@@ -98,3 +98,13 @@ class DashboardConsumer(AsyncJsonWebsocketConsumer):
             "type": "sensor.update",
             "payload": event["payload"],
         })
+
+    async def ai_prediction(self, event):
+        """
+        dashboard.sensors 그룹에 ai.prediction 메시지가 오면 호출.
+        ARIMA 예측값을 브라우저 차트로 전달.
+        """
+        await self.send_json({
+            "type": "ai.prediction",
+            "payload": event["payload"],
+        })
