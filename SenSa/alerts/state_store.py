@@ -32,7 +32,11 @@ def _client() -> redis.Redis:
 
 
 KEY_FORMAT = "sensa:worker:{worker_id}:alarm"
-TTL_SEC = 300
+# [수정] 5분 → 30분
+# 기존 5분 TTL 은 작업자/센서가 5분간 데이터를 안 보내면 상태가 safe/normal 로 초기화됨.
+# 재연결 시 이미 caution/danger 상태임에도 state_caution_enter 알람이 재발행되는 문제.
+# 30분으로 연장 → 단기 통신 끊김(연결 불안정, 재시작 등)에서 상태 보존.
+TTL_SEC = 1800
 
 
 def get_worker_snapshot(worker_id: str) -> dict:

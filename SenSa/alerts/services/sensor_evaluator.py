@@ -5,7 +5,6 @@ Public API: evaluate_sensor(device_id, sensor_type, observed_status, detail='')
 사용처: dashboard/views.py 의 sensor data 처리 핸들러.
 """
 import time
-from .anomaly_detector import detect_anomaly
 from ..models import Alarm
 from ..state_store import (
     get_sensor_snapshot, commit_sensor_state,
@@ -16,17 +15,8 @@ from .geofence_utils import _find_sensor_geofence
 
 
 def evaluate_sensor(device_id: str, sensor_type: str,
-                     observed_status: str, detail: str = '',
-                     raw_value: float | None = None,
-                     is_ai: bool = False,
-                     ai_detail: str = '') -> list[dict]:
-    """
-    센서 1개의 상태 전이 판정 + 필요 시 알람 생성.
-
-    Args:
-        is_ai     : ARIMA 탐지로 격상된 경우 True
-        ai_detail : 이상 탐지된 센서 종류 문자열 (예: "CO, H2S")
-    """
+                     observed_status: str, detail: str = '') -> list[dict]:
+    """센서 1개의 상태 전이 판정 + 필요 시 알람 생성."""
     if observed_status not in ("normal", "caution", "danger"):
         return []
 
@@ -76,8 +66,7 @@ def evaluate_sensor(device_id: str, sensor_type: str,
             official_state, target_state
         )
         message = _build_sensor_message(
-            device_id, sensor_type, official_state, target_state,
-            detail, is_ai, ai_detail
+            device_id, sensor_type, official_state, target_state, detail
         )
 
         fence = _find_sensor_geofence(device_id) if target_state != 'normal' else None
@@ -89,7 +78,6 @@ def evaluate_sensor(device_id: str, sensor_type: str,
             sensor_type=sensor_type,
             geofence=fence,
             message=message,
-            is_ai=is_ai,
         )
 
         created.append({
@@ -104,7 +92,6 @@ def evaluate_sensor(device_id: str, sensor_type: str,
             'reason':        reason,
             'state_from':    official_state,
             'state_to':      target_state,
-            'is_ai':         is_ai,
         })
 
         if confirmed_new_state is not None:
@@ -121,49 +108,36 @@ def _is_sensor_escalation(prev: str, curr: str) -> bool:
 
 
 def _sensor_transition_to_type_and_level(prev: str, curr: str) -> tuple[str, str]:
+    # ── 명시적 전이 (prev → curr 다름) ──
     if prev == 'normal' and curr == 'caution':
         return 'sensor_caution', 'caution'
     if prev == 'normal' and curr == 'danger':
         return 'sensor_danger', 'danger'
     if prev == 'caution' and curr == 'danger':
         return 'sensor_danger', 'danger'
+    # ── 회복 ──
     if prev == 'danger' and curr == 'caution':
         return 'sensor_recover_partial', 'info'
     if prev in ('danger', 'caution') and curr == 'normal':
         return 'sensor_recover_normal', 'info'
+    # ── 지속 (prev == curr, reason='ongoing') ──
+    # [수정] 기존에는 sensor_caution/sensor_danger 를 ongoing 에도 재사용 →
+    #        알람 목록에서 '최초 감지'와 '지속 중' 구분 불가.
+    #        sensor_ongoing 으로 분리해 두 유형을 명확하게 구분.
     if curr == 'danger':
-        return 'sensor_danger', 'danger'
+        return 'sensor_ongoing', 'danger'
     if curr == 'caution':
-        return 'sensor_caution', 'caution'
+        return 'sensor_ongoing', 'caution'
     return 'sensor_recover_normal', 'info'
 
 
 def _build_sensor_message(device_id: str, sensor_type: str,
-                          prev: str, curr: str, detail: str,
-                          is_ai: bool = False,
-                          ai_detail: str = '') -> str:
-    """
-    센서 전이별 메시지.
-
-    is_ai=True 시:
-      "AI예측 - sensor_01 CO, H2S 이상!"
-      "AI예측 - power_01 전력 이상!"
-    is_ai=False 시: 기존 메시지 유지.
-    """
+                          prev: str, curr: str, detail: str) -> str:
     label_map = {'gas': '가스센서', 'power': '전력센서'}
     label = label_map.get(sensor_type, '센서')
     detail_str = f" [{detail}]" if detail else ''
 
-    # ─── ARIMA AI 탐지 메시지 ───
-    if is_ai and ai_detail:
-        if curr == 'caution':
-            return f"AI예측 - {device_id} {ai_detail} 이상!"
-        if curr == 'danger':
-            return f"AI예측 - {device_id} {ai_detail} 위험 수준 이상!"
-        if curr == 'normal':
-            return f"AI예측 - {device_id} {ai_detail} 정상 복귀"
-
-    # ─── 기존 고정 임계치 메시지 ───
+    # ─── 임계치 기반 전이 메시지 ───
     if prev == 'normal' and curr == 'caution':
         return f"{label} {device_id} 주의 수준 감지{detail_str}"
     if prev == 'normal' and curr == 'danger':
