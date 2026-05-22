@@ -25,9 +25,8 @@ geofence/scenarios/operational_base.py — Phase J 운영 시나리오 베이스
     4. _start_sustained_spike() — 각 영향 sensor 에 차등 spike Celery 큐잉
 """
 import math
-import random
 from datetime import timedelta
-from typing import List, Optional, Tuple
+from typing import List, Optional
 
 from django.utils import timezone
 
@@ -191,13 +190,9 @@ class OperationalScenarioBase:
         - 1개 (source 만): 정원 (반경 = max(80, diffusion_r * 0.6))
         - 2+ : convex hull + margin
         """
-        from geofence.zone_lifecycle import (
-            create_dynamic_zone, INITIAL_ELAPSED_SEC,
-        )
+        from geofence.zone_lifecycle import create_dynamic_zone
         from geofence.models import GeoFence
-        from geofence.polygon_utils import (
-            build_zone_polygon, circle_polygon, hull_with_margin,
-        )
+        from geofence.polygon_utils import circle_polygon, hull_with_margin
 
         source = self.source_sensor
 
@@ -235,6 +230,15 @@ class OperationalScenarioBase:
             polygon=polygon,
         )
 
+        # on_zone_created 는 초기 작은 원 polygon 으로 이미 발행됨.
+        # .update() 로 최종 polygon 이 변경됐으므로 재발행하여 프론트엔드 동기화.
+        try:
+            zone_final = GeoFence.objects.get(pk=zone.pk)
+            from geofence.events import on_polygon_expanded
+            on_polygon_expanded(zone_final, [])
+        except Exception:
+            pass
+
         return self.created_zone_ids
 
     # ── spike 지속 주입 (각 영향 sensor 별 차등) ────────────────
@@ -269,19 +273,32 @@ class OperationalScenarioBase:
             if base_v is None or base_v >= a['spike_value']:
                 base_v = a['spike_value'] * 0.3   # fallback (30% 시작)
 
-            sustain_spike_task.apply_async(
-                args=[
-                    zone_id,
-                    sensor.id,
-                    self.GAS,
-                    a['spike_value'],             # 목표 spike (거리 차등)
-                    self.SPIKE_NOISE,
-                    self.SPIKE_INTERVAL_SEC,
-                    max_steps, 0,
-                    float(base_v),                # 점진 증가 시작점
-                    30.0,                         # ramp-up 30초
-                ],
-            )
+            # Celery 워커 실행 여부 확인 (0.5초 ping)
+            _worker_alive = False
+            try:
+                from celery import current_app as _capp
+                _worker_alive = bool(
+                    _capp.control.inspect(timeout=0.5).ping()
+                )
+            except Exception:
+                pass
+
+            if _worker_alive:
+                sustain_spike_task.apply_async(args=[
+                    zone_id, sensor.id, self.GAS,
+                    a['spike_value'], self.SPIKE_NOISE,
+                    self.SPIKE_INTERVAL_SEC, max_steps, 0,
+                    float(base_v), 30.0,
+                ])
+            else:
+                # Celery 워커 없을 때 스레드 기반 폴백
+                from geofence.tasks_scenario import start_spike_thread
+                start_spike_thread(
+                    zone_id, sensor.id, self.GAS,
+                    a['spike_value'], self.SPIKE_NOISE,
+                    self.SPIKE_INTERVAL_SEC, max_steps,
+                    float(base_v), 30.0,
+                )
             # zone 의 confirmed_devices 에 추가 (이미 spike 받는 sensor 추적)
             zone.confirmed_devices.add(sensor)
 

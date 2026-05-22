@@ -52,6 +52,7 @@ INSTALLED_APPS = [
     'safety',
     'vr_training',     # ← 추가
     'backoffice',      # ← 백오피스 (슈퍼관리자 채널)
+    'ml_engine',       # ← AI 이상 탐지 파이프라인
 ]
 
 # ==========================================================
@@ -102,6 +103,9 @@ DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.sqlite3',
         'NAME': BASE_DIR / 'db.sqlite3',
+        'OPTIONS': {
+            'timeout': 20,  # Python sqlite3 레벨 대기 (초) — 기본 5초에서 상향
+        },
     }
 }
 

@@ -11,6 +11,7 @@
       --bg:          #0d1117;
       --bg-card:     #161b22;
       --bg-hover:    #1c2230;
+      --bg-sub:      #0b0f16;
       --border:      #21262d;
       --text:        #c9d1d9;
       --text-dim:    #6e7681;
@@ -51,9 +52,40 @@
     .table-wrap { padding: 16px 24px; }
     table { width: 100%; border-collapse: collapse; font-size: 12px; }
     thead th { text-align: left; padding: 8px 12px; font-size: 11px; font-weight: 600; color: var(--text-dim); border-bottom: 1px solid var(--border); text-transform: uppercase; letter-spacing: 0.5px; }
-    tbody tr { border-bottom: 1px solid var(--border); transition: background 0.1s; }
-    tbody tr:hover { background: var(--bg-hover); }
+
+    /* ── 일반 행 ── */
+    tbody tr.alarm-row { border-bottom: 1px solid var(--border); transition: background 0.1s; }
+    tbody tr.alarm-row:hover { background: var(--bg-hover); }
     tbody td { padding: 10px 12px; vertical-align: middle; }
+
+    /* ── 그룹 헤더 행 ── */
+    tbody tr.group-row { border-bottom: 1px solid var(--border); cursor: pointer; transition: background 0.1s; }
+    tbody tr.group-row:hover { background: var(--bg-hover); }
+    tbody tr.group-row td { padding: 10px 12px; vertical-align: middle; }
+
+    /* ── 서브 행 (접혀 있음) ── */
+    tbody tr.sub-row { border-bottom: 1px solid #1a1f28; background: var(--bg-sub); transition: background 0.1s; }
+    tbody tr.sub-row:hover { background: #0f141c; }
+    tbody tr.sub-row td { padding: 8px 12px 8px 28px; vertical-align: middle; font-size: 11px; }
+    tbody tr.sub-row.hidden { display: none; }
+
+    /* ── 그룹 배지 ── */
+    .group-count-badge {
+      display: inline-flex; align-items: center; gap: 4px;
+      font-size: 10px; font-weight: 700;
+      padding: 2px 7px; border-radius: 10px;
+      background: #1a2535; color: #58a6ff; border: 1px solid #1f3a6a;
+      margin-left: 6px; white-space: nowrap; vertical-align: middle;
+    }
+    .grp-arrow {
+      display: inline-block; font-size: 9px; color: var(--text-dim);
+      margin-right: 4px; transition: transform 0.15s; vertical-align: middle;
+      width: 10px; text-align: center;
+    }
+    .grp-arrow.open { transform: rotate(90deg); }
+    .time-range { font-size: 10px; color: var(--text-dim); margin-top: 2px; }
+
+    /* ── 레벨 뱃지 ── */
     .level-badge { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; white-space: nowrap; }
     .level-badge.danger   { background: #3d1515; color: var(--color-danger);   border: 1px solid var(--color-danger); }
     .level-badge.caution  { background: #3d3000; color: var(--color-caution);  border: 1px solid var(--color-caution); }
@@ -73,6 +105,14 @@
       color: #58a6ff; border: 1px solid #58a6ff55;
       margin-left: 5px; vertical-align: middle; letter-spacing: 0.3px;
     }
+    .char-badge {
+      display: inline-block; font-size: 9px; font-weight: 600;
+      padding: 1px 6px; border-radius: 4px; margin-left: 4px;
+      vertical-align: middle; white-space: nowrap;
+    }
+    .char-badge.fp-suspect  { background: #3d1a00; color: #ff8c42; border: 1px solid #ff8c4255; }
+    .char-badge.unlabeled   { background: #1a1a2e; color: #a78bfa; border: 1px solid #a78bfa55; }
+    .char-badge.single-det  { background: #0d2020; color: #34d399; border: 1px solid #34d39955; }
     .empty-state { text-align: center; padding: 60px 0; color: var(--text-dim); font-size: 13px; }
     .empty-state .icon { font-size: 36px; margin-bottom: 12px; }
     .pagination { display: flex; justify-content: center; align-items: center; gap: 6px; padding: 16px 24px; }
@@ -85,6 +125,13 @@
     .btn-ghost { background: none; color: var(--text-dim); }
     .btn-ghost:hover { background: var(--bg-hover); color: var(--text); }
     .type-text { font-size: 11px; color: var(--text-dim); }
+    /* 그루핑 안내 */
+    .group-hint {
+      display: flex; align-items: center; gap: 8px;
+      padding: 8px 24px; font-size: 11px; color: var(--text-dim);
+      border-bottom: 1px solid var(--border); background: #0f1319;
+    }
+    .group-hint .dot { width: 6px; height: 6px; border-radius: 50%; background: #58a6ff; flex-shrink: 0; }
     @media (max-width: 768px) { .stats-row { grid-template-columns: repeat(2, 1fr); } .hide-mobile { display: none; } }
   </style>
 </head>
@@ -94,6 +141,17 @@
   <a class="back-link" href="/dashboard/">← 대시보드로</a>
   <h1>🔔 알람 기록</h1>
   <div class="header-actions">
+    <!-- 기간 선택 -->
+    <select id="days-select" class="btn btn-ghost" onchange="changeDays(this.value)" style="cursor:pointer;">
+      <option value="1"  {% if days == 1  %}selected{% endif %}>최근 1일</option>
+      <option value="7"  {% if days == 7  %}selected{% endif %}>최근 7일</option>
+      <option value="30" {% if days == 30 %}selected{% endif %}>최근 30일</option>
+      <option value="0"  {% if days == 0  %}selected{% endif %}>전체</option>
+    </select>
+    <!-- 자동 새로고침 -->
+    <button id="auto-refresh-btn" class="btn btn-ghost" onclick="toggleAutoRefresh()" title="자동 새로고침 (10초)">
+      🔄 자동갱신 <span id="refresh-state" style="color: var(--text-dim);">OFF</span>
+    </button>
     <button class="btn btn-ghost" onclick="markAllRead()">✓ 모두 읽음 처리</button>
   </div>
 </div>
@@ -124,23 +182,30 @@
 
 <!-- 필터 탭 -->
 <div class="filter-tabs">
-  <a href="?level=all" class="filter-tab all {% if level_filter == 'all' %}active{% endif %}">
+  <a href="?level=all&days={{ days }}" class="filter-tab all {% if level_filter == 'all' %}active{% endif %}">
     전체 <span class="badge">{{ stats.total }}</span>
   </a>
-  <a href="?level=danger" class="filter-tab danger {% if level_filter == 'danger' %}active{% endif %}">
+  <a href="?level=danger&days={{ days }}" class="filter-tab danger {% if level_filter == 'danger' %}active{% endif %}">
     🔴 위험 <span class="badge">{{ stats.danger }}</span>
   </a>
-  <a href="?level=caution" class="filter-tab caution {% if level_filter == 'caution' %}active{% endif %}">
+  <a href="?level=caution&days={{ days }}" class="filter-tab caution {% if level_filter == 'caution' %}active{% endif %}">
     ⚠️ 주의 <span class="badge">{{ stats.caution }}</span>
   </a>
-  <a href="?level=ai" class="filter-tab ai {% if level_filter == 'ai' %}active{% endif %}">
+  <a href="?level=ai&days={{ days }}" class="filter-tab ai {% if level_filter == 'ai' %}active{% endif %}">
     🤖 AI예측 <span class="badge">{{ stats.ai }}</span>
   </a>
 </div>
 
+<!-- 그루핑 안내 -->
+<div class="group-hint">
+  <span class="dot"></span>
+  동일 기기·유형의 연속 알람은 하나의 이벤트로 묶어 표시합니다. 행을 클릭하면 세부 알람을 펼쳐 볼 수 있습니다.
+  &nbsp;·&nbsp; 새 알람 발생 시 해당 그룹이 최상단으로 이동합니다 (자동갱신 ON 시 10초마다 반영).
+</div>
+
 <!-- 알람 테이블 -->
 <div class="table-wrap">
-  {% if alarms %}
+  {% if alarm_groups %}
   <table>
     <thead>
       <tr>
@@ -154,68 +219,140 @@
       </tr>
     </thead>
     <tbody>
-      {% for alarm in alarms %}
-      <tr>
-        <td><span class="read-dot {% if alarm.is_read %}read{% else %}unread{% endif %}"></span></td>
-        <td>
-          {% if alarm.alarm_level == 'danger' %}
-            <span class="level-badge danger">🔴 위험</span>
-          {% elif alarm.alarm_level == 'critical' %}
-            <span class="level-badge critical">🚨 심각</span>
-          {% elif alarm.alarm_level == 'caution' %}
-            <span class="level-badge caution">⚠️ 주의</span>
-          {% else %}
-            <span class="level-badge info">ℹ️ 정보</span>
-          {% endif %}
-        </td>
-        <td style="white-space:nowrap; color: var(--text-dim); font-size:11px;">
-          {{ alarm.created_at|date:"Y-m-d" }}<br>
-          <span style="font-size:12px; color: var(--text);">{{ alarm.created_at|date:"H:i:s" }}</span>
-        </td>
-        <td class="msg-cell">
-          <div class="msg-text">
-            {{ alarm.message }}
-            {% if alarm.is_ai %}<span class="ai-badge">🤖 AI</span>{% endif %}
-          </div>
-          {% if alarm.device_id %}
-          <div class="msg-meta">센서: {{ alarm.device_id }}{% if alarm.sensor_type %} ({{ alarm.sensor_type }}){% endif %}</div>
-          {% endif %}
-        </td>
-        <td class="hide-mobile">
-          <span class="type-text">
-            {% if alarm.alarm_type == 'geofence_enter' %}위험구역 진입
-            {% elif alarm.alarm_type == 'sensor_caution' %}센서 주의
-            {% elif alarm.alarm_type == 'sensor_danger' %}센서 위험
-            {% elif alarm.alarm_type == 'combined' %}복합 위험
-            {% else %}{{ alarm.alarm_type }}{% endif %}
-          </span>
-        </td>
-        <td class="hide-mobile" style="font-size:11px;">
-          {% if alarm.worker_name %}<span style="color:var(--text);">{{ alarm.worker_name }}</span>
-          {% else %}<span style="color:var(--border);">—</span>{% endif %}
-        </td>
-        <td class="hide-mobile" style="font-size:11px;">
-          {% if alarm.geofence %}<span style="color:var(--text);">{{ alarm.geofence.name }}</span>
-          {% else %}<span style="color:var(--border);">—</span>{% endif %}
-        </td>
-      </tr>
+      {% for group in alarm_groups %}
+        {% if group.count == 1 %}
+        {# ── 단일 알람: 일반 행 ── #}
+        {% with alarm=group.first_alarm %}
+        <tr class="alarm-row">
+          <td><span class="read-dot {% if alarm.is_read %}read{% else %}unread{% endif %}"></span></td>
+          <td>
+            {% if alarm.alarm_level == 'critical' %}<span class="level-badge critical">🚨 심각</span>
+            {% elif alarm.alarm_level == 'danger' %}<span class="level-badge danger">🔴 위험</span>
+            {% elif alarm.alarm_level == 'caution' %}<span class="level-badge caution">⚠️ 주의</span>
+            {% else %}<span class="level-badge info">ℹ️ 정보</span>{% endif %}
+          </td>
+          <td style="white-space:nowrap; color: var(--text-dim); font-size:11px;">
+            {{ alarm.created_at|date:"Y-m-d" }}<br>
+            <span style="font-size:12px; color: var(--text);">{{ alarm.created_at|date:"H:i:s" }}</span>
+          </td>
+          <td class="msg-cell">
+            <div class="msg-text">
+              {{ alarm.message }}
+              {% if alarm.is_ai %}<span class="ai-badge">🤖 AI</span>{% endif %}
+              {% if alarm.is_ai %}
+                {% if alarm.alarm_level == 'danger' and not alarm.has_threshold_after %}
+                  <span class="char-badge fp-suspect" title="danger 수준이지만 10분 내 임계치 알람 없음 — 오탐 의심">❓ FP 의심</span>
+                {% endif %}
+                {% if alarm.alarm_type in single_detector_types %}
+                  <span class="char-badge single-det" title="탐지기 1개만 발화 — 불확실한 케이스">🔬 단일탐지</span>
+                {% endif %}
+              {% endif %}
+            </div>
+            {% if alarm.device_id %}
+            <div class="msg-meta">센서: {{ alarm.device_id }}{% if alarm.sensor_type %} ({{ alarm.sensor_type }}){% endif %}</div>
+            {% endif %}
+          </td>
+          <td class="hide-mobile"><span class="type-text">{{ alarm.alarm_type }}</span></td>
+          <td class="hide-mobile" style="font-size:11px;">
+            {% if alarm.worker_name %}<span>{{ alarm.worker_name }}</span>
+            {% else %}<span style="color:var(--border);">—</span>{% endif %}
+          </td>
+          <td class="hide-mobile" style="font-size:11px;">
+            {% if alarm.geofence %}<span>{{ alarm.geofence.name }}</span>
+            {% else %}<span style="color:var(--border);">—</span>{% endif %}
+          </td>
+        </tr>
+        {% endwith %}
+
+        {% else %}
+        {# ── 복수 알람 그룹: 접기/펼치기 행 ── #}
+        {% with rep=group.representative gid=forloop.counter %}
+        <tr class="group-row" onclick="toggleGroup({{ gid }})">
+          <td>
+            <span class="read-dot {% if rep.is_read %}read{% else %}unread{% endif %}"></span>
+          </td>
+          <td>
+            {% if group.max_level == 'critical' %}<span class="level-badge critical">🚨 심각</span>
+            {% elif group.max_level == 'danger' %}<span class="level-badge danger">🔴 위험</span>
+            {% elif group.max_level == 'caution' %}<span class="level-badge caution">⚠️ 주의</span>
+            {% else %}<span class="level-badge info">ℹ️ 정보</span>{% endif %}
+          </td>
+          <td style="white-space:nowrap; color: var(--text-dim); font-size:11px;">
+            <span id="grp-arrow-{{ gid }}" class="grp-arrow">▶</span>
+            {{ group.first_at|date:"H:i:s" }}<br>
+            <span class="time-range">~ {{ group.last_at|date:"H:i:s" }}</span>
+          </td>
+          <td class="msg-cell">
+            <div class="msg-text">
+              {{ group.first_alarm.message }}
+              {% if rep.is_ai %}<span class="ai-badge">🤖 AI</span>{% endif %}
+              <span class="group-count-badge">{{ group.count }}회 반복</span>
+            </div>
+            {% if group.device_id %}
+            <div class="msg-meta">센서: {{ group.device_id }}</div>
+            {% endif %}
+          </td>
+          <td class="hide-mobile"><span class="type-text">{{ group.alarm_type }}</span></td>
+          <td class="hide-mobile" style="font-size:11px;">
+            {% if rep.worker_name %}<span>{{ rep.worker_name }}</span>
+            {% else %}<span style="color:var(--border);">—</span>{% endif %}
+          </td>
+          <td class="hide-mobile" style="font-size:11px;">
+            {% if rep.geofence %}<span>{{ rep.geofence.name }}</span>
+            {% else %}<span style="color:var(--border);">—</span>{% endif %}
+          </td>
+        </tr>
+
+        {# 서브 행 #}
+        {% for alarm in group.alarms %}
+        <tr class="sub-row hidden" data-group="{{ gid }}">
+          <td><span class="read-dot {% if alarm.is_read %}read{% else %}unread{% endif %}"></span></td>
+          <td>
+            {% if alarm.alarm_level == 'critical' %}<span class="level-badge critical">🚨 심각</span>
+            {% elif alarm.alarm_level == 'danger' %}<span class="level-badge danger">🔴 위험</span>
+            {% elif alarm.alarm_level == 'caution' %}<span class="level-badge caution">⚠️ 주의</span>
+            {% else %}<span class="level-badge info">ℹ️ 정보</span>{% endif %}
+          </td>
+          <td style="white-space:nowrap; color: var(--text-dim); font-size:11px;">
+            {{ alarm.created_at|date:"H:i:s" }}
+          </td>
+          <td class="msg-cell">
+            <div class="msg-text">
+              {{ alarm.message }}
+              {% if alarm.is_ai %}
+                {% if alarm.alarm_level == 'danger' and not alarm.has_threshold_after %}
+                  <span class="char-badge fp-suspect" title="danger 수준이지만 10분 내 임계치 알람 없음 — 오탐 의심">❓ FP 의심</span>
+                {% endif %}
+                {% if alarm.alarm_type in single_detector_types %}
+                  <span class="char-badge single-det" title="탐지기 1개만 발화">🔬 단일탐지</span>
+                {% endif %}
+              {% endif %}
+            </div>
+          </td>
+          <td class="hide-mobile"></td>
+          <td class="hide-mobile"></td>
+          <td class="hide-mobile"></td>
+        </tr>
+        {% endfor %}
+        {% endwith %}
+        {% endif %}
       {% endfor %}
     </tbody>
   </table>
 
-  {% if alarms.has_other_pages %}
+  {% if alarm_groups.has_other_pages %}
   <div class="pagination">
-    {% if alarms.has_previous %}
-      <a href="?level={{ level_filter }}&page={{ alarms.previous_page_number }}">‹</a>
+    {% if alarm_groups.has_previous %}
+      <a href="?level={{ level_filter }}&days={{ days }}&page={{ alarm_groups.previous_page_number }}">‹</a>
     {% else %}<span class="disabled">‹</span>{% endif %}
-    {% for num in alarms.paginator.page_range %}
-      {% if alarms.number == num %}<span class="current">{{ num }}</span>
-      {% elif num > alarms.number|add:'-3' and num < alarms.number|add:'3' %}
-        <a href="?level={{ level_filter }}&page={{ num }}">{{ num }}</a>
+    {% for num in alarm_groups.paginator.page_range %}
+      {% if alarm_groups.number == num %}<span class="current">{{ num }}</span>
+      {% elif num > alarm_groups.number|add:'-3' and num < alarm_groups.number|add:'3' %}
+        <a href="?level={{ level_filter }}&days={{ days }}&page={{ num }}">{{ num }}</a>
       {% endif %}
     {% endfor %}
-    {% if alarms.has_next %}
-      <a href="?level={{ level_filter }}&page={{ alarms.next_page_number }}">›</a>
+    {% if alarm_groups.has_next %}
+      <a href="?level={{ level_filter }}&days={{ days }}&page={{ alarm_groups.next_page_number }}">›</a>
     {% else %}<span class="disabled">›</span>{% endif %}
   </div>
   {% endif %}
@@ -232,10 +369,13 @@
 </div>
 
 <script>
+// ── CSRF ────────────────────────────────────────────────────
 function getCsrfToken() {
   var c = document.cookie.split(';').find(function(c) { return c.trim().startsWith('csrftoken='); });
   return c ? c.split('=')[1] : '';
 }
+
+// ── 모두 읽음 ───────────────────────────────────────────────
 async function markAllRead() {
   try {
     var res = await fetch('/dashboard/api/alarm/read_all/', {
@@ -249,6 +389,44 @@ async function markAllRead() {
       });
     }
   } catch (e) {}
+}
+
+// ── 그룹 펼치기/접기 ────────────────────────────────────────
+function toggleGroup(gid) {
+  var rows  = document.querySelectorAll('[data-group="' + gid + '"]');
+  var arrow = document.getElementById('grp-arrow-' + gid);
+  if (!rows.length) return;
+  var isOpen = !rows[0].classList.contains('hidden');
+  rows.forEach(function(r) { r.classList.toggle('hidden', isOpen); });
+  if (arrow) arrow.classList.toggle('open', !isOpen);
+}
+
+// ── 기간 변경 ───────────────────────────────────────────────
+function changeDays(val) {
+  var url = new URL(window.location.href);
+  url.searchParams.set('days', val);
+  url.searchParams.delete('page');  // 기간 바꾸면 1페이지로
+  window.location.href = url.toString();
+}
+
+// ── 자동 새로고침 (10초) ────────────────────────────────────
+var _refreshTimer = null;
+
+function toggleAutoRefresh() {
+  var btn   = document.getElementById('auto-refresh-btn');
+  var state = document.getElementById('refresh-state');
+  if (_refreshTimer) {
+    clearInterval(_refreshTimer);
+    _refreshTimer = null;
+    state.textContent = 'OFF';
+    state.style.color = 'var(--text-dim)';
+    btn.style.borderColor = '';
+  } else {
+    _refreshTimer = setInterval(function() { window.location.reload(); }, 10000);
+    state.textContent = 'ON';
+    state.style.color = 'var(--color-normal)';
+    btn.style.borderColor = 'var(--color-normal)';
+  }
 }
 </script>
 </body>

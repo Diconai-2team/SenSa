@@ -15,7 +15,6 @@ geofence/scenarios/operational_multi.py — 다중 누출 (Phase J).
     R&D 평가: "한 지점 누출이 확산되며 다수 sensor 영향, 위험 구역 자동 형성"
     SFR-004-06/07 핵심 시연.
 """
-import math
 from typing import Optional
 
 from devices.models import Device

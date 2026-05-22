@@ -10,11 +10,9 @@ vr_training/views.py — VR 교육 페이지 + 진행/완료 API
   체크리스트 미완료 상태로 진입하면 체크리스트 페이지로 리다이렉트.
   사이드바에서 잠금이 걸리지만, URL 직타입 방어용 서버 가드.
 """
-from django.conf import settings as dj_settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import redirect, render
-from django.urls import reverse
 from django.utils import timezone
 from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_exempt

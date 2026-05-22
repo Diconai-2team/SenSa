@@ -95,44 +95,127 @@ class AIPredictionViewSet(viewsets.ReadOnlyModelViewSet):
         return qs[:limit]
 
 
+_ML_ALARM_TYPES = {
+    'ai_ml_anomaly', 'ai_anomaly_warning', 'ai_trend_shift',
+    'ai_drift_alert', 'ai_predictive_alert', 'ai_predictive_warning', 'ai_correlation',
+}
+_THRESHOLD_TYPES = {'sensor_danger', 'sensor_caution'}
+# 단일 탐지기 알람 타입 (ai_ml_anomaly는 IF 단독 또는 앙상블 양쪽 가능)
+_SINGLE_DETECTOR_TYPES = {
+    'ai_anomaly_warning', 'ai_trend_shift', 'ai_drift_alert',
+    'ai_predictive_alert', 'ai_predictive_warning', 'ai_correlation',
+}
+
+# ── 알람 그루핑 ─────────────────────────────────────────────────────────────────
+_LEVEL_PRIORITY = {'critical': 0, 'danger': 1, 'caution': 2, 'info': 3}
+GROUP_GAP_SECONDS = 600   # 10분 이내 동일 (type, device) = 같은 이벤트로 묶음
+
+
+def _group_alarms(alarm_qs):
+    """
+    (alarm_type, device_id) 조합 기준으로 연속 알람을 이벤트 단위로 그루핑.
+
+    - 연속 알람 간 gap < GROUP_GAP_SECONDS(10분) 이면 동일 그룹
+    - 그룹 대표 알람: 그룹 내 최고 severity 알람 (메시지 포함)
+    - 반환: list of dict { first_alarm, representative, alarms, count,
+                           first_at, last_at, alarm_type, device_id, max_level }
+    """
+    alarms = list(alarm_qs.order_by('created_at'))
+
+    groups = []
+    open_groups: dict = {}   # key → group dict
+
+    for alarm in alarms:
+        key = (alarm.alarm_type, alarm.device_id or '')
+
+        if key in open_groups:
+            g = open_groups[key]
+            gap = (alarm.created_at - g['last_at']).total_seconds()
+            if gap <= GROUP_GAP_SECONDS:
+                g['alarms'].append(alarm)
+                g['last_at'] = alarm.created_at
+                g['count'] += 1
+                # 최고 레벨 알람을 대표로 갱신
+                if (_LEVEL_PRIORITY.get(alarm.alarm_level, 99)
+                        < _LEVEL_PRIORITY.get(g['max_level'], 99)):
+                    g['max_level'] = alarm.alarm_level
+                    g['representative'] = alarm
+                continue
+            else:
+                # 갭 초과 → 현재 그룹 확정, 새 그룹 시작
+                groups.append(open_groups.pop(key))
+
+        open_groups[key] = {
+            'first_alarm':    alarm,   # 첫 발화 (시간순 첫 번째)
+            'representative': alarm,   # 최고 severity (갱신됨)
+            'alarms':         [alarm],
+            'count':          1,
+            'first_at':       alarm.created_at,
+            'last_at':        alarm.created_at,
+            'alarm_type':     alarm.alarm_type,
+            'device_id':      alarm.device_id or '',
+            'max_level':      alarm.alarm_level,
+        }
+
+    groups.extend(open_groups.values())
+    # 최신 이벤트 우선
+    groups.sort(key=lambda g: g['last_at'], reverse=True)
+    return groups
+
+
+_DEFAULT_DAYS = 7     # 기본 조회 기간 (최근 N일)
+
+
 @login_required(login_url="/accounts/login/")
 def alarm_list_view(request):
+    from django.db.models import Exists, OuterRef
+
     level_filter = request.GET.get("level", "all")
-    qs = Alarm.objects.all()
+
+    # 조회 기간 파라미터 (?days=7 기본, ?days=0 → 전체)
+    try:
+        days = int(request.GET.get("days", _DEFAULT_DAYS))
+    except (ValueError, TypeError):
+        days = _DEFAULT_DAYS
+
+    since_cutoff = timezone.now() - timedelta(days=days) if days > 0 else None
+
+    # 10분 내 같은 device 임계치 알람이 뒤따랐는지 subquery
+    threshold_after = Alarm.objects.filter(
+        alarm_type__in=_THRESHOLD_TYPES,
+        device_id=OuterRef('device_id'),
+        created_at__gt=OuterRef('created_at'),
+        created_at__lte=OuterRef('created_at') + timedelta(minutes=10),
+    )
+
+    qs = Alarm.objects.annotate(has_threshold_after=Exists(threshold_after))
+    if since_cutoff:
+        qs = qs.filter(created_at__gte=since_cutoff)
 
     if level_filter == "danger":
-        qs = qs.filter(alarm_level__in=["danger", "critical"]).order_by("-created_at")
+        qs = qs.filter(alarm_level__in=["danger", "critical"])
     elif level_filter == "caution":
-        qs = qs.filter(alarm_level="caution").order_by("-created_at")
+        qs = qs.filter(alarm_level="caution")
     elif level_filter == "ai":
-        qs = qs.filter(is_ai=True).order_by("-created_at")
-    else:
-        from django.db.models import Case, When, IntegerField, Value
-        qs = qs.annotate(
-            _priority=Case(
-                When(alarm_level="critical", then=Value(0)),
-                When(alarm_level="danger",   then=Value(1)),
-                When(alarm_level="caution",  then=Value(2)),
-                When(alarm_level="info",     then=Value(3)),
-                default=Value(99),
-                output_field=IntegerField(),
-            )
-        ).order_by("_priority", "-created_at")
+        qs = qs.filter(is_ai=True)
 
-    paginator = Paginator(qs, 20)
-    alarms = paginator.get_page(request.GET.get("page", 1))
+    alarm_groups = _group_alarms(qs)
+    paginator = Paginator(alarm_groups, 20)
+    alarm_page = paginator.get_page(request.GET.get("page", 1))
 
-    since = timezone.now() - timedelta(hours=24)
+    since_24h = timezone.now() - timedelta(hours=24)
     stats = {
         "total":    Alarm.objects.count(),
         "danger":   Alarm.objects.filter(alarm_level__in=["danger", "critical"]).count(),
         "caution":  Alarm.objects.filter(alarm_level="caution").count(),
         "ai":       Alarm.objects.filter(is_ai=True).count(),
-        "last_24h": Alarm.objects.filter(created_at__gte=since).count(),
+        "last_24h": Alarm.objects.filter(created_at__gte=since_24h).count(),
     }
 
     return render(request, "alerts/alarm_list.html", {
-        "alarms":       alarms,
-        "level_filter": level_filter,
-        "stats":        stats,
+        "alarm_groups":          alarm_page,
+        "level_filter":          level_filter,
+        "days":                  days,
+        "stats":                 stats,
+        "single_detector_types": _SINGLE_DETECTOR_TYPES,
     })

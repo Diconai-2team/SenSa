@@ -13,7 +13,6 @@ geofence/scenarios/operational_single.py — 단일 누출 (Phase J).
     화면 외곽에 작은 빨간 zone + 1~2개 sensor 마커 caution 색상.
     R&D 평가: "단일 sensor 단독 누출, 인접 sensor 영향 없음" 시연.
 """
-import math
 from typing import Optional
 
 from devices.models import Device

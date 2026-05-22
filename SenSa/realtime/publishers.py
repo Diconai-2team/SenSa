@@ -96,6 +96,21 @@ def publish_sensor_update(sensor_data: dict) -> None:
     _send("dashboard.sensors", "sensor.update", sensor_data)
 
 
+def publish_ai_prediction(pred_data: dict) -> None:
+    """
+    ARIMA 예측값을 dashboard.sensors 그룹에 방송 (차트 실시간 표시용).
+
+    pred_data 예시:
+      {
+        "device_id": "gas-001",
+        "metric": "co",
+        "predicted_values": [1.2, 1.5, 1.8, ...],
+        "steps": 10,
+      }
+    """
+    _send("dashboard.sensors", "ai.prediction", pred_data)
+
+
 def publish_zone_event(event_dict: dict) -> None:
     """
     [Phase I-2] 동적 zone 라이프사이클 이벤트를 dashboard.zones 그룹에 방송.

@@ -69,6 +69,7 @@
 
   var lastValueByDevice = {};        // device_id → 최신 gas 값 객체
   var chartBufByDevice = {};         // device_id → { labels: [], co: [] }
+  var predBufByDevice  = {};         // device_id → { values: [], ts: number }
 
   // ─── DOM 참조 ───
   var prevBtn = document.getElementById('gas-pager-prev');
@@ -257,6 +258,18 @@
     refreshChartFromBuf();
   });
 
+  // ARIMA 예측값 수신 → CO 예측이면 점선으로 오버레이
+  SenSa.on('aiPrediction', function (d) {
+    if (!d || !d.device_id || !d.predicted_values) return;
+    if (d.metric !== 'co') return;  // 가스 차트는 CO 기준
+
+    predBufByDevice[d.device_id] = { values: d.predicted_values, ts: Date.now() };
+
+    if (d.device_id === currentDeviceId) {
+      refreshChartFromBuf();
+    }
+  });
+
   // ═════════════════════════════════════════════════════════
   // ⑬ 차트 (CO 중심) — 디바이스별 buf
   // ═════════════════════════════════════════════════════════
@@ -274,9 +287,10 @@
     data: {
       labels: [],
       datasets: [
-        { label: 'CO',   data: [], borderColor: '#00c8ff', backgroundColor: 'rgba(0,200,255,0.08)', fill: true, tension: 0.4, borderWidth: 2, pointRadius: 1 },
-        { label: '주의', data: [], borderColor: '#ffcc00', borderWidth: 1, borderDash: [4, 3], pointRadius: 0, fill: false },
-        { label: '위험', data: [], borderColor: '#ff4444', borderWidth: 1, borderDash: [4, 3], pointRadius: 0, fill: false },
+        { label: 'CO(실측)',  data: [], borderColor: '#00c8ff', backgroundColor: 'rgba(0,200,255,0.08)', fill: true, tension: 0.4, borderWidth: 2, pointRadius: 1 },
+        { label: '주의',      data: [], borderColor: '#ffcc00', borderWidth: 1, borderDash: [4, 3], pointRadius: 0, fill: false },
+        { label: '위험',      data: [], borderColor: '#ff4444', borderWidth: 1, borderDash: [4, 3], pointRadius: 0, fill: false },
+        { label: 'AI 예측',  data: [], borderColor: '#c084fc', backgroundColor: 'transparent', fill: false, tension: 0.4, borderWidth: 2, borderDash: [6, 3], pointRadius: 2, pointBackgroundColor: '#c084fc' },
       ]
     },
     options: {
@@ -308,14 +322,39 @@
       chartGas.data.datasets[0].data = [];
       chartGas.data.datasets[1].data = [];
       chartGas.data.datasets[2].data = [];
+      chartGas.data.datasets[3].data = [];
       chartGas.update();
       return;
     }
-    var buf = bufFor(currentDeviceId);
-    chartGas.data.labels = buf.labels;
-    chartGas.data.datasets[0].data = buf.co;
-    chartGas.data.datasets[1].data = Array(buf.labels.length).fill(25);
-    chartGas.data.datasets[2].data = Array(buf.labels.length).fill(200);
+    var buf  = bufFor(currentDeviceId);
+    var pred = predBufByDevice[currentDeviceId];
+    var stale = !pred || (Date.now() - pred.ts) > 60000;  // 60초 이상 지난 예측은 무시
+
+    if (!stale && pred.values.length > 0 && buf.co.length > 0) {
+      var futureLabels = pred.values.map(function (_, i) { return '+' + (i + 1) + 's'; });
+      var allLabels    = buf.labels.concat(futureLabels);
+      var histLen      = buf.co.length;
+
+      // 실측: 과거 실제값 + 미래 null
+      var actualData = buf.co.concat(Array(pred.values.length).fill(null));
+
+      // 예측: 과거 null + 마지막 실측값(이음새) + 예측값
+      var predData = Array(histLen - 1).fill(null)
+                       .concat([buf.co[histLen - 1]])
+                       .concat(pred.values);
+
+      chartGas.data.labels              = allLabels;
+      chartGas.data.datasets[0].data   = actualData;
+      chartGas.data.datasets[1].data   = Array(allLabels.length).fill(25);
+      chartGas.data.datasets[2].data   = Array(allLabels.length).fill(200);
+      chartGas.data.datasets[3].data   = predData;
+    } else {
+      chartGas.data.labels              = buf.labels;
+      chartGas.data.datasets[0].data   = buf.co;
+      chartGas.data.datasets[1].data   = Array(buf.labels.length).fill(25);
+      chartGas.data.datasets[2].data   = Array(buf.labels.length).fill(200);
+      chartGas.data.datasets[3].data   = [];
+    }
     chartGas.update();
   }
 

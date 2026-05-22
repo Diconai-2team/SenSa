@@ -181,6 +181,12 @@ from .audit import (
     device_history_api,
 )
 
+# ─── AI 성능 지표 ───
+from .ai import (
+    ai_metrics_view,
+    eval_metrics_api,
+)
+
 
 __all__ = [
     # landing
@@ -233,4 +239,6 @@ __all__ = [
     'notice_dispatch_api', 'notice_bulk_delete_api', 'notice_bulk_toggle_api',
     # audit
     'audit_log_list', 'device_history_api',
+    # AI 성능 지표
+    'ai_metrics_view', 'eval_metrics_api',
 ]

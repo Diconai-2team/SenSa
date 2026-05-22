@@ -290,9 +290,16 @@ window.setScenario = function (mode) {
 // 각 WS 메시지를 기존 SenSa 이벤트 형식으로 변환하여 dispatch.
 // section_09_map.js, section_11_workers.js, section_12_13_gas.js 등
 // 구독자 모듈은 코드 변경 없음.
-window.sensaWS = null;
+window.sensaWS    = null;
+var _wsRetryDelay = 1000;   // 첫 재시도 1초, 이후 지수 백오프 최대 30초
+var _wsRetryTimer = null;
 
 function connectWebSocket() {
+  if (_wsRetryTimer) {
+    clearTimeout(_wsRetryTimer);
+    _wsRetryTimer = null;
+  }
+
   var protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
   var url = protocol + '//' + window.location.host + '/ws/dashboard/';
 
@@ -301,6 +308,7 @@ function connectWebSocket() {
 
   ws.onopen = function () {
     console.log('[WS] connected');
+    _wsRetryDelay = 1000;  // 연결 성공 시 딜레이 초기화
   };
 
   ws.onmessage = function (event) {
@@ -325,6 +333,10 @@ function connectWebSocket() {
         handleSensorUpdate(msg.payload);
         break;
 
+      case 'ai.prediction':
+        SenSa.emit('aiPrediction', msg.payload);
+        break;
+
       case 'zone.event':
         // [Live 갱신] 동적 zone 라이프사이클 — 새로고침 없이 평면도 polygon 갱신
         handleZoneEvent(msg.payload);
@@ -341,11 +353,16 @@ function connectWebSocket() {
   };
 
   ws.onclose = function (e) {
-    console.warn('[WS] closed:', e.code, e.reason);
-    // Phase F 에서 재접속 로직 추가 예정
+    window.sensaWS = null;
+    // 1001(페이지 이탈) 은 재시도 불필요, 나머지는 지수 백오프로 재접속
+    if (e.code === 1001) { return; }
+    console.warn('[WS] closed (' + e.code + ') — reconnecting in ' + _wsRetryDelay + 'ms');
+    _wsRetryTimer = setTimeout(connectWebSocket, _wsRetryDelay);
+    _wsRetryDelay = Math.min(_wsRetryDelay * 2, 30000);  // 최대 30초
   };
 
   ws.onerror = function (e) {
+    // onerror 직후 onclose 가 항상 발생하므로 재접속은 onclose 에서 처리
     console.error('[WS] error:', e);
   };
 }

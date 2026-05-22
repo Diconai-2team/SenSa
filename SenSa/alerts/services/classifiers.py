@@ -10,10 +10,18 @@ alerts/services/classifiers.py — 센서값 → 상태 판정 함수.
 GAS_THRESHOLDS 의 값은 UI (static/js/dashboard/section_12_13_gas.js, base.js) 의
 GAS_TH 와 일치해야 뱃지/알람 레벨이 같음.
 """
-import statistics
+import threading
+import time
 from datetime import timedelta
 
 from django.utils import timezone
+
+# ── _get_24h_avg_watt 결과 캐시 ─────────────────────────────
+# 24h 중앙값은 0.5초마다 재계산할 필요 없음 — 60초 TTL 캐시.
+# 구조: {device_id: (median_value, computed_at_monotonic)}
+_watt_cache: dict = {}
+_watt_cache_lock = threading.Lock()
+_WATT_CACHE_TTL = 60.0  # 초
 
 
 # ═══════════════════════════════════════════════════════════
@@ -36,6 +44,13 @@ GAS_THRESHOLDS = {
     'voc': {'caution': 0.5,   'danger': 2.0  },  # TVOC 실내기준
     # o2 는 구간형 — classify_gas 내부 처리
 }
+
+# O2 구간형 임계치 단일 출처 — 근거: 산업안전보건기준 제618조 + KOSHA
+# ml_engine/pipeline.py, devices/views.py 에서 lazy import 하여 사용
+O2_DANGER_LOW  = 16.0   # % 미만 → danger
+O2_CAUTION_LOW = 18.0   # % 미만 → caution
+O2_CAUTION_HIGH = 21.5  # % 초과 → caution
+O2_DANGER_HIGH  = 23.5  # % 이상 → danger
 
 
 def classify_gas(gas: dict) -> str:
@@ -98,25 +113,40 @@ _POWER_MIN_SAMPLES   = 180
 
 def _get_24h_avg_watt(device_id: str) -> float | None:
     """
-    최근 24시간 전력(watt) 측정값의 중앙값 반환.
+    최근 24시간 전력(watt) 중앙값을 SQL 2-쿼리로 계산 후 60초 캐시.
 
-    샘플이 _POWER_MIN_SAMPLES 미만이면 None 반환 → 호출자가 고정 임계치로 fallback.
-    기동직후·리셋직후에 잘못된 동적 판정이 쌓이지 않도록 방어.
+    기존: 모든 행을 Python list 로 로드 후 statistics.median() →
+          데이터가 수만 건 쌓이면 첫 호출에서 3초 초과 → ReadTimeout 원인.
+    변경: COUNT + 'ORDER BY watt LIMIT 1 OFFSET mid' — 행 전송 없이 DB 내부 계산.
+
+    샘플이 _POWER_MIN_SAMPLES 미만이면 None → 고정 임계치 fallback.
     """
-    # 순환 import 방지 — 함수 내부 import
+    now_mono = time.monotonic()
+    with _watt_cache_lock:
+        cached = _watt_cache.get(device_id)
+        if cached is not None and (now_mono - cached[1]) < _WATT_CACHE_TTL:
+            return cached[0]
+
     from devices.models import SensorData
 
     cutoff = timezone.now() - timedelta(hours=24)
-    values = list(
-        SensorData.objects.filter(
-            device__device_id=device_id,
-            timestamp__gte=cutoff,
-            watt__isnull=False,
-        ).values_list('watt', flat=True)
+    base_qs = SensorData.objects.filter(
+        device__device_id=device_id,
+        timestamp__gte=cutoff,
+        watt__isnull=False,
     )
-    if len(values) < _POWER_MIN_SAMPLES:
-        return None
-    return statistics.median(values)
+    count = base_qs.count()
+    if count >= _POWER_MIN_SAMPLES:
+        mid = count // 2
+        median_val = base_qs.order_by('watt').values_list('watt', flat=True)[mid]
+        result = float(median_val)
+    else:
+        result = None
+
+    with _watt_cache_lock:
+        _watt_cache[device_id] = (result, now_mono)
+
+    return result
 
 
 def classify_power(power: dict, device_id: str = '') -> str:

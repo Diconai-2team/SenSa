@@ -14,10 +14,91 @@ geofence/tasks_scenario.py — Phase Demo v3.1 spike 지속 주입.
 """
 import random
 import logging
+import threading
+import time
 from celery import shared_task
 
 
 logger = logging.getLogger(__name__)
+
+
+def _run_spike_loop(
+    zone_id, sensor_id, gas, spike_value, noise,
+    interval_sec, max_steps, base_value, ramp_up_sec,
+):
+    """Celery 없을 때 스레드에서 spike 를 주입하는 루프 (sustain_spike_task 동등 구현)."""
+    from django.db import close_old_connections
+    from devices.models import Device, SensorData
+    from geofence.models import GeoFence
+    from realtime.publishers import publish_sensor_update
+
+    for step in range(int(max_steps)):
+        if not GeoFence.objects.filter(id=zone_id, is_active=True).exists():
+            break
+        try:
+            sensor = Device.objects.get(id=sensor_id)
+        except Device.DoesNotExist:
+            break
+
+        elapsed = step * interval_sec
+        if base_value is not None and elapsed < ramp_up_sec:
+            progress = elapsed / ramp_up_sec
+            target = base_value + (spike_value - base_value) * progress
+        else:
+            target = spike_value
+
+        value = max(0.0, target + random.uniform(-noise, noise))
+        try:
+            sd = SensorData.objects.create(device=sensor, status='caution', **{gas: value})
+            last_sd = (SensorData.objects.filter(device=sensor)
+                       .exclude(id=sd.id).order_by('-timestamp').first())
+            values = {}
+            for k in ['co', 'h2s', 'co2', 'o2', 'no2', 'so2', 'o3', 'nh3', 'voc']:
+                if k == gas:
+                    values[k] = value
+                elif last_sd and getattr(last_sd, k, None) is not None:
+                    values[k] = getattr(last_sd, k)
+            sensor.status = 'caution'
+            sensor.save(update_fields=['status'])
+            publish_sensor_update({
+                'device_id':   sensor.device_id,
+                'sensor_type': 'gas',
+                'status':      'caution',
+                'values':      values,
+                'timestamp':   sd.timestamp.isoformat(),
+            })
+            # 알람 평가 — state_store 내부 dedup 으로 첫 escalation + 60s 재발
+            try:
+                from alerts.services import evaluate_sensor
+                from realtime.publishers import publish_alarm
+                gas_detail = ', '.join(
+                    f"{k.upper()}:{values[k]:.1f}" for k in ['co', 'h2s', 'co2']
+                    if values.get(k) is not None
+                )
+                for alarm in evaluate_sensor(sensor.device_id, 'gas', 'caution', gas_detail):
+                    publish_alarm(alarm)
+            except Exception as _ae:
+                logger.warning('[spike_loop] alarm eval err: %s', _ae)
+        except Exception as e:
+            logger.error('[spike_loop] step=%s err=%s', step, e)
+
+        time.sleep(interval_sec)
+
+    close_old_connections()
+
+
+def start_spike_thread(
+    zone_id, sensor_id, gas, spike_value, noise,
+    interval_sec, max_steps, base_value, ramp_up_sec,
+):
+    """스레드로 _run_spike_loop 실행 (Celery 워커 불필요)."""
+    t = threading.Thread(
+        target=_run_spike_loop,
+        args=(zone_id, sensor_id, gas, spike_value, noise,
+              interval_sec, max_steps, base_value, ramp_up_sec),
+        daemon=True,
+    )
+    t.start()
 
 
 @shared_task(bind=True, ignore_result=True)
@@ -133,6 +214,19 @@ def sustain_spike_task(
                 'values':      values,
                 'timestamp':   sd.timestamp.isoformat(),
             })
+
+            # 알람 평가 — state_store 내부 dedup 으로 첫 escalation + 60s 재발
+            try:
+                from alerts.services import evaluate_sensor
+                from realtime.publishers import publish_alarm
+                gas_detail = ', '.join(
+                    f"{k.upper()}:{values[k]:.1f}" for k in ['co', 'h2s', 'co2']
+                    if values.get(k) is not None
+                )
+                for alarm in evaluate_sensor(sensor.device_id, 'gas', 'caution', gas_detail):
+                    publish_alarm(alarm)
+            except Exception as _ae:
+                logger.error('[sustain_spike] alarm eval failed: %s', _ae)
         except Exception as e:
             logger.error('[sustain_spike] publish failed: %s', e)
 

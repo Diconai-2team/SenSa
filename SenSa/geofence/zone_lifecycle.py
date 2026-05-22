@@ -12,7 +12,7 @@ from datetime import timedelta
 from django.utils import timezone
 
 from geofence.models import GeoFence
-from geofence.diffusion import diffusion_radius, GAS_MOLAR_MASS
+from geofence.diffusion import diffusion_radius
 from geofence.polygon_utils import circle_polygon, build_zone_polygon
 from geofence.anomaly_detector import has_anomaly
 

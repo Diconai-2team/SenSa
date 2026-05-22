@@ -83,6 +83,13 @@ class DashboardConsumer(AsyncJsonWebsocketConsumer):
             "payload": event["payload"],
         })
 
+    async def ai_prediction(self, event):
+        """ARIMA 예측값 → 클라이언트로 전달 (차트 실시간 표시용)."""
+        await self.send_json({
+            "type": "ai.prediction",
+            "payload": event["payload"],
+        })
+
     async def zone_event(self, event):
         """[Phase I-2] dashboard.zones 그룹 → 클라이언트로 zone 이벤트 전달."""
         await self.send_json({

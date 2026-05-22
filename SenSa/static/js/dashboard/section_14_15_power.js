@@ -33,6 +33,7 @@
 
   var lastValueByDevice = {};        // device_id → 최신 power 데이터 + status
   var chartBufByDevice = {};         // device_id → { labels: [], current: [] }
+  var predBufByDevice  = {};         // device_id → { values: [], ts: number }
 
   // ─── DOM 참조 ───
   var prevBtn  = document.getElementById('power-pager-prev');
@@ -267,6 +268,18 @@
     refreshChartFromBuf();
   });
 
+  // ARIMA 예측값 수신 → 전류(current) 예측이면 점선으로 오버레이
+  SenSa.on('aiPrediction', function (d) {
+    if (!d || !d.device_id || !d.predicted_values) return;
+    if (d.metric !== 'current') return;  // 전력 차트는 전류 기준
+
+    predBufByDevice[d.device_id] = { values: d.predicted_values, ts: Date.now() };
+
+    if (d.device_id === currentDeviceId) {
+      refreshChartFromBuf();
+    }
+  });
+
   // ═════════════════════════════════════════════════════════
   // ⑮ 차트 — 디바이스별 buf
   // ═════════════════════════════════════════════════════════
@@ -284,9 +297,10 @@
     data: {
       labels: [],
       datasets: [
-        { label: '전류(A)', data: [], borderColor: '#ffaa00', backgroundColor: 'rgba(255,170,0,0.08)', fill: true, tension: 0.4, borderWidth: 2, pointRadius: 1 },
-        { label: '주의',    data: [], borderColor: '#ffcc00', borderWidth: 1, borderDash: [4, 3], pointRadius: 0, fill: false },
-        { label: '위험',    data: [], borderColor: '#ff4444', borderWidth: 1, borderDash: [4, 3], pointRadius: 0, fill: false },
+        { label: '전류(실측)', data: [], borderColor: '#ffaa00', backgroundColor: 'rgba(255,170,0,0.08)', fill: true, tension: 0.4, borderWidth: 2, pointRadius: 1 },
+        { label: '주의',       data: [], borderColor: '#ffcc00', borderWidth: 1, borderDash: [4, 3], pointRadius: 0, fill: false },
+        { label: '위험',       data: [], borderColor: '#ff4444', borderWidth: 1, borderDash: [4, 3], pointRadius: 0, fill: false },
+        { label: 'AI 예측',   data: [], borderColor: '#f472b6', backgroundColor: 'transparent', fill: false, tension: 0.4, borderWidth: 2, borderDash: [6, 3], pointRadius: 2, pointBackgroundColor: '#f472b6' },
       ]
     },
     options: {
@@ -318,14 +332,36 @@
       chartPower.data.datasets[0].data = [];
       chartPower.data.datasets[1].data = [];
       chartPower.data.datasets[2].data = [];
+      chartPower.data.datasets[3].data = [];
       chartPower.update();
       return;
     }
-    var buf = bufFor(currentDeviceId);
-    chartPower.data.labels = buf.labels;
-    chartPower.data.datasets[0].data = buf.current;
-    chartPower.data.datasets[1].data = Array(buf.labels.length).fill(15);   // caution 임계 근사
-    chartPower.data.datasets[2].data = Array(buf.labels.length).fill(25);   // danger 임계 근사
+    var buf  = bufFor(currentDeviceId);
+    var pred = predBufByDevice[currentDeviceId];
+    var stale = !pred || (Date.now() - pred.ts) > 60000;
+
+    if (!stale && pred.values.length > 0 && buf.current.length > 0) {
+      var futureLabels = pred.values.map(function (_, i) { return '+' + (i + 1) + 's'; });
+      var allLabels    = buf.labels.concat(futureLabels);
+      var histLen      = buf.current.length;
+
+      var actualData = buf.current.concat(Array(pred.values.length).fill(null));
+      var predData   = Array(histLen - 1).fill(null)
+                         .concat([buf.current[histLen - 1]])
+                         .concat(pred.values);
+
+      chartPower.data.labels            = allLabels;
+      chartPower.data.datasets[0].data  = actualData;
+      chartPower.data.datasets[1].data  = Array(allLabels.length).fill(15);
+      chartPower.data.datasets[2].data  = Array(allLabels.length).fill(25);
+      chartPower.data.datasets[3].data  = predData;
+    } else {
+      chartPower.data.labels            = buf.labels;
+      chartPower.data.datasets[0].data  = buf.current;
+      chartPower.data.datasets[1].data  = Array(buf.labels.length).fill(15);
+      chartPower.data.datasets[2].data  = Array(buf.labels.length).fill(25);
+      chartPower.data.datasets[3].data  = [];
+    }
     chartPower.update();
   }
 

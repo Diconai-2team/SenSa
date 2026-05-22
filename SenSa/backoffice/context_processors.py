@@ -6,6 +6,7 @@ base.html SNB 가 이 데이터를 보고 admin 사용자에겐 권한 있는 �
 ALL_MENU_CODES = (
     'users', 'menus', 'devices', 'maps',
     'references', 'operations', 'notices', 'notifications',
+    'ai_metrics',
 )
 
 

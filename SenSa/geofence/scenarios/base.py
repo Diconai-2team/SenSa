@@ -16,7 +16,7 @@ geofence/scenarios/base.py — Phase D 시나리오 베이스 클래스.
 """
 from abc import ABC, abstractmethod
 from datetime import timedelta
-from typing import List, Optional, Tuple
+from typing import List, Tuple
 
 from django.utils import timezone
 
