@@ -16,6 +16,7 @@ from django.contrib import messages
 from django.shortcuts import render, redirect
 from django.urls import reverse
 from django.utils.decorators import method_decorator
+from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.csrf import csrf_exempt
 
 from rest_framework import status
@@ -92,7 +93,12 @@ def login_page(request):
                     next_url = '/backoffice/'
                 else:
                     next_url = '/dashboard/'
-            if not next_url.startswith('/'):
+            # [수정] open redirect 방지 — startswith('/') 만으로는 //evil.com 을 막지 못함.
+            # url_has_allowed_host_and_scheme 는 scheme/host 를 검사해 외부 URL 을 차단.
+            if not url_has_allowed_host_and_scheme(
+                url=next_url,
+                allowed_hosts={request.get_host()},
+            ):
                 next_url = '/home/'
             return redirect(next_url)
         else:

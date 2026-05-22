@@ -32,6 +32,11 @@ def _run_spike_loop(
     from geofence.models import GeoFence
     from realtime.publishers import publish_sensor_update
 
+    # [수정] 스레드 시작 시 이미 stale 된 연결을 정리.
+    # 기존 코드는 루프 종료 후에만 close_old_connections() 를 호출했으나,
+    # 스레드 생성 시점에 연결이 이미 만료되어 있으면 첫 DB 조작에서 오류 발생.
+    close_old_connections()
+
     for step in range(int(max_steps)):
         if not GeoFence.objects.filter(id=zone_id, is_active=True).exists():
             break

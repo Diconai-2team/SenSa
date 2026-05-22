@@ -40,34 +40,57 @@ def _client() -> redis.Redis:
     return redis.Redis(connection_pool=_pool)
 
 
+import logging as _logging
+_logger = _logging.getLogger(__name__)
+
+
 def push(device_id: str, metric: str, value: float, ts: float | None = None) -> None:
-    """값 하나를 윈도우에 추가. WINDOW_SIZE 초과분은 가장 오래된 것부터 제거."""
-    ts = ts or time.time()
-    key = _KEY.format(device_id=device_id, metric=metric)
-    member = f"{ts}:{value}"
-    r = _client()
-    pipe = r.pipeline()
-    pipe.zadd(key, {member: ts})
-    # 오래된 항목 제거 (최신 WINDOW_SIZE 개만 유지)
-    pipe.zremrangebyrank(key, 0, -(WINDOW_SIZE + 1))
-    pipe.expire(key, _TTL)
-    pipe.execute()
+    """값 하나를 윈도우에 추가. WINDOW_SIZE 초과분은 가장 오래된 것부터 제거.
+
+    [수정] Redis 연결 실패 시 경고 로그 후 무시 — state_store 와 동일 정책.
+    """
+    try:
+        ts = ts or time.time()
+        key = _KEY.format(device_id=device_id, metric=metric)
+        member = f"{ts}:{value}"
+        r = _client()
+        pipe = r.pipeline()
+        pipe.zadd(key, {member: ts})
+        # 오래된 항목 제거 (최신 WINDOW_SIZE 개만 유지)
+        pipe.zremrangebyrank(key, 0, -(WINDOW_SIZE + 1))
+        pipe.expire(key, _TTL)
+        pipe.execute()
+    except Exception as exc:
+        _logger.warning("[sliding_window] push(%s, %s) Redis 오류 — 무시: %s", device_id, metric, exc)
 
 
 def get_values(device_id: str, metric: str) -> list[float]:
-    """시간 오름차순으로 정렬된 float 값 목록 반환."""
-    key = _KEY.format(device_id=device_id, metric=metric)
-    members = _client().zrange(key, 0, -1)
-    result = []
-    for m in members:
-        try:
-            _, v = m.split(":", 1)
-            result.append(float(v))
-        except (ValueError, IndexError):
-            pass
-    return result
+    """시간 오름차순으로 정렬된 float 값 목록 반환.
+
+    [수정] Redis 연결 실패 시 빈 리스트 반환 — 호출 측은 MIN_WINDOW_POINTS 미만으로
+    처리해 DB fallback 경로로 자연스럽게 이어진다.
+    """
+    try:
+        key = _KEY.format(device_id=device_id, metric=metric)
+        members = _client().zrange(key, 0, -1)
+        result = []
+        for m in members:
+            try:
+                _, v = m.split(":", 1)
+                result.append(float(v))
+            except (ValueError, IndexError):
+                pass
+        return result
+    except Exception as exc:
+        _logger.warning("[sliding_window] get_values(%s, %s) Redis 오류 — 빈 리스트 반환: %s", device_id, metric, exc)
+        return []
 
 
 def size(device_id: str, metric: str) -> int:
-    key = _KEY.format(device_id=device_id, metric=metric)
-    return _client().zcard(key)
+    """[수정] Redis 연결 실패 시 0 반환."""
+    try:
+        key = _KEY.format(device_id=device_id, metric=metric)
+        return _client().zcard(key)
+    except Exception as exc:
+        _logger.warning("[sliding_window] size(%s, %s) Redis 오류 — 0 반환: %s", device_id, metric, exc)
+        return 0

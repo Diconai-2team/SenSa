@@ -339,8 +339,12 @@ def evaluate_worker(worker_id: str, worker_name: str,
         )
 
         if confirmed_new_state is not None:
+            # 전이 확정: 새 상태로 커밋 + pending 초기화
             commit_state(worker_id, target_state, mark_alarmed=True)
         else:
-            commit_state(worker_id, official_state, mark_alarmed=True)
+            # ongoing 재알림: last_alarm_at 만 갱신, pending 회복 카운터는 유지
+            # [수정] preserve_pending=True — sensor_evaluator 와 동일한 버그 수정.
+            commit_state(worker_id, official_state, mark_alarmed=True,
+                         preserve_pending=True)
 
     return created

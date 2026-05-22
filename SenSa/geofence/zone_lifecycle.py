@@ -403,6 +403,10 @@ def check_tier_upgrade(zone: GeoFence) -> str:
     if zone.tier == 'critical':
         return 'unchanged'   # 최상위, 더 올라갈 곳 없음
 
+    # [수정] source_device 없으면 이웃 탐색 불가 — 방어 처리
+    if not zone.source_device:
+        return 'unchanged'
+
     # 현재 반경 내 이웃 센서
     from devices.neighbor_graph import get_neighbors_within_devices
 

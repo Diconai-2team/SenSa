@@ -95,9 +95,14 @@ def evaluate_sensor(device_id: str, sensor_type: str,
         })
 
         if confirmed_new_state is not None:
+            # 전이 확정: 새 상태로 커밋 + pending 초기화
             commit_sensor_state(device_id, target_state, mark_alarmed=True)
         else:
-            commit_sensor_state(device_id, official_state, mark_alarmed=True)
+            # ongoing 재알림: last_alarm_at 만 갱신, pending 회복 카운터는 유지
+            # [수정] preserve_pending=True — ongoing 발행 시 진행 중인 회복 카운트가
+            #        초기화되어 RECOVERY_CONFIRM_TICKS 틱 후 회복이 1틱 지연되던 버그 수정.
+            commit_sensor_state(device_id, official_state, mark_alarmed=True,
+                                preserve_pending=True)
 
     return created
 

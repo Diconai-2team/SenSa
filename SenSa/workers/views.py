@@ -63,19 +63,29 @@ class WorkerLocationViewSet(viewsets.ModelViewSet):
     serializer_class = WorkerLocationSerializer
 
     def get_queryset(self):
+        # [수정] 슬라이싱을 get_queryset() 에서 하면
+        # get_object() 내부에서 .filter(pk=pk) 호출 시
+        # "Cannot filter a query once a slice has been taken" TypeError 발생.
+        # → 슬라이싱은 list() 오버라이드로 이동.
         qs = WorkerLocation.objects.select_related('worker').all()
 
         worker_id = self.request.query_params.get('worker_id')
         if worker_id:
             qs = qs.filter(worker__worker_id=worker_id)
 
-        limit = self.request.query_params.get('limit', '100')
+        return qs
+
+    def list(self, request, *args, **kwargs):
+        """목록 조회 — limit 파라미터 적용."""
+        limit = request.query_params.get('limit', '100')
         try:
             limit = int(limit)
         except (ValueError, TypeError):
             limit = 100
 
-        return qs[:limit]
+        queryset = self.filter_queryset(self.get_queryset())[:limit]
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)
 
     def perform_create(self, serializer):
         instance = serializer.save()

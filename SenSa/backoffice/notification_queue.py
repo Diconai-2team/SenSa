@@ -48,6 +48,7 @@ class _NotificationWorker:
         logger.info('[notify_queue] worker started')
 
     def _loop(self):
+        from django.db import close_old_connections
         from .notification_dispatcher import dispatch_for_alarm
         from alerts.models import Alarm
 
@@ -57,6 +58,10 @@ class _NotificationWorker:
             except queue.Empty:
                 continue
             try:
+                # [수정] 장기 실행 daemon thread 에서 매 작업 전 stale 연결 정리.
+                # Django ORM 은 요청/응답 주기 밖(스레드)에서 연결을 자동 닫지 않으므로
+                # close_old_connections() 로 CONN_MAX_AGE 초과 연결을 정리해야 함.
+                close_old_connections()
                 kind, payload = item
                 if kind == 'alarm':
                     alarm_id = payload

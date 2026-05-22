@@ -8,12 +8,20 @@ alerts/state_store.py — 작업자별 알람 상태 + 안정화 카운터 (Redi
     pending_state   : "safe" | "caution" | "danger"    (회복 후보 상태, 아직 미확정)
     pending_count   : "2"                                (후보 상태 연속 관측 횟수)
 
-TTL: 5분.
+TTL: 30분.
+
+[수정] Redis 연결 실패 시 fallback 정책:
+  - 읽기 함수(get_*_snapshot): 기본값 반환 → 알람 파이프라인 정상 진행
+  - 쓰기 함수(commit_*, set_*, clear_*): 경고 로그 후 무시
+  - 효과: Redis 일시 중단 시 상태가 초기화(safe/normal)되어 재진입 알람이 발생할 수 있지만,
+          알람 시스템 전체가 죽는 것보다 낫다.
 """
+import logging
 import time
 import redis
 from django.conf import settings
 
+logger = logging.getLogger(__name__)
 
 _pool = None
 
@@ -44,62 +52,91 @@ def get_worker_snapshot(worker_id: str) -> dict:
     작업자의 현재 전체 스냅샷 반환.
     기본값:
       state='safe', last_alarm_at=0.0, pending_state=None, pending_count=0
+
+    [수정] Redis 연결 실패 시 기본값 반환 — 알람 파이프라인이 중단되지 않도록 fallback.
     """
-    r = _client()
-    key = KEY_FORMAT.format(worker_id=worker_id)
-    data = r.hgetall(key)
-    return {
-        'state': data.get('state', 'safe'),
-        'last_alarm_at': float(data.get('last_alarm_at', 0) or 0),
-        'pending_state': data.get('pending_state') or None,
-        'pending_count': int(data.get('pending_count', 0) or 0),
-    }
+    try:
+        r = _client()
+        key = KEY_FORMAT.format(worker_id=worker_id)
+        data = r.hgetall(key)
+        return {
+            'state': data.get('state', 'safe'),
+            'last_alarm_at': float(data.get('last_alarm_at', 0) or 0),
+            'pending_state': data.get('pending_state') or None,
+            'pending_count': int(data.get('pending_count', 0) or 0),
+        }
+    except Exception as exc:
+        logger.warning("[state_store] get_worker_snapshot(%s) Redis 오류 — 기본값 반환: %s", worker_id, exc)
+        return {'state': 'safe', 'last_alarm_at': 0.0, 'pending_state': None, 'pending_count': 0}
 
 
-def commit_state(worker_id: str, state: str, mark_alarmed: bool = False) -> None:
+def commit_state(worker_id: str, state: str, mark_alarmed: bool = False,
+                  preserve_pending: bool = False) -> None:
     """
-    공식 상태 확정 + pending 초기화.
+    공식 상태 확정.
     mark_alarmed=True 면 last_alarm_at 도 now 로 갱신.
+    preserve_pending=True 면 pending_state/count 를 건드리지 않음.
+
+    [수정-A] preserve_pending 파라미터 추가.
+      ongoing 알람 발행 시 pending 회복 카운터가 리셋되는 버그 수정.
+      전이(transition) 시에만 pending 초기화, ongoing 시에는 진행 중인
+      회복 카운트를 보존하여 RECOVERY_CONFIRM_TICKS 틱 후 정상 회복 전이.
+
+    [수정-B] Redis 연결 실패 시 경고 로그 후 무시.
     """
     if state not in ("safe", "caution", "danger", "critical"):
         raise ValueError(f"invalid state: {state}")
-    
-    r = _client()
-    key = KEY_FORMAT.format(worker_id=worker_id)
-    mapping = {
-        'state': state,
-        'pending_state': '',
-        'pending_count': '0',
-    }
-    if mark_alarmed:
-        mapping['last_alarm_at'] = str(time.time())
-    r.hset(key, mapping=mapping)
-    r.expire(key, TTL_SEC)
+
+    try:
+        r = _client()
+        key = KEY_FORMAT.format(worker_id=worker_id)
+        mapping: dict = {'state': state}
+        if not preserve_pending:
+            mapping['pending_state'] = ''
+            mapping['pending_count'] = '0'
+        if mark_alarmed:
+            mapping['last_alarm_at'] = str(time.time())
+        r.hset(key, mapping=mapping)
+        r.expire(key, TTL_SEC)
+    except Exception as exc:
+        logger.warning("[state_store] commit_state(%s, %s) Redis 오류 — 무시: %s", worker_id, state, exc)
 
 
 def set_pending(worker_id: str, pending_state: str, count: int) -> None:
     """
     회복 후보 상태 저장 (아직 확정 안 함).
     상태 자체(state 필드)는 건드리지 않음.
+
+    [수정] Redis 연결 실패 시 경고 로그 후 무시.
     """
-    r = _client()
-    key = KEY_FORMAT.format(worker_id=worker_id)
-    r.hset(key, mapping={
-        'pending_state': pending_state,
-        'pending_count': str(count),
-    })
-    r.expire(key, TTL_SEC)
+    try:
+        r = _client()
+        key = KEY_FORMAT.format(worker_id=worker_id)
+        r.hset(key, mapping={
+            'pending_state': pending_state,
+            'pending_count': str(count),
+        })
+        r.expire(key, TTL_SEC)
+    except Exception as exc:
+        logger.warning("[state_store] set_pending(%s) Redis 오류 — 무시: %s", worker_id, exc)
 
 
 def clear_pending(worker_id: str) -> None:
-    """회복 후보 폐기 (현재 상태를 유지함을 의미)."""
-    r = _client()
-    key = KEY_FORMAT.format(worker_id=worker_id)
-    r.hset(key, mapping={
-        'pending_state': '',
-        'pending_count': '0',
-    })
-    r.expire(key, TTL_SEC)
+    """
+    회복 후보 폐기 (현재 상태를 유지함을 의미).
+
+    [수정] Redis 연결 실패 시 경고 로그 후 무시.
+    """
+    try:
+        r = _client()
+        key = KEY_FORMAT.format(worker_id=worker_id)
+        r.hset(key, mapping={
+            'pending_state': '',
+            'pending_count': '0',
+        })
+        r.expire(key, TTL_SEC)
+    except Exception as exc:
+        logger.warning("[state_store] clear_pending(%s) Redis 오류 — 무시: %s", worker_id, exc)
 
 # ═══════════════════════════════════════════════════════════
 # 센서용 상태 저장소 (구조는 작업자와 동일)
@@ -109,53 +146,84 @@ SENSOR_KEY_FORMAT = "sensa:sensor:{device_id}:alarm"
 
 
 def get_sensor_snapshot(device_id: str) -> dict:
-    """센서의 현재 스냅샷."""
-    r = _client()
-    key = SENSOR_KEY_FORMAT.format(device_id=device_id)
-    data = r.hgetall(key)
-    return {
-        'state': data.get('state', 'normal'),
-        'last_alarm_at': float(data.get('last_alarm_at', 0) or 0),
-        'pending_state': data.get('pending_state') or None,
-        'pending_count': int(data.get('pending_count', 0) or 0),
-    }
+    """
+    센서의 현재 스냅샷.
+
+    [수정] Redis 연결 실패 시 기본값 반환 — 알람 파이프라인이 중단되지 않도록 fallback.
+    """
+    try:
+        r = _client()
+        key = SENSOR_KEY_FORMAT.format(device_id=device_id)
+        data = r.hgetall(key)
+        return {
+            'state': data.get('state', 'normal'),
+            'last_alarm_at': float(data.get('last_alarm_at', 0) or 0),
+            'pending_state': data.get('pending_state') or None,
+            'pending_count': int(data.get('pending_count', 0) or 0),
+        }
+    except Exception as exc:
+        logger.warning("[state_store] get_sensor_snapshot(%s) Redis 오류 — 기본값 반환: %s", device_id, exc)
+        return {'state': 'normal', 'last_alarm_at': 0.0, 'pending_state': None, 'pending_count': 0}
 
 
-def commit_sensor_state(device_id: str, state: str, mark_alarmed: bool = False) -> None:
-    """센서 공식 상태 확정."""
+def commit_sensor_state(device_id: str, state: str, mark_alarmed: bool = False,
+                         preserve_pending: bool = False) -> None:
+    """
+    센서 공식 상태 확정.
+    preserve_pending=True 면 pending_state/count 를 건드리지 않음.
+
+    [수정-A] preserve_pending 파라미터 추가 — commit_state 와 동일한 이유.
+    [수정-B] Redis 연결 실패 시 경고 로그 후 무시.
+    """
     if state not in ("normal", "caution", "danger"):
         raise ValueError(f"invalid sensor state: {state}")
-    
-    r = _client()
-    key = SENSOR_KEY_FORMAT.format(device_id=device_id)
-    mapping = {
-        'state': state,
-        'pending_state': '',
-        'pending_count': '0',
-    }
-    if mark_alarmed:
-        mapping['last_alarm_at'] = str(time.time())
-    r.hset(key, mapping=mapping)
-    r.expire(key, TTL_SEC)
+
+    try:
+        r = _client()
+        key = SENSOR_KEY_FORMAT.format(device_id=device_id)
+        mapping: dict = {'state': state}
+        if not preserve_pending:
+            mapping['pending_state'] = ''
+            mapping['pending_count'] = '0'
+        if mark_alarmed:
+            mapping['last_alarm_at'] = str(time.time())
+        r.hset(key, mapping=mapping)
+        r.expire(key, TTL_SEC)
+    except Exception as exc:
+        logger.warning("[state_store] commit_sensor_state(%s, %s) Redis 오류 — 무시: %s", device_id, state, exc)
 
 
 def set_sensor_pending(device_id: str, pending_state: str, count: int) -> None:
-    """센서 회복 후보 저장."""
-    r = _client()
-    key = SENSOR_KEY_FORMAT.format(device_id=device_id)
-    r.hset(key, mapping={
-        'pending_state': pending_state,
-        'pending_count': str(count),
-    })
-    r.expire(key, TTL_SEC)
+    """
+    센서 회복 후보 저장.
+
+    [수정] Redis 연결 실패 시 경고 로그 후 무시.
+    """
+    try:
+        r = _client()
+        key = SENSOR_KEY_FORMAT.format(device_id=device_id)
+        r.hset(key, mapping={
+            'pending_state': pending_state,
+            'pending_count': str(count),
+        })
+        r.expire(key, TTL_SEC)
+    except Exception as exc:
+        logger.warning("[state_store] set_sensor_pending(%s) Redis 오류 — 무시: %s", device_id, exc)
 
 
 def clear_sensor_pending(device_id: str) -> None:
-    """센서 회복 후보 폐기."""
-    r = _client()
-    key = SENSOR_KEY_FORMAT.format(device_id=device_id)
-    r.hset(key, mapping={
-        'pending_state': '',
-        'pending_count': '0',
-    })
-    r.expire(key, TTL_SEC)
+    """
+    센서 회복 후보 폐기.
+
+    [수정] Redis 연결 실패 시 경고 로그 후 무시.
+    """
+    try:
+        r = _client()
+        key = SENSOR_KEY_FORMAT.format(device_id=device_id)
+        r.hset(key, mapping={
+            'pending_state': '',
+            'pending_count': '0',
+        })
+        r.expire(key, TTL_SEC)
+    except Exception as exc:
+        logger.warning("[state_store] clear_sensor_pending(%s) Redis 오류 — 무시: %s", device_id, exc)

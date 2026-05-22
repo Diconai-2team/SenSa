@@ -121,10 +121,14 @@ def _zone_tick_loop():
     Celery beat 와 동시에 실행돼도 무해 — tick() 자체가 중복-안전.
     """
     import logging as _log_mod
+    from django.db import close_old_connections as _close_old_connections
     _zt_logger = _log_mod.getLogger('geofence.zone_tick')
     while True:
         _time.sleep(30)
         try:
+            # [수정] 30초 휴면 후 연결이 stale 해질 수 있으므로 매 틱마다 정리.
+            # CONN_MAX_AGE > 0 설정(PostgreSQL 운영 환경) 에서도 안전하게 동작.
+            _close_old_connections()
             from geofence.zone_lifecycle import tick
             result = tick(check_upgrade=True)
             if any(result.values()):
@@ -356,60 +360,67 @@ def _run_ai_pipeline(device_id: str, gas_values: dict) -> None:
 
 
 def _run_ai_pipeline_inner(device_id: str, gas_values: dict) -> None:
+    # [수정] 예외 발생 시에도 DB 연결이 반드시 반환되도록 try/except/finally 추가.
+    # 기존 코드는 함수 끝에 close_old_connections()만 있어 예외 시 연결 누수 발생.
+    # _run_evaluate_sensor 와 동일한 패턴으로 통일.
     from django.db import close_old_connections
-    close_old_connections()
+    try:
+        close_old_connections()
 
-    # 스테일 에스컬레이션/알람값 정리 (1% 확률 — 평균 100틱마다 1회)
-    if _random.random() < 0.01:
-        _cleanup_stale_esc()
+        # 스테일 에스컬레이션/알람값 정리 (1% 확률 — 평균 100틱마다 1회)
+        if _random.random() < 0.01:
+            _cleanup_stale_esc()
 
-    anomaly_metrics = []
+        anomaly_metrics = []
 
-    for metric in _GAS_METRICS:
-        value = gas_values.get(metric)
-        if value is None:
-            continue
+        for metric in _GAS_METRICS:
+            value = gas_values.get(metric)
+            if value is None:
+                continue
 
-        # 새 측정값이 들어올 때마다 ARIMA 예측 검증 (pending → success/failure)
-        _verify_ai_predictions(device_id, metric, float(value))
+            # 새 측정값이 들어올 때마다 ARIMA 예측 검증 (pending → success/failure)
+            _verify_ai_predictions(device_id, metric, float(value))
 
-        result = ai_pipeline.analyze(device_id, metric, value)
+            result = ai_pipeline.analyze(device_id, metric, value)
 
-        current = result["current_status"]
-        if current != "NORMAL":
-            _maybe_create_alarm(device_id, metric, current, result, is_predictive=False)
-            anomaly_metrics.append(metric)
+            current = result["current_status"]
+            if current != "NORMAL":
+                _maybe_create_alarm(device_id, metric, current, result, is_predictive=False)
+                anomaly_metrics.append(metric)
 
-        predictive = result["predictive_status"]
-        if predictive != "NORMAL":
-            _maybe_create_alarm(device_id, metric, predictive, result, is_predictive=True)
+            predictive = result["predictive_status"]
+            if predictive != "NORMAL":
+                _maybe_create_alarm(device_id, metric, predictive, result, is_predictive=True)
 
-        # ARIMA 예측값을 WebSocket 차트용으로 발행
-        arima = result["details"].get("arima", {})
-        if arima.get("model_ready") and arima.get("predicted_values"):
-            publish_ai_prediction({
-                "device_id":       device_id,
-                "metric":          metric,
-                "predicted_values": arima["predicted_values"],
-                "steps":           arima["steps"],
-            })
+            # ARIMA 예측값을 WebSocket 차트용으로 발행
+            arima = result["details"].get("arima", {})
+            if arima.get("model_ready") and arima.get("predicted_values"):
+                publish_ai_prediction({
+                    "device_id":       device_id,
+                    "metric":          metric,
+                    "predicted_values": arima["predicted_values"],
+                    "steps":           arima["steps"],
+                })
 
-    if anomaly_metrics:
-        _record_gas_anomaly(device_id, anomaly_metrics)
+        if anomaly_metrics:
+            _record_gas_anomaly(device_id, anomaly_metrics)
 
-    # 가스-가스 상관관계 (2종 이상 동시 이상)
-    if len(anomaly_metrics) >= 2:
-        _check_gas_correlation(device_id, anomaly_metrics, gas_values)
+        # 가스-가스 상관관계 (2종 이상 동시 이상)
+        if len(anomaly_metrics) >= 2:
+            _check_gas_correlation(device_id, anomaly_metrics, gas_values)
 
-    # 공간 확산 탐지 (별도 스레드)
-    if anomaly_metrics:
-        _threading.Thread(
-            target=_check_spatial_diffusion,
-            args=(device_id, list(anomaly_metrics)),
-            daemon=True,
-        ).start()
+        # 공간 확산 탐지 (별도 스레드)
+        if anomaly_metrics:
+            _threading.Thread(
+                target=_check_spatial_diffusion,
+                args=(device_id, list(anomaly_metrics)),
+                daemon=True,
+            ).start()
 
-    close_old_connections()
+    except Exception as exc:
+        logger.warning("[ai_pipeline/gas] %s: %s", device_id, exc)
+    finally:
+        close_old_connections()
 
 
 # ═══════════════════════════════════════════════════════════
@@ -427,48 +438,54 @@ def _run_power_ai_pipeline(device_id: str, power_values: dict) -> None:
 
 
 def _run_power_ai_pipeline_inner(device_id: str, power_values: dict) -> None:
+    # [수정] 예외 발생 시에도 DB 연결이 반드시 반환되도록 try/except/finally 추가.
+    # 가스 파이프라인(_run_ai_pipeline_inner) 과 동일한 패턴으로 통일.
     from django.db import close_old_connections
-    close_old_connections()
+    try:
+        close_old_connections()
 
-    # 스테일 에스컬레이션/알람값 정리 (1% 확률 — 평균 100틱마다 1회)
-    if _random.random() < 0.01:
-        _cleanup_stale_esc()
+        # 스테일 에스컬레이션/알람값 정리 (1% 확률 — 평균 100틱마다 1회)
+        if _random.random() < 0.01:
+            _cleanup_stale_esc()
 
-    power_anomalies = []
+        power_anomalies = []
 
-    for metric in _POWER_METRICS:
-        value = power_values.get(metric)
-        if value is None:
-            continue
+        for metric in _POWER_METRICS:
+            value = power_values.get(metric)
+            if value is None:
+                continue
 
-        result = ai_pipeline.analyze(device_id, metric, value, sensor_type='power')
+            result = ai_pipeline.analyze(device_id, metric, value, sensor_type='power')
 
-        current = result["current_status"]
-        if current != "NORMAL":
-            _maybe_create_alarm(device_id, metric, current, result, is_predictive=False)
-            power_anomalies.append((metric, current))
+            current = result["current_status"]
+            if current != "NORMAL":
+                _maybe_create_alarm(device_id, metric, current, result, is_predictive=False)
+                power_anomalies.append((metric, current))
 
-        predictive = result["predictive_status"]
-        if predictive != "NORMAL":
-            _maybe_create_alarm(device_id, metric, predictive, result, is_predictive=True)
+            predictive = result["predictive_status"]
+            if predictive != "NORMAL":
+                _maybe_create_alarm(device_id, metric, predictive, result, is_predictive=True)
 
-        # ARIMA 예측값 WebSocket 발행 (차트 점선용)
-        arima = result["details"].get("arima", {})
-        if arima.get("model_ready") and arima.get("predicted_values"):
-            publish_ai_prediction({
-                "device_id":        device_id,
-                "metric":           metric,
-                "predicted_values": arima["predicted_values"],
-                "steps":            arima["steps"],
-            })
+            # ARIMA 예측값 WebSocket 발행 (차트 점선용)
+            arima = result["details"].get("arima", {})
+            if arima.get("model_ready") and arima.get("predicted_values"):
+                publish_ai_prediction({
+                    "device_id":        device_id,
+                    "metric":           metric,
+                    "predicted_values": arima["predicted_values"],
+                    "steps":            arima["steps"],
+                })
 
-    if power_anomalies:
-        _record_power_anomaly(device_id, [m for m, _ in power_anomalies])
-        recent_gas = _get_recent_gas_events()
-        if recent_gas:
-            _check_power_gas_correlation(device_id, power_anomalies, recent_gas)
+        if power_anomalies:
+            _record_power_anomaly(device_id, [m for m, _ in power_anomalies])
+            recent_gas = _get_recent_gas_events()
+            if recent_gas:
+                _check_power_gas_correlation(device_id, power_anomalies, recent_gas)
 
-    close_old_connections()
+    except Exception as exc:
+        logger.warning("[ai_pipeline/power] %s: %s", device_id, exc)
+    finally:
+        close_old_connections()
 
 
 # ═══════════════════════════════════════════════════════════

@@ -29,7 +29,17 @@ class AlarmViewSet(viewsets.ReadOnlyModelViewSet):
             qs = qs.filter(alarm_level=level)
         elif level == "ai":
             qs = qs.filter(is_ai=True)
-        return qs[:50]
+        # [수정] 슬라이싱을 get_queryset() 안에서 하면 DRF의 get_object()가
+        # 내부적으로 .filter(pk=pk)를 호출할 때
+        # "Cannot filter a query once a slice has been taken" TypeError 발생.
+        # → 슬라이싱은 list 액션에서만 적용하도록 list() 오버라이드로 이동.
+        return qs
+
+    def list(self, request, *args, **kwargs):
+        """목록 조회 — 최대 50건 제한."""
+        queryset = self.filter_queryset(self.get_queryset())[:50]
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)
 
     @action(detail=False, methods=["get"])
     def stats(self, request):
@@ -87,12 +97,22 @@ class AIPredictionViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = AIPredictionSerializer
 
     def get_queryset(self):
+        # [수정] 슬라이싱을 get_queryset() 에서 하면
+        # retrieve(pk=pk) 시 get_object() 의 .filter(pk=pk) 호출이
+        # "Cannot filter a query once a slice has been taken" TypeError 로 실패.
+        # → 슬라이싱은 list() 오버라이드로 이동.
         qs = super().get_queryset()
-        limit  = int(self.request.query_params.get('limit', 20))
         result = self.request.query_params.get('result')
         if result:
             qs = qs.filter(result=result)
-        return qs[:limit]
+        return qs
+
+    def list(self, request, *args, **kwargs):
+        """목록 조회 — limit 파라미터 적용."""
+        limit = int(self.request.query_params.get('limit', 20))
+        queryset = self.filter_queryset(self.get_queryset())[:limit]
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)
 
 
 _ML_ALARM_TYPES = {
