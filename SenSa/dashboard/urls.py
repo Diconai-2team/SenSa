@@ -18,4 +18,7 @@ urlpatterns = [
     path('alarms/', alarm_list_view,     name='alarm-list'),
     path('api/',    include(router.urls)),
     path('api/check-geofence/', views.CheckGeofenceView.as_view(), name='check-geofence'),
+    path('api/ai-forecast/',    views.AIForecastView.as_view(),    name='ai-forecast'),  # G1
+    # [P2 STEP 7] Celery task 상태 추적 API
+    path('api/task-status/<str:task_id>/', views.TaskStatusView.as_view(), name='task-status'),
 ]

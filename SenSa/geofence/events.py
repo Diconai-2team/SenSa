@@ -72,6 +72,13 @@ def _emit(zone, event_type: str, **kwargs) -> ZoneEvent | None:
     if event_type == 'upgraded_to_critical':
         _notify_external_critical(zone, kwargs)
 
+    # [P4-C 8차] zone 이벤트 메트릭 — 라이프사이클 누적
+    try:
+        from geofence.metrics import zone_event_total
+        zone_event_total.labels(event_type=event_type).inc()
+    except Exception:
+        pass  # 메트릭 실패가 라이프사이클을 끊지 않도록 격리
+
     return event
 
 

@@ -93,3 +93,17 @@ _work_backup/
 
 # 운영 데이터 백업 (서버 보관 — git 추적 불필요)
 _backups/
+
+# ─────────────────────────────────────────
+# [9차 추가] 자동 생성 / 백업 / 배포 파일
+# ─────────────────────────────────────────
+# timestamp 백업 (apply.sh 가 .bak.YYYYMMDD_HHMMSS 형식으로 생성)
+# 기존 *.bak / *.bak_* 패턴은 .bak.<...> 형태 매칭 안 함 — 명시 추가.
+*.bak.*
+
+# 모든 zip 파일 — 패치 배포물 (sensa_*.zip, p4_*.zip 등) 추적 불필요
+*.zip
+
+# Celery beat 의 schedule 캐시 — 매 실행 시 자동 갱신, 머신별 상이
+celerybeat-schedule
+celerybeat-schedule.*

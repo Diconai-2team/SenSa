@@ -1,8 +1,7 @@
-<!-- section_14_15_power.html — ⑭ 전력 테이블 + ⑮ 전력 차트
-     [Step 1B] 가스 패널과 동일한 페이지네이션 패턴 적용.
-              하드코딩된 행 2개(스마트파워 A/B) → DB 기반 동적 페이지네이션.
-              ‹ / › 버튼으로 전력 센서 순회. 디바이스 이름은 제목에 동적 표시.
-              헤더 와트(B-3): 큰 글씨에 전체 합산, 작은 글씨에 현재 설비 와트. -->
+<!-- section_14_15_power.html — ⑭ 전력 테이블 + ⑮ AI 예측 전력
+     F4-HTML 변경: ⑮ 영역에 전력 변수 캐러셀 헤더 + 카드 2개 추가.
+                    가스 13번 (F2) 패턴 그대로 + section_16 의 .ai-perf-card 재활용.
+                    JS 연동은 F4-JS 에서. -->
 
 <!-- ⑭ 스마트 전력 시스템 -->
 <div id="section-14-power-table" class="bottom-panel">
@@ -40,8 +39,56 @@
   </table>
 </div>
 
-<!-- ⑮ AI 예측 - 전력 -->
+<!-- ⑮ AI 예측 - 스마트 전력 시스템 위험 (F4: 캐러셀 + 카드 골격 추가, JS 연동은 F4-JS) -->
 <div id="section-15-power-chart" class="bottom-panel">
-  <div class="bottom-panel-title">AI 예측 - 스마트 전력 시스템 위험<a class="detail-link" style="font-size:10px;">+ 상세보기</a></div>
+  <div class="bottom-panel-title">
+    <span>AI 예측 - 스마트 전력 시스템 위험 — <span id="power-ai-name" class="sensor-pager-name">전류</span></span>
+    <div class="sensor-pager">
+      <button class="sensor-pager-btn" id="power-ai-prev" type="button" aria-label="이전 항목" disabled>‹</button>
+      <span class="sensor-pager-index"><span id="power-ai-cur">1</span> / <span id="power-ai-total">4</span></span>
+      <button class="sensor-pager-btn" id="power-ai-next" type="button" aria-label="다음 항목" disabled>›</button>
+    </div>
+    <a class="detail-link" style="font-size:10px; margin-left:8px;">+ 상세보기</a>
+  </div>
+
+  <!-- 카드 2개: 현재 값 + 12시간 내 최대 예상 — section_16 의 .ai-perf-card CSS 재활용 -->
+  <div class="ai-perf-cards" style="grid-template-columns: repeat(2, 1fr); padding: 4px 12px 0;">
+    <div class="ai-perf-card">
+      <div class="ai-perf-label">현재 값</div>
+      <div class="ai-perf-value" id="power-ai-current">—</div>
+    </div>
+    <div class="ai-perf-card accuracy">
+      <div class="ai-perf-label">🤖 AI 예측 — 위험 분석</div>
+      <div class="ai-perf-value" id="power-ai-forecast">—</div>
+    </div>
+  </div>
+
   <div class="chart-area"><canvas id="chart-power"></canvas></div>
 </div>
+
+<!-- F4 자체 fallback CSS — section_16 미로드 시 카드 스타일 유지 -->
+<style>
+#section-15-power-chart .ai-perf-cards {
+  display: grid;
+  gap: 6px;
+}
+#section-15-power-chart .ai-perf-card {
+  background: var(--bg, #161b22);
+  border: 1px solid var(--border, #21262d);
+  border-radius: 6px;
+  padding: 6px 8px;
+  text-align: center;
+}
+#section-15-power-chart .ai-perf-card.accuracy { border-color: #58a6ff66; }
+#section-15-power-chart .ai-perf-label {
+  font-size: 10px;
+  color: var(--text-dim, #6e7681);
+  margin-bottom: 2px;
+}
+#section-15-power-chart .ai-perf-value {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text, #c9d1d9);
+}
+#section-15-power-chart .ai-perf-card.accuracy .ai-perf-value { color: #58a6ff; }
+</style>

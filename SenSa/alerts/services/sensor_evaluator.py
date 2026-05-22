@@ -13,6 +13,8 @@ from ..state_store import (
 )
 from ._common import RE_ALARM_INTERVAL_SEC, RECOVERY_CONFIRM_TICKS
 from .geofence_utils import _find_sensor_geofence
+# [P4-C 8차] 알람 비즈니스 메트릭
+from alerts.metrics import alarm_created_total, alarm_throttled_total
 
 
 def evaluate_sensor(device_id: str, sensor_type: str,
@@ -68,6 +70,17 @@ def evaluate_sensor(device_id: str, sensor_type: str,
         reason = 'ongoing'
         target_state = official_state
 
+    # [P4-C 8차] throttle 차단 카운트
+    #   조건: 이상 상태(non-normal) 인데 should_alarm=False → 60s 안에 재발 시도였음
+    if (not should_alarm) and official_state != 'normal' and confirmed_new_state is None:
+        try:
+            alarm_throttled_total.labels(
+                sensor_type=sensor_type,
+                reason='within_interval',
+            ).inc()
+        except Exception:
+            pass  # 메트릭 실패가 알람 로직을 끊지 않도록 격리
+
     # ─── 알람 생성 ───
     created = []
 
@@ -91,6 +104,16 @@ def evaluate_sensor(device_id: str, sensor_type: str,
             message=message,
             is_ai=is_ai,
         )
+
+        # [P4-C 8차] 알람 생성 메트릭 — alarm_level/reason 별 누적
+        try:
+            alarm_created_total.labels(
+                sensor_type=sensor_type,
+                alarm_level=alarm_level,
+                reason=reason or 'unknown',
+            ).inc()
+        except Exception:
+            pass
 
         created.append({
             'alarm_id':      alarm.id,

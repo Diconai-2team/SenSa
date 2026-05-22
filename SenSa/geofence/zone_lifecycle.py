@@ -129,14 +129,28 @@ def update_zone_radius(zone: GeoFence) -> float:
     )
 
     if is_scenario and zone.source_device and zone.current_radius_px:
-        # 비율 = 새 반경 / 현재 반경
-        scale = new_radius / zone.current_radius_px
-        zone.polygon = _scale_polygon_around_center(
-            zone.polygon,
-            zone.source_device.x,
-            zone.source_device.y,
-            scale,
-        )
+        # [Phase Realism v2 — hull → 원형 전이 (시간 기반)]
+        #
+        # 그레이엄 확산은 source 중심 방사. 초기 hull 은 영향 sensor 분포에 따라
+        # 비대칭일 수 있는데 (예: 모두 NE 쪽만), _scale_polygon_around_center 는
+        # hull 모양을 보존한 채 비례 확대 → 초기 hull 영역 밖 sensor (예: SW)
+        # 는 polygon 확장에 따라서도 영원히 검출 안 됨.
+        #
+        # 해결: zone elapsed 가 TRANSITION_ELAPSED_SEC 넘어가면 source 중심
+        # 원형 polygon 으로 전환. created_at 은 LEAK_ELAPSED_SEC 만큼 과거로
+        # 설정돼있어 elapsed = LEAK_ELAPSED_SEC + real_t.
+        # op_multi (LEAK=90, TTL=180) → real_t=30 부터 원형 전이.
+        # 시각 서사: 초기 sensor 군집 hull → 확산 진행 시 그레이엄 원형.
+        from geofence.polygon_utils import circle_polygon
+        sx, sy = zone.source_device.x, zone.source_device.y
+        TRANSITION_ELAPSED_SEC = 120   # zone elapsed 이만큼 넘으면 원형 전이
+        if elapsed > TRANSITION_ELAPSED_SEC:
+            zone.polygon = circle_polygon(sx, sy, new_radius)
+        else:
+            scale = new_radius / zone.current_radius_px
+            zone.polygon = _scale_polygon_around_center(
+                zone.polygon, sx, sy, scale,
+            )
     else:
         _rebuild_polygon(zone)
 

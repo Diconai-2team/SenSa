@@ -35,7 +35,7 @@ class OperationalMultiLeak(OperationalScenarioBase):
     SPIKE_NOISE = 7.0
     SPIKE_INTERVAL_SEC = 0.5
     ZONE_TTL_SEC = 180           # 3분 — 확산 단계별 검증 시간 확보
-    LEAK_ELAPSED_SEC = 90        # 시작 시점에 인접 sensor_06 (137px) 이미 도달
+    LEAK_ELAPSED_SEC = 30        # 6차 — zone 크기 평면도 비례 적정 (radius 시작 61px → 180s 후 427px, sensor_02 검출 유지)
 
     POLYGON_MARGIN_PX = 60       # 큰 zone 외곽 여유
 

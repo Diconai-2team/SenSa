@@ -1,0 +1,12 @@
+# Grafana 부팅 시 자동 등록 — Prometheus datasource
+# network_mode: host 환경: Prometheus 컨테이너 = localhost:9090
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    uid: prometheus
+    type: prometheus
+    access: proxy
+    url: http://host.docker.internal:9090
+    isDefault: true
+    editable: false

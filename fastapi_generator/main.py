@@ -27,10 +27,15 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import Response
+# [P4-D 8차 hotfix2] Prometheus /metrics — Mount 대신 명시 route (HTTP 307 회피)
+from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
 
 from config import DEFAULT_SCENARIO, VALID_SCENARIOS, TICK_INTERVAL
 from scheduler import run_simulation_loop
 from scenario import ScenarioState, SCENARIO_DEVICE_MAP
+# [P4-D 8차] metrics 모듈 로드 — Counter/Histogram 정의를 REGISTRY 에 등록
+import metrics  # noqa: F401
 
 
 # ═══════════════════════════════════════════════════════════
@@ -107,6 +112,19 @@ app.add_middleware(
     allow_headers=["*"],
     allow_credentials=False,
 )
+
+
+# ═══════════════════════════════════════════════════════════
+# [P4-D 8차 hotfix2] Prometheus /metrics 노출 (Mount → 명시 route)
+# ═══════════════════════════════════════════════════════════
+# 결함 3 fix:
+#   app.mount("/metrics", make_asgi_app()) 는 Starlette Mount 정규화로
+#   GET /metrics → 307 redirect /metrics/. Prometheus 표준은 trailing
+#   slash 없는 /metrics 단일 200 응답. 명시 route 로 교체.
+@app.get("/metrics")
+async def metrics_endpoint():
+    """Prometheus scrape 대상 — 200 OK + text/plain (prometheus exposition format)."""
+    return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
 
 # ═══════════════════════════════════════════════════════════
@@ -188,3 +206,19 @@ async def anomaly_clear_all():
 async def anomaly_state():
     """현재 5 device 의 토글 상태 + phase + 경과 시간 조회."""
     return app.state.scenario_state.state()
+
+# ═══════════════════════════════════════════════════════════
+# [P4-D 8차 hotfix3] 진입점 (__main__) — 결함 4 fix
+# ═══════════════════════════════════════════════════════════
+# 핸드오프 6번 명세 가동 명령 `python main.py` 가 동작하도록 진입점 정의.
+# 기존 `uvicorn main:app --host ... --port ...` CLI 명령도 그대로 호환.
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(
+        "main:app",
+        host="0.0.0.0",
+        port=8001,
+        # autoreload 는 핸드오프 0번 "운영 안정성" 정책에 따라 꺼둠
+        # 코드 변경 시 사용자가 명시적으로 Ctrl-C 후 재가동
+        reload=False,
+    )
