@@ -1,0 +1,30 @@
+# 배치 경로: ~/SenSa/SenSa/.dockerignore
+# 이미지에서 제외 (특히 .venv 는 수 GB → 반드시 제외)
+.venv/
+venv/
+env/
+__pycache__/
+*.pyc
+*.pyo
+*.bak.*
+*.before_*
+*.broken
+*.original
+*.log
+*.out
+*.err
+*.zip
+*.tgz
+# DB 는 런타임 bind 마운트 (이미지에 굽지 않음)
+db.sqlite3
+db.sqlite3.*
+staticfiles/
+media/
+.git/
+.gitignore
+celerybeat-schedule
+celerybeat-schedule.*
+*.ipynb
+.ipynb_checkpoints/
+Dockerfile
+.dockerignore

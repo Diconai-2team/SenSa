@@ -27,6 +27,14 @@ scrape_configs:
         labels:
           service: 'generator'
 
+  # ─── SenSa Celery worker (host:9809) [9차 ㅂ] ───
+  - job_name: 'sensa-celery'
+    metrics_path: '/metrics'
+    static_configs:
+      - targets: ['host.docker.internal:9809']
+        labels:
+          service: 'celery'
+
   # ─── Prometheus 자체 (host:9090) ───
   - job_name: 'prometheus'
     static_configs:

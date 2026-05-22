@@ -233,8 +233,8 @@ ALARM_RECOVERY_CONFIRM_TICKS = 3   # 회복 전이에 필요한 연속 관측 �
 # 이 블록을 mysite/settings.py 의 가장 아래에 추가하세요.
 # TIME_ZONE 변수는 이미 settings.py 위에 정의되어 있을 것입니다.
 
-CELERY_BROKER_URL = 'redis://localhost:6379/0'
-CELERY_RESULT_BACKEND = 'redis://localhost:6379/0'
+CELERY_BROKER_URL = os.getenv('CELERY_BROKER_URL', f'redis://{REDIS_HOST}:{REDIS_PORT}/0')
+CELERY_RESULT_BACKEND = os.getenv('CELERY_RESULT_BACKEND', f'redis://{REDIS_HOST}:{REDIS_PORT}/0')
 CELERY_TIMEZONE = TIME_ZONE
 CELERY_TASK_TRACK_STARTED = True
 CELERY_TASK_TIME_LIMIT = 5 * 60       # 5분 (TTM 추론 여유)
