@@ -12,9 +12,9 @@ import time
 import redis
 from django.conf import settings
 
-WINDOW_SIZE = 60   # 윈도우 최대 포인트 수
+WINDOW_SIZE = 60   # 윈도우 최대 포인트 수 (dev: 60포인트×3초=3분 / 운영: 60포인트×60초=1시간)
 _KEY = "sensa:ml:{device_id}:{metric}:win"
-_TTL = 600  # 10분 TTL (비활성 센서 자동 정리)
+_TTL = 600  # 10분 TTL (비활성 센서 자동 정리) [운영 전환 시] → 7200 (2시간, 1분 주기 기준 60틱 버퍼)
 
 _pool = None
 _pool_lock = threading.Lock()   # 첫 연결 생성 시 레이스 컨디션 방지

@@ -230,8 +230,8 @@ INTERNAL_API_ALLOWED_PATHS = [
     '/dashboard/api/thresholds/',   # ← 추가: 임계치 DB → FastAPI 동기화
 ]
 
-ALARM_RE_ALARM_INTERVAL_SEC = 60   # 상태 지속 시 재알림 주기
-ALARM_RECOVERY_CONFIRM_TICKS = 3   # 회복 전이에 필요한 연속 관측 횟수 (3 = 약 3초)# ─────────────────────────────────────────────
+ALARM_RE_ALARM_INTERVAL_SEC = 60   # 상태 지속 시 재알림 주기 [운영 전환 시] → 300
+ALARM_RECOVERY_CONFIRM_TICKS = 3   # 회복 전이에 필요한 연속 관측 횟수 [운영 전환 시] 값 유지 (3틱 = dev 9초 → 운영 3분, 의미 동일)# ─────────────────────────────────────────────
 # Celery / Redis (Phase G)
 # ─────────────────────────────────────────────
 # 이 블록을 mysite/settings.py 의 가장 아래에 추가하세요.

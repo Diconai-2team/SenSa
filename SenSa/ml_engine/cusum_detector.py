@@ -32,7 +32,7 @@ from statistics import mean, stdev
 from . import model_store
 
 BASELINE_POINTS   = 20   # 기준 μ/σ 산출에 사용할 포인트 수
-REBASELINE_TICKS  = 200  # N 틱마다 baseline 재산출 (500→200: 약 3분20초, 환경 변화 반응 속도 향상)
+REBASELINE_TICKS  = 200  # N 틱마다 baseline 재산출 [운영 전환 시] → 100 (dev 10분 → 운영 100분, 너무 느리므로)
 K_SIGMA = 0.5            # 허용 자연변동 계수 (모든 가스 동일 — 표준 CUSUM 설계점)
 H_SIGMA = 4.0            # 기본 알람 임계 계수 (미등록 메트릭·전력 센서 fallback)
 EPS = 1e-9

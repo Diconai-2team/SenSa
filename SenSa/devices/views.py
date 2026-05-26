@@ -61,7 +61,7 @@ _AI_ALARM_MAP = {
 # 에스컬레이션 — 같은 알람 반복 시 레벨 상향
 # ═══════════════════════════════════════════════════════════
 ESCALATION_THRESHOLD  = 3
-ESCALATION_WINDOW_SEC = 300
+ESCALATION_WINDOW_SEC = 300   # [운영 전환 시] → 600
 
 _LEVEL_ORDER = ["info", "caution", "danger", "critical"]
 _esc_lock  = _threading.Lock()
@@ -76,8 +76,8 @@ _NO_ESCALATION_TYPES = {'ai_drift_alert', 'ai_predictive_warning', 'ai_predictiv
 # ═══════════════════════════════════════════════════════════
 # 알람 쿨다운 (중복 억제)
 # ═══════════════════════════════════════════════════════════
-_GAS_COOLDOWN_SEC  = 300   # 가스 AI 알람: threshold 알람이 별도로 커버하므로 길게
-_BASE_COOLDOWN_SEC = 60    # 전력·에스컬레이션: 짧게 유지
+_GAS_COOLDOWN_SEC  = 30    # 가스 AI 알람 쿨다운 [운영 전환 시] → 120
+_BASE_COOLDOWN_SEC = 10    # 전력·에스컬레이션 쿨다운 [운영 전환 시] → 60
 
 # 드리프트 device 레벨 쿨다운:
 #   CUSUM이 9개 메트릭을 각각 판정하므로 같은 틱에 9건 동시 발화.
@@ -102,7 +102,7 @@ _COMBUSTIBLE_GAS       = {'co', 'h2s', 'no2', 'so2', 'o3', 'nh3', 'voc'}
 _O2_DISPLACEMENT_TH    = 19.5
 _MULTI_GAS_ANOMALY_MIN = 3
 
-_CROSS_WINDOW_SEC = 120
+_CROSS_WINDOW_SEC = 120   # 가스+전력 교차 이상 묶음 시간 [운영 전환 시] → 360
 _cross_lock = _threading.Lock()
 _recent_gas_anomalies:   dict = {}
 _recent_power_anomalies: dict = {}

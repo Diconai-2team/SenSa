@@ -2,6 +2,49 @@
 
 v5 위에 적용. **데모 후 운영 단계 진입 직전**의 안정화 작업.
 
+---
+
+## ⚙️ 운영 전환 체크리스트 (dev → 1분 주기 운영)
+
+> 현재 개발환경은 데이터 수신 주기 **1~3초**. 운영환경은 **60초(1분)** 로 전환 예정.  
+> 아래 값들은 주기에 의존하므로 운영 배포 전 반드시 수정할 것.
+
+### 1단계 — 데이터 주기 변경
+
+| 파일 | 항목 | 현재(dev) | 운영값 |
+|------|------|-----------|--------|
+| `fastapi_generator/.env` | `TICK_INTERVAL` | `1.0` | `60.0` |
+
+### 2단계 — 알람 쿨다운 / 에스컬레이션
+
+| 파일 | 항목 | 현재(dev) | 운영값 | 비고 |
+|------|------|-----------|--------|------|
+| `devices/views.py` | `_GAS_COOLDOWN_SEC` | `30` | `120` | 가스 AI 알람 중복 억제 (2분) |
+| `devices/views.py` | `_BASE_COOLDOWN_SEC` | `10` | `60` | 전력 알람 중복 억제 (1분) |
+| `devices/views.py` | `ESCALATION_WINDOW_SEC` | `300` | `600` | 에스컬레이션 카운터 유효 시간 |
+| `devices/views.py` | `_CROSS_WINDOW_SEC` | `120` | `360` | 가스+전력 교차 이상 묶음 시간 |
+| `mysite/settings.py` | `ALARM_RE_ALARM_INTERVAL_SEC` | `60` | `300` | 상태 지속 시 재알림 주기 |
+
+> `ALARM_RECOVERY_CONFIRM_TICKS = 3` 은 값 유지 (3틱 의미가 dev 9초 → 운영 3분으로 자동 변환)
+
+### 3단계 — ML 엔진 재학습 주기
+
+| 파일 | 항목 | 현재(dev) | 운영값 | 비고 |
+|------|------|-----------|--------|------|
+| `ml_engine/isolation_forest.py` | `RETRAIN_INTERVAL` | `50` | `25` | dev 2.5분 → 운영 25분 재학습 |
+| `ml_engine/isolation_forest.py` | `SLOPE_WINDOW` | `10` | `5` | dev 30초 → 운영 5분 관찰 |
+| `ml_engine/arima_forecaster.py` | `RETRAIN_INTERVAL` | `50` | `25` | 동일 이유 |
+| `ml_engine/cusum_detector.py` | `REBASELINE_TICKS` | `200` | `100` | dev 10분 → 운영 100분 기준값 재산출 |
+| `ml_engine/sliding_window.py` | `_TTL` | `600` | `7200` | Redis 키 만료 시간 (2시간) |
+
+### 4단계 — 대시보드 예측 API
+
+| 파일 | 항목 | 현재(dev) | 운영값 | 비고 |
+|------|------|-----------|--------|------|
+| `dashboard/views.py` | `horizon` 기본값 | `60` | `10` | dev 3분 예측 → 운영 10분 예측 |
+
+---
+
 ## 포함 범위 (6개 영역)
 
 ### 1. 감사 로그 (AuditLog)

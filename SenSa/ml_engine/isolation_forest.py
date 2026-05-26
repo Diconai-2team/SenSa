@@ -42,8 +42,8 @@ from . import model_store
 EPS = 1e-9
 MIN_TRAIN = 30          # 학습 최소 샘플 수
 CONTAMINATION = 0.03    # 이상 비율 기본값 — 실측 데이터 기반 (임계치 알람/전체 ≈ 2.6%)
-RETRAIN_INTERVAL = 50   # 호출 N회마다 재학습 (call_count 기반 — 윈도우 크기와 독립)
-SLOPE_WINDOW = 10       # slope 계산에 사용할 최근 틱 수
+RETRAIN_INTERVAL = 50   # 호출 N회마다 재학습 [운영 전환 시] → 25 (dev 2.5분 → 운영 25분, 너무 느리므로)
+SLOPE_WINDOW = 10       # slope 계산에 사용할 최근 틱 수 [운영 전환 시] → 5 (dev 30초 → 운영 5분, 동일한 관찰 시간)
 
 # 특징 차원이 바뀔 때마다 증가 → 구 버전 모델 자동 폐기 (차원 불일치 예외 방지)
 MODEL_VERSION = 2

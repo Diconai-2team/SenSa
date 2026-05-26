@@ -272,6 +272,7 @@ class AIForecastView(APIView):
             horizon = int(request.query_params.get('horizon', 60))
         except (ValueError, TypeError):
             horizon = 60
+        # horizon: dev 기본 60틱(=3분 예측) [운영 전환 시] 기본값 → 10 (=10분 예측)
         horizon = max(10, min(horizon, 200))  # 클램프
 
         if not device_id or not metric:

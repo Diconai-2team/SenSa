@@ -32,8 +32,8 @@ import numpy as np
 from . import model_store
 
 MIN_POINTS = 30         # ARIMA 학습 최소 포인트 수
-FORECAST_STEPS = 10     # 예측 앞 단계 수 (3→10: 리드 타임 약 10초로 확보)
-RETRAIN_INTERVAL = 50   # N 포인트마다 재학습
+FORECAST_STEPS = 10     # 예측 앞 단계 수 [운영 전환 시] → 10 유지 (dev 30초 → 운영 10분 예측)
+RETRAIN_INTERVAL = 50   # N 포인트마다 재학습 [운영 전환 시] → 25 (dev 2.5분 → 운영 25분, 너무 느리므로)
 
 _lock = threading.Lock()
 _cache: dict[str, dict] = {}      # key → {result, trained_at_count}
