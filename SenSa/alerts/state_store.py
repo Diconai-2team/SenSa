@@ -10,18 +10,24 @@ alerts/state_store.py — 작업자별 알람 상태 + 안정화 카운터 (Redi
 
 TTL: 30분.
 
-[수정] Redis 연결 실패 시 fallback 정책:
-  - 읽기 함수(get_*_snapshot): 기본값 반환 → 알람 파이프라인 정상 진행
-  - 쓰기 함수(commit_*, set_*, clear_*): 경고 로그 후 무시
-  - 효과: Redis 일시 중단 시 상태가 초기화(safe/normal)되어 재진입 알람이 발생할 수 있지만,
-          알람 시스템 전체가 죽는 것보다 낫다.
+[수정] Redis 연결 실패 시 fallback 정책 (_graceful_redis 데코레이터):
+  - read 함수(get_*_snapshot): 기본 dict 반환 → 알람 파이프라인 정상 진행
+  - write 함수(commit_*, set_*, clear_*): None 반환 (silent skip)
+  - 데코레이터는 redis.ConnectionError 만 catch (ValueError 등은 그대로 전파).
+    내부 try/except Exception 으로 나머지 예외 추가 처리.
+  - TTL 30분: 단기 통신 끊김(연결 불안정, 재시작)에서 상태 보존.
 """
+import functools
 import logging
 import time
+
 import redis
 from django.conf import settings
 
 logger = logging.getLogger(__name__)
+
+logger = logging.getLogger(__name__)
+
 
 _pool = None
 
@@ -39,6 +45,58 @@ def _client() -> redis.Redis:
     return redis.Redis(connection_pool=_pool)
 
 
+# ═══════════════════════════════════════════════════════════
+# [9차 ㅁ-fix] graceful degradation 데코레이터
+# ═══════════════════════════════════════════════════════════
+
+def _graceful_redis(default_factory=None):
+    """
+    Redis 장애 시 graceful degradation 데코레이터.
+
+    redis.ConnectionError 만 catch — 그 외 예외는 그대로 전파.
+    fallback 반환 + logger.warning 으로 명시 기록 (silent failure 방지).
+
+    Args:
+        default_factory: ConnectionError 시 반환할 값을 만드는 callable.
+                         None 이면 None 반환 (write 함수 용도).
+    """
+    def decorator(fn):
+        @functools.wraps(fn)
+        def wrapper(*args, **kwargs):
+            try:
+                return fn(*args, **kwargs)
+            except redis.ConnectionError as exc:
+                logger.warning(
+                    "state_store.%s skipped (redis down): %s",
+                    fn.__name__, exc,
+                )
+                return default_factory() if default_factory else None
+        return wrapper
+    return decorator
+
+
+def _worker_default() -> dict:
+    """get_worker_snapshot 의 Redis 장애 시 기본값."""
+    return {
+        'state': 'safe',
+        'last_alarm_at': 0.0,
+        'pending_state': None,
+        'pending_count': 0,
+    }
+
+
+def _sensor_default() -> dict:
+    """get_sensor_snapshot 의 Redis 장애 시 기본값."""
+    return {
+        'state': 'normal',
+        'last_alarm_at': 0.0,
+        'pending_state': None,
+        'pending_count': 0,
+    }
+
+
+# ═══════════════════════════════════════════════════════════
+
 KEY_FORMAT = "sensa:worker:{worker_id}:alarm"
 # [수정] 5분 → 30분
 # 기존 5분 TTL 은 작업자/센서가 5분간 데이터를 안 보내면 상태가 safe/normal 로 초기화됨.
@@ -47,6 +105,7 @@ KEY_FORMAT = "sensa:worker:{worker_id}:alarm"
 TTL_SEC = 1800
 
 
+@_graceful_redis(default_factory=_worker_default)
 def get_worker_snapshot(worker_id: str) -> dict:
     """
     작업자의 현재 전체 스냅샷 반환.
@@ -70,6 +129,7 @@ def get_worker_snapshot(worker_id: str) -> dict:
         return {'state': 'safe', 'last_alarm_at': 0.0, 'pending_state': None, 'pending_count': 0}
 
 
+@_graceful_redis()
 def commit_state(worker_id: str, state: str, mark_alarmed: bool = False,
                   preserve_pending: bool = False) -> None:
     """
@@ -102,6 +162,7 @@ def commit_state(worker_id: str, state: str, mark_alarmed: bool = False,
         logger.warning("[state_store] commit_state(%s, %s) Redis 오류 — 무시: %s", worker_id, state, exc)
 
 
+@_graceful_redis()
 def set_pending(worker_id: str, pending_state: str, count: int) -> None:
     """
     회복 후보 상태 저장 (아직 확정 안 함).
@@ -121,6 +182,7 @@ def set_pending(worker_id: str, pending_state: str, count: int) -> None:
         logger.warning("[state_store] set_pending(%s) Redis 오류 — 무시: %s", worker_id, exc)
 
 
+@_graceful_redis()
 def clear_pending(worker_id: str) -> None:
     """
     회복 후보 폐기 (현재 상태를 유지함을 의미).
@@ -145,6 +207,7 @@ def clear_pending(worker_id: str) -> None:
 SENSOR_KEY_FORMAT = "sensa:sensor:{device_id}:alarm"
 
 
+@_graceful_redis(default_factory=_sensor_default)
 def get_sensor_snapshot(device_id: str) -> dict:
     """
     센서의 현재 스냅샷.
@@ -166,6 +229,7 @@ def get_sensor_snapshot(device_id: str) -> dict:
         return {'state': 'normal', 'last_alarm_at': 0.0, 'pending_state': None, 'pending_count': 0}
 
 
+@_graceful_redis()
 def commit_sensor_state(device_id: str, state: str, mark_alarmed: bool = False,
                          preserve_pending: bool = False) -> None:
     """
@@ -193,6 +257,7 @@ def commit_sensor_state(device_id: str, state: str, mark_alarmed: bool = False,
         logger.warning("[state_store] commit_sensor_state(%s, %s) Redis 오류 — 무시: %s", device_id, state, exc)
 
 
+@_graceful_redis()
 def set_sensor_pending(device_id: str, pending_state: str, count: int) -> None:
     """
     센서 회복 후보 저장.
@@ -211,6 +276,7 @@ def set_sensor_pending(device_id: str, pending_state: str, count: int) -> None:
         logger.warning("[state_store] set_sensor_pending(%s) Redis 오류 — 무시: %s", device_id, exc)
 
 
+@_graceful_redis()
 def clear_sensor_pending(device_id: str) -> None:
     """
     센서 회복 후보 폐기.

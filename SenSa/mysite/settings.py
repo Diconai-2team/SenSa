@@ -16,7 +16,7 @@ load_dotenv(PROJECT_ROOT / '.env')
 # ==========================================================
 SECRET_KEY = os.getenv('SECRET_KEY', 'django-insecure-dev-only')
 DEBUG = os.getenv('DEBUG', 'True').lower() == 'true'
-ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',')
+ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', 'localhost,127.0.0.1,host.docker.internal').split(',')
 
 # ==========================================================
 # 앱
@@ -40,6 +40,7 @@ INSTALLED_APPS = [
     'rest_framework_simplejwt.token_blacklist',
     'corsheaders',
     'channels', # ← 추가[0421.1]
+    'django_prometheus',   # [Phase 4 P4-A] Prometheus metrics
 
     # 로컬
     'realtime',          # ← 추가 (다른 로컬 앱보다 먼저, 4차에서도 배관 역할 유지)
@@ -59,6 +60,9 @@ INSTALLED_APPS = [
 # 미들웨어
 # ==========================================================
 MIDDLEWARE = [
+    # [Phase 4 P4-A] PrometheusBeforeMiddleware — 가장 먼저 (요청 측정 시작)
+    'django_prometheus.middleware.PrometheusBeforeMiddleware',
+
     'corsheaders.middleware.CorsMiddleware',
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
@@ -70,6 +74,9 @@ MIDDLEWARE = [
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
     'mysite.middleware.DevStaticNoCacheMiddleware',   # ⭐ Step 1A 후속 — DEBUG 시 정적 파일 캐시 무효화
+
+    # [Phase 4 P4-A] PrometheusAfterMiddleware — 가장 마지막 (응답 측정 완료)
+    'django_prometheus.middleware.PrometheusAfterMiddleware',
 ]
 
 ROOT_URLCONF = 'mysite.urls'
@@ -230,12 +237,28 @@ ALARM_RECOVERY_CONFIRM_TICKS = 3   # 회복 전이에 필요한 연속 관측 �
 # 이 블록을 mysite/settings.py 의 가장 아래에 추가하세요.
 # TIME_ZONE 변수는 이미 settings.py 위에 정의되어 있을 것입니다.
 
-CELERY_BROKER_URL = 'redis://localhost:6379/0'
-CELERY_RESULT_BACKEND = 'redis://localhost:6379/0'
+CELERY_BROKER_URL = os.getenv('CELERY_BROKER_URL', f'redis://{REDIS_HOST}:{REDIS_PORT}/0')
+CELERY_RESULT_BACKEND = os.getenv('CELERY_RESULT_BACKEND', f'redis://{REDIS_HOST}:{REDIS_PORT}/0')
 CELERY_TIMEZONE = TIME_ZONE
 CELERY_TASK_TRACK_STARTED = True
 CELERY_TASK_TIME_LIMIT = 5 * 60       # 5분 (TTM 추론 여유)
 CELERY_TASK_SOFT_TIME_LIMIT = 4 * 60
+
+# ─────────────────────────────────────────────
+# Django 캐시 (Phase 3 — Redis DB 2)
+# ─────────────────────────────────────────────
+# 최신 상태 캐시 키 (sensor:latest:*, worker:latest:*) 저장용.
+# Celery (DB 0) 과 분리해서 캐시 flush 가 task 큐에 영향 안 줌.
+#
+# 활용: realtime/cache.py 의 set_latest_sensor, get_latest_sensor 등
+CACHES = {
+    'default': {
+        'BACKEND': 'django.core.cache.backends.redis.RedisCache',
+        'LOCATION': f'redis://{REDIS_HOST}:{REDIS_PORT}/2',
+        'TIMEOUT': 300,   # 5분 — 센서 데이터 stale 방지
+        'KEY_PREFIX': 'sensa',
+    },
+}
 
 # ── Beat 스케줄 ──
 # 30초마다 동적 zone 의 반경 갱신 + 만료 + 승격 검사

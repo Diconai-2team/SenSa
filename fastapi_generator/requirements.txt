@@ -13,6 +13,7 @@ httpx==0.26.0
 idna==3.12
 inuits-python-logging-loki==1.4.1
 pip==24.0
+prometheus-client==0.20.0
 protobuf==7.34.1
 pydantic==2.13.3
 pydantic-core==2.46.3

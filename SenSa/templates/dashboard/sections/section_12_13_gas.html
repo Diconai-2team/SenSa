@@ -1,6 +1,7 @@
-<!-- section_12_13_gas.html — ⑫ 가스 테이블(9종) + ⑬ 가스 차트
-     Step 1A: 하드코딩 탭(가스1/2/3) → DB 기반 동적 페이지네이션
-              ‹ / › 버튼으로 가스 센서를 순회. 디바이스 이름은 제목에 동적 표시. -->
+<!-- section_12_13_gas.html — ⑫ 가스 테이블(9종) + ⑬ AI 예측 가스
+     F2 변경: ⑬ 영역에 가스 캐러셀 헤더 + 카드 2개 (현재/12h 예측) 추가.
+              section_16_ai_performance 의 .ai-perf-card CSS 재활용.
+              JS 연동은 F3 에서. 현재는 시각 골격만. -->
 
 <!-- ⑫ 유해가스 위험 현황 -->
 <div id="section-12-gas-table" class="bottom-panel">
@@ -34,8 +35,70 @@
   </table>
 </div>
 
-<!-- ⑬ AI 예측 - 유해가스 -->
+<!-- ⑬ AI 예측 - 유해가스 위험 (F2: 캐러셀 + 카드 골격 추가, JS 연동은 F3) -->
 <div id="section-13-gas-chart" class="bottom-panel">
-  <div class="bottom-panel-title">AI 예측 - 유해가스 위험<a class="detail-link" style="font-size:10px;">+ 상세보기</a></div>
+  <div class="bottom-panel-title">
+    <span>AI 예측 - 유해가스 위험 — <span id="gas-ai-name" class="sensor-pager-name">CO</span></span>
+    <div class="sensor-pager">
+      <button class="sensor-pager-btn" id="gas-ai-prev" type="button" aria-label="이전 가스" disabled>‹</button>
+      <span class="sensor-pager-index"><span id="gas-ai-cur">1</span> / <span id="gas-ai-total">9</span></span>
+      <button class="sensor-pager-btn" id="gas-ai-next" type="button" aria-label="다음 가스" disabled>›</button>
+    </div>
+    <a class="detail-link" style="font-size:10px; margin-left:8px;">+ 상세보기</a>
+  </div>
+
+  <!-- 카드 2개: 현재 농도 + 12시간 내 최대 예상 — section_16 의 .ai-perf-card CSS 재활용 -->
+  <div class="ai-perf-cards" style="grid-template-columns: repeat(2, 1fr); padding: 4px 12px 0;">
+    <div class="ai-perf-card">
+      <div class="ai-perf-label">현재 농도</div>
+      <div class="ai-perf-value" id="gas-ai-current">—</div>
+    </div>
+    <div class="ai-perf-card accuracy">
+      <div class="ai-perf-label">🤖 AI 예측 — 위험 분석</div>
+      <div class="ai-perf-value" id="gas-ai-forecast">—</div>
+    </div>
+  </div>
+
   <div class="chart-area"><canvas id="chart-gas"></canvas></div>
 </div>
+
+<!-- F2 자체 fallback CSS — section_16 미로드 시 카드 스타일 유지
+     [G2.1] caution 클래스 추가 (success/failure/accuracy 는 section_16 의 CSS 재활용) -->
+<style>
+#section-13-gas-chart .ai-perf-cards {
+  display: grid;
+  gap: 6px;
+}
+#section-13-gas-chart .ai-perf-card {
+  background: var(--bg, #161b22);
+  border: 1px solid var(--border, #21262d);
+  border-radius: 6px;
+  padding: 6px 8px;
+  text-align: center;
+  transition: border-color 0.2s, color 0.2s;
+}
+#section-13-gas-chart .ai-perf-card.accuracy { border-color: #58a6ff66; }
+#section-13-gas-chart .ai-perf-label {
+  font-size: 10px;
+  color: var(--text-dim, #6e7681);
+  margin-bottom: 2px;
+}
+#section-13-gas-chart .ai-perf-value {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text, #c9d1d9);
+  transition: color 0.2s;
+}
+#section-13-gas-chart .ai-perf-card.accuracy .ai-perf-value { color: #58a6ff; }
+
+/* [G2.1] 위험도 동적 색상 — 전역 (15번 G3 자동 적용 위해 ID specifier 제거)
+   [G2.2] !important 추가 — #section-13-gas-chart 의 ID selector 우선순위 무력화 */
+.ai-perf-card.success  { border-color: #2ecc7166 !important; }
+.ai-perf-card.success  .ai-perf-value { color: #2ecc71 !important; }
+.ai-perf-card.caution  { border-color: #ffcc0066 !important; }
+.ai-perf-card.caution  .ai-perf-value { color: #ffcc00 !important; }
+.ai-perf-card.failure  { border-color: #e74c3c66 !important; }
+.ai-perf-card.failure  .ai-perf-value { color: #e74c3c !important; }
+.ai-perf-card.accuracy { border-color: #58a6ff66 !important; }
+.ai-perf-card.accuracy .ai-perf-value { color: #58a6ff !important; }
+</style>

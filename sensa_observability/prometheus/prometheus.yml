@@ -1,0 +1,41 @@
+# ============================================================
+# Prometheus scrape config — SenSa 두 host 서비스
+# network_mode: host 환경: 컨테이너가 WSL host 네트워크 namespace 공유
+# → host.docker.internal NAT 우회, localhost 그대로 사용
+# ============================================================
+global:
+  scrape_interval: 15s
+  scrape_timeout: 10s
+  evaluation_interval: 15s
+  external_labels:
+    cluster: 'sensa_local'
+
+scrape_configs:
+  # ─── SenSa Django (host:8000) ───
+  - job_name: 'sensa-django'
+    metrics_path: '/metrics'
+    static_configs:
+      - targets: ['host.docker.internal:8000']
+        labels:
+          service: 'django'
+
+  # ─── SenSa FastAPI Generator (host:8001) ───
+  - job_name: 'sensa-generator'
+    metrics_path: '/metrics'
+    static_configs:
+      - targets: ['host.docker.internal:8001']
+        labels:
+          service: 'generator'
+
+  # ─── SenSa Celery worker (host:9809) [9차 ㅂ] ───
+  - job_name: 'sensa-celery'
+    metrics_path: '/metrics'
+    static_configs:
+      - targets: ['host.docker.internal:9809']
+        labels:
+          service: 'celery'
+
+  # ─── Prometheus 자체 (host:9090) ───
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']

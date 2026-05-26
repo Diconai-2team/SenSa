@@ -10,6 +10,11 @@ from backoffice.views import thresholds_for_fastapi
 urlpatterns = [
     path('admin/', admin.site.urls),
 
+    # [Phase 4 P4-A] /metrics — Prometheus scrape 대상
+    # 응답: text/plain (Prometheus text exposition format)
+    # 인증 없음 (내부망 가정). 운영 환경에선 IP 제한 권장.
+    path('', include('django_prometheus.urls')),
+
     # === accounts (인증) ===
     path('', include('accounts.urls')),
 

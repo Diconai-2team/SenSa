@@ -1,0 +1,68 @@
+# ============================================================
+# SenSa Observability Stack v2 (재설계)
+# ============================================================
+# v1 결함:
+#   - bind mount 가 WSL2 + Docker Desktop 환경에서 inode 추적 결함
+#     (sed -i 가 unlink+create 로 inode 갈아치울 때 컨테이너 측 mount 파괴)
+#   - host.docker.internal 이 Docker Desktop NAT(192.168.65.254) 거쳐
+#     WSL host 까지 라우팅 안 됨
+#
+# v2 해결:
+#   - config 파일을 Dockerfile COPY 로 이미지에 내장 → bind mount 제거
+#   - network_mode: host → 컨테이너가 WSL host 의 네트워크 namespace 공유
+#     → localhost:8000, localhost:8001 직접 scrape 가능
+#     → host.docker.internal NAT 우회
+#
+# 사전 조건:
+#   - Django runserver (:8000) + FastAPI generator (:8001) 가동 중
+#   - Redis, Celery worker 도 권장
+#
+# config 변경 시 워크플로:
+#   prometheus.yml 또는 sensa.json 편집 → 'docker compose up -d --build'
+#   (재빌드 1초 이내, bind mount 추적 결함 없음)
+# ============================================================
+
+services:
+  prometheus:
+    build: ./prometheus
+    container_name: sensa_prometheus
+    restart: unless-stopped
+    # network_mode: host → 9090 포트는 docker-compose ports 설정 무시.
+    # 직접 host:9090 으로 listen. (Linux/WSL2 에서만 동작 — Mac/Windows native 미지원)
+    ports:
+      - "9090:9090"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=15d'
+      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+      - '--web.console.templates=/usr/share/prometheus/consoles'
+      - '--web.enable-lifecycle'   # POST /-/reload 가능 (config hot-reload)
+    volumes:
+      - prometheus_data:/prometheus
+
+  grafana:
+    build: ./grafana
+    container_name: sensa_grafana
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
+      - GF_AUTH_DISABLE_LOGIN_FORM=true
+      - GF_SECURITY_ADMIN_PASSWORD=sensa_admin
+      - GF_USERS_DEFAULT_THEME=dark
+      - GF_LOG_LEVEL=warn
+    volumes:
+      - grafana_data:/var/lib/grafana
+    depends_on:
+      - prometheus
+
+volumes:
+  prometheus_data:
+  grafana_data:

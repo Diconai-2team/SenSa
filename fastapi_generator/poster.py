@@ -25,6 +25,17 @@ poster.py — Django REST API 로 HTTP POST 전송
 import httpx
 
 from config import DJANGO_BASE_URL, INTERNAL_HEADERS
+# [P4-D 8차] publish 메트릭
+from metrics import generator_publish_total, generator_publish_duration_seconds
+
+
+def _record_metric(endpoint: str, result: str, elapsed_sec: float) -> None:
+    """publish 1건 측정 결과 기록 — 메트릭 실패는 무시 (publish 흐름 격리)."""
+    try:
+        generator_publish_total.labels(endpoint=endpoint, result=result).inc()
+        generator_publish_duration_seconds.labels(endpoint=endpoint).observe(elapsed_sec)
+    except Exception:
+        pass
 
 
 async def post_sensor_data(
@@ -64,14 +75,21 @@ async def post_sensor_data(
         payload["expected_phase"]  = labels.get("expected_phase")
         payload["expected_status"] = labels.get("expected_status")
 
+    # [P4-D 8차] publish 시간 측정 시작
+    import time as _time
+    _t0 = _time.perf_counter()
+
     try:
         res = await client.post(url, json=payload, headers=INTERNAL_HEADERS, timeout=3.0)
         if res.status_code >= 400:
             print(f"[poster] sensor-data {device_id} {res.status_code}: {res.text[:200]}")
+            _record_metric('sensor_data', 'http_error', _time.perf_counter() - _t0)
             return None
+        _record_metric('sensor_data', 'ok', _time.perf_counter() - _t0)
         return res.json()
     except httpx.HTTPError as e:
         print(f"[poster] sensor-data {device_id} 예외: {type(e).__name__}")
+        _record_metric('sensor_data', 'exception', _time.perf_counter() - _t0)
         return None
 
 
@@ -93,12 +111,20 @@ async def post_worker_location(
         "movement_status": "moving",
     }
 
+    # [P4-D 8차] publish 시간 측정
+    import time as _time
+    _t0 = _time.perf_counter()
+
     try:
         res = await client.post(url, json=payload, headers=INTERNAL_HEADERS, timeout=3.0)
         if res.status_code >= 400:
             print(f"[poster] worker-location pk={worker_db_pk} {res.status_code}: {res.text[:200]}")
+            _record_metric('worker_location', 'http_error', _time.perf_counter() - _t0)
+            return
+        _record_metric('worker_location', 'ok', _time.perf_counter() - _t0)
     except httpx.HTTPError as e:
         print(f"[poster] worker-location pk={worker_db_pk} 예외: {type(e).__name__}")
+        _record_metric('worker_location', 'exception', _time.perf_counter() - _t0)
 
 
 async def post_check_geofence(
@@ -120,9 +146,17 @@ async def post_check_geofence(
     url = f"{DJANGO_BASE_URL}/dashboard/api/check-geofence/"
     payload = {"workers": workers, "sensors": sensors}
 
+    # [P4-D 8차] publish 시간 측정
+    import time as _time
+    _t0 = _time.perf_counter()
+
     try:
         res = await client.post(url, json=payload, headers=INTERNAL_HEADERS, timeout=3.0)
         if res.status_code >= 400:
             print(f"[poster] check-geofence {res.status_code}: {res.text[:200]}")
+            _record_metric('check_geofence', 'http_error', _time.perf_counter() - _t0)
+            return
+        _record_metric('check_geofence', 'ok', _time.perf_counter() - _t0)
     except httpx.HTTPError as e:
         print(f"[poster] check-geofence 예외: {type(e).__name__}")
+        _record_metric('check_geofence', 'exception', _time.perf_counter() - _t0)
