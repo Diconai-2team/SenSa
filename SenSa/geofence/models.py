@@ -42,6 +42,10 @@ TRIGGER_SOURCE_CHOICES = [
     ('threshold', '임계 초과'),
     ('ttm_anomaly', 'TTM 이상 탐지'),
     ('ttm_forecast', 'TTM 사전 경고'),
+    # ── 운영 시나리오 (Phase J) ──
+    ('scenario_op_op_single', '단일 누출 시나리오'),
+    ('scenario_op_op_multi',  '다중 누출 시나리오'),
+    ('scenario_op_op_h2s',    'H2S 누출 시나리오'),
 ]
 
 
@@ -104,7 +108,7 @@ class GeoFence(models.Model):
     )
 
     trigger_source = models.CharField(
-        max_length=20,
+        max_length=40,
         choices=TRIGGER_SOURCE_CHOICES,
         blank=True, default='',
         help_text='동적 zone 발동 원인',
@@ -165,7 +169,7 @@ class ZoneEvent(models.Model):
     )
     from_tier = models.CharField(max_length=20, blank=True, default='')
     to_tier = models.CharField(max_length=20, blank=True, default='')
-    trigger_source = models.CharField(max_length=20, blank=True, default='')
+    trigger_source = models.CharField(max_length=40, blank=True, default='')
     detail = models.JSONField(default=dict, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
