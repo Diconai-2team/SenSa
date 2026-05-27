@@ -28,8 +28,9 @@ from workers.models import Worker
 DUMMY_DEVICES = [
     {"device_id": "sensor_01", "device_name": "가스센서 A", "sensor_type": "gas",
      "x": 200, "y": 150, "status": "normal", "last_value": 12.3, "last_value_unit": "ppm"},
+    # sensor_02: (500,180) → (400,360) — sensor_03과 58px 거리, MultiLeak 30초 반경(61px) 즉시 검출
     {"device_id": "sensor_02", "device_name": "가스센서 B", "sensor_type": "gas",
-     "x": 500, "y": 180, "status": "normal", "last_value": 8.1, "last_value_unit": "ppm"},
+     "x": 400, "y": 360, "status": "normal", "last_value": 8.1, "last_value_unit": "ppm"},
     {"device_id": "sensor_03", "device_name": "가스센서 C", "sensor_type": "gas",
      "x": 350, "y": 390, "status": "normal", "last_value": 600, "last_value_unit": "ppm"},
     {"device_id": "power_01", "device_name": "스마트파워 A", "sensor_type": "power",
