@@ -104,15 +104,17 @@ TEMPLATES = [
 ]
 
 # ==========================================================
-# 데이터베이스 — SQLite
+# 데이터베이스 — PostgreSQL (Docker 컨테이너)
+# [운영 전환 시] DB_PASSWORD 를 강력한 비밀번호로 교체
 # ==========================================================
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
-        'OPTIONS': {
-            'timeout': 20,  # Python sqlite3 레벨 대기 (초) — 기본 5초에서 상향
-        },
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': os.getenv('DB_NAME', 'sensa'),
+        'USER': os.getenv('DB_USER', 'sensa'),
+        'PASSWORD': os.getenv('DB_PASSWORD', 'sensa'),
+        'HOST': os.getenv('DB_HOST', 'localhost'),
+        'PORT': os.getenv('DB_PORT', '5432'),
     }
 }
 
@@ -271,4 +273,22 @@ CELERY_BEAT_SCHEDULE = {
     # 'scan-forecast-warnings' 항목은 TTM 폐기에 따라 삭제됨.
     # Isolation Forest 기반 IF 분석기 (C′-3b-2) 는 Celery 가 아닌
     # SensorDataView.post 안에서 실시간 호출됨 → beat 스케줄 불필요.
+
+    # ─── 데이터 보관 정책 (DataRetentionPolicy) ───────────────────────
+    # 매일 새벽 3시 실행 — sensor_data/worker_location 30일, alarms 365일
+    # [운영 전환 시] 값 유지 (정책은 DB의 DataRetentionPolicy 에서 관리)
+    'cleanup-retention-data': {
+        'task': 'backoffice.tasks.run_cleanup',
+        'schedule': 86400.0,   # 24시간
+    },
+
+    # ─── ARIMA AIPrediction 만료 pending 정리 ─────────────────────────
+    # 5분마다 실행 — expires_at 지난 pending → failure 전환
+    # 배경: spike 태스크가 REST API 우회로 DB 직접 저장 시
+    #       _verify_ai_predictions() 미호출 → pending 방치 문제 해결
+    # [운영 전환 시] 값 유지 (5분 주기는 expires_at TTL=30초 대비 충분)
+    'cleanup-expired-ai-predictions': {
+        'task': 'backoffice.tasks.cleanup_expired_ai_predictions',
+        'schedule': 300.0,   # 5분
+    },
 }
