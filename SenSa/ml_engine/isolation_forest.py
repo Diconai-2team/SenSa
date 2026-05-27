@@ -83,6 +83,22 @@ def set_contamination(new_value: float) -> None:
 _lock = threading.Lock()
 _models: dict[str, dict] = {}     # key → {model, trained_call_count, version}
 
+# ── 테스트/개발 잔재 모델 차단 ─────────────────────────────────────────────────
+# 개발·성능 테스트 중 생성된 임시 device_id 가 pkl 에 영구 저장되는 문제 방지.
+# detect_ml_anomaly() 진입 시 device_id 가 아래 prefix 에 해당하면
+# 학습·탐지를 모두 건너뜀 → 실제 운영 sensor 모델에만 집중.
+_TEST_DEVICE_PREFIXES = (
+    'BENCH_', 'VFY', 'FIX_TEST', 'IF_CHECK',
+    'PROFILE_DEV', 'PURE_DEV', 'RETRAIN_TEST', 'TEST_DEV',
+    'perf_test_dev', 'perf_v2', 'test_device', 'test-lock',
+)
+
+
+def _is_test_device(device_id: str) -> bool:
+    """개발/테스트용 임시 device_id 여부 판단."""
+    return any(device_id.startswith(p) for p in _TEST_DEVICE_PREFIXES)
+
+
 # ── 독립 호출 카운터 (재학습 주기 판단용) ──────────────────────────────────────
 # 슬라이딩 윈도우 크기(n)는 WINDOW_SIZE(60)에서 고정되므로
 # "n - trained_at_count" 차이가 RETRAIN_INTERVAL(50)을 초과하지 못하는 버그 방지.
@@ -251,6 +267,10 @@ def detect_ml_anomaly(device_id: str, metric: str, values: list[float], current:
         {"detected": bool, "score": float, "model_ready": bool}
     """
     if len(values) < MIN_TRAIN:
+        return {"detected": False, "score": 0.0, "slope": 0.0, "model_ready": False}
+
+    # 테스트/개발 디바이스는 학습·탐지 건너뜀 (pkl 오염 방지)
+    if _is_test_device(device_id):
         return {"detected": False, "score": 0.0, "slope": 0.0, "model_ready": False}
 
     # 학습 데이터 정제: danger 초과값 제거 → MIN_TRAIN 미만이면 전체 fallback

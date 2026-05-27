@@ -7,19 +7,6 @@ class MlEngineConfig(AppConfig):
     verbose_name = 'ML Engine'
 
     def ready(self):
-        # SQLite WAL 모드 활성화 — 동시 읽기/쓰기 허용으로 lock 경합 감소
-        # (init_command는 MySQL 전용이므로 여기서 직접 설정)
-        try:
-            from django.db.backends.signals import connection_created
-
-            def _set_wal(sender, connection, **kwargs):
-                if connection.vendor == 'sqlite':
-                    connection.cursor().execute('PRAGMA journal_mode=WAL;')
-
-            connection_created.connect(_set_wal)
-        except Exception:
-            pass
-
         # 저장된 ML 모델 복원 (서버 재시작 후 즉시 복원)
         try:
             import logging
@@ -28,8 +15,8 @@ class MlEngineConfig(AppConfig):
 
             if_data = model_store.load_pickle('if_models')
             if isinstance(if_data, dict) and if_data:
-                # 구 버전 모델 폐기: 특징 차원이 다른 모델을 로드하면
-                # predict() 에서 "X has N features, expected M" ValueError 발생.
+                # 1) 구 버전 모델 폐기: 특징 차원이 다른 모델을 로드하면
+                #    predict() 에서 "X has N features, expected M" ValueError 발생.
                 current_ver = isolation_forest.MODEL_VERSION
                 valid = {
                     k: v for k, v in if_data.items()
@@ -41,9 +28,28 @@ class MlEngineConfig(AppConfig):
                         "[ml_engine] IF 구 버전 모델 %d개 폐기 (v%d → 재학습 예정)",
                         stale, current_ver,
                     )
+
+                # 2) 테스트/개발 잔재 모델 정리: _is_test_device 기준으로 필터
+                before_count = len(valid)
+                valid = {
+                    k: v for k, v in valid.items()
+                    if not isolation_forest._is_test_device(k.split(':')[0])
+                }
+                purged = before_count - len(valid)
+                if purged:
+                    _log.info(
+                        "[ml_engine] IF 테스트 잔재 모델 %d개 정리 (pkl 갱신)",
+                        purged,
+                    )
+                    # 정리된 상태를 pkl 에 즉시 반영 → 재시작 시 깨끗한 상태 유지
+                    model_store.save_pickle('if_models', valid)
+
                 if valid:
                     isolation_forest._models.update(valid)
-                _log.info("[ml_engine] IF 모델 %d개 복원 (폐기 %d개)", len(valid), stale)
+                _log.info(
+                    "[ml_engine] IF 모델 %d개 복원 (버전폐기 %d개, 테스트정리 %d개)",
+                    len(valid), stale, purged,
+                )
 
             cusum_data = model_store.load_json('cusum_state')
             if isinstance(cusum_data, dict) and cusum_data:
