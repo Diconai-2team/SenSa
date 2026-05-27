@@ -20,7 +20,10 @@ from statistics import mean, median, stdev
 EPS = 1e-9
 ZSCORE_THRESHOLD = 3.0      # |z| > 3 → 이상
 MEAN_SHIFT_THRESHOLD = 2.5  # mean_shift_score > 2.5 → 급변 (2.0→2.5: FP 감소, 2.0~2.5 범위는 Z-score/CUSUM이 커버)
-STD_RATIO_THRESHOLD  = 2.5  # std_ratio > 2.5 → 분산 급변
+STD_RATIO_THRESHOLD  = 3.5  # std_ratio > 3.5 → 분산 급변 (2.5→3.5: 단발성 spike 1개에 의한 FP 억제)
+                             # 근거: spike 1개(caution 50ppm) → std_ratio≈2.64 → 3.5 기준 미발화 (Z-score/IF가 커버)
+                             #        spike 1개(danger 200ppm) → std_ratio≈12.2 → 3.5 기준 발화 유지
+                             #        spike 5개(50ppm 지속)    → std_ratio≈4.7  → 3.5 기준 발화 유지
 WINDOW_HALF = 20            # change point 비교 절반 크기 (최소 필요 len = WINDOW_HALF * 2)
 
 # MAD → σ 환산 계수 (정규분포 가정)
