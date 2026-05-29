@@ -48,8 +48,9 @@ class Alarm(models.Model):
         'geofence.GeoFence', on_delete=models.SET_NULL,
         null=True, blank=True, related_name='alarms'
     )
-    device_id   = models.CharField(max_length=50, blank=True, default='')
-    sensor_type = models.CharField(max_length=20, blank=True, default='')
+    device_id         = models.CharField(max_length=50, blank=True, default='')
+    related_device_id = models.CharField(max_length=50, blank=True, default='')
+    sensor_type       = models.CharField(max_length=20, blank=True, default='')
     message     = models.TextField()
     is_read     = models.BooleanField(default=False)
     is_ai       = models.BooleanField(default=False)
@@ -71,14 +72,15 @@ class Alarm(models.Model):
 
 class AIPrediction(models.Model):
     """
-    IsolationForest 기반 AI 예측 기록.
+    ARIMA 예측 알람 기록 (ai_predictive_alert / ai_predictive_warning).
 
-    예측 발생 시 생성 → 이후 실제 데이터로 성공/실패 검증.
+    ARIMA가 미래 임계치 초과를 예측할 때 생성 → 이후 실제 데이터로 성공/실패 검증.
+    slope / if_score 필드는 예측 시점의 IsolationForest 컨텍스트 정보.
 
     result:
       'pending' — 아직 검증 안 됨 (기본값)
-      'success' — 예측 후 실제로 임계치 초과
-      'failure' — 예측 후 임계치 미도달
+      'success' — 예측 후 실제로 임계치 도달
+      'failure' — expires_at 내 임계치 미도달
     """
     RESULT_CHOICES = [
         ('pending', '검증 중'),

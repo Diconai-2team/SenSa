@@ -1,40 +1,81 @@
 # ============================================================
-# SenSa 앱 스택 (C-1) — Django + Celery + FastAPI generator
+# SenSa 앱 스택 (C-1) — Django + Celery + FastAPI generator + PostgreSQL + Redis
 #   - 배치 경로: ~/SenSa/docker-compose.yml  (루트)
 #   - observability 스택(sensa_observability/)과 별개 프로젝트 — 무수정.
-#   - Redis 는 호스트 유지. 컨테이너는 host.docker.internal:6379 접속.
-#   - 포트 8000/9809/8001 호스트 publish → 기존 Prometheus 가 계속 scrape.
+#   - PostgreSQL: 동시 쓰기 안전 (SQLite 대체)
+#   - Redis: 컨테이너 내부 (호스트 의존 제거)
+#   - 포트 8000/9809/8001 호스트 publish → Prometheus 계속 scrape.
 #   - 시크릿은 각 .env (env_file) 주입 — 이미지에 미포함.
 # ============================================================
 services:
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: sensa_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: sensa
+      POSTGRES_USER: sensa
+      POSTGRES_PASSWORD: sensa
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sensa -d sensa"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: sensa_redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
   django:
     build:
       context: ./SenSa
     image: sensa-app:latest
     container_name: sensa_django
     restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     env_file:
       - ./.env
     environment:
-      - REDIS_HOST=host.docker.internal
+      - REDIS_HOST=redis
       - REDIS_PORT=6379
+      - DB_HOST=postgres
+      - DB_NAME=sensa
+      - DB_USER=sensa
+      - DB_PASSWORD=sensa
+      - DB_PORT=5432
       # 컨테이너 간/호스트 접근 허용 (env 가 .env 보다 우선 — load_dotenv override=False)
-      - ALLOWED_HOSTS=localhost,127.0.0.1,host.docker.internal,django
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
+      - ALLOWED_HOSTS=localhost,127.0.0.1,django,host.docker.internal
     ports:
       - "8000:8000"
     volumes:
-      - ./SenSa/db.sqlite3:/app/db.sqlite3
       - ./SenSa/ml_engine/saved_models:/app/ml_engine/saved_models
-    command: ["python", "manage.py", "runserver", "0.0.0.0:8000", "--noreload"]
+    command: >
+      sh -c "python manage.py migrate --noinput &&
+             python manage.py runserver 0.0.0.0:8000 --noreload"
     # /metrics(django_prometheus, 인증 불필요)로 준비 완료 판정 → generator 기동 게이트
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/metrics', timeout=3)"]
       interval: 5s
       timeout: 5s
       retries: 12
-      start_period: 10s
+      start_period: 15s
 
   celery:
     build:
@@ -43,22 +84,25 @@ services:
     container_name: sensa_celery
     restart: unless-stopped
     depends_on:
-      - django
+      django:
+        condition: service_healthy
     env_file:
       - ./.env
     environment:
-      - REDIS_HOST=host.docker.internal
+      - REDIS_HOST=redis
       - REDIS_PORT=6379
+      - DB_HOST=postgres
+      - DB_NAME=sensa
+      - DB_USER=sensa
+      - DB_PASSWORD=sensa
+      - DB_PORT=5432
       - CELERY_METRICS_PORT=9809
       - PROMETHEUS_MULTIPROC_DIR=/tmp/sensa_celery_prom
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
     ports:
       - "9809:9809"
     volumes:
-      - ./SenSa/db.sqlite3:/app/db.sqlite3
       - ./SenSa/ml_engine/saved_models:/app/ml_engine/saved_models
-    command: ["sh", "-c", "rm -rf \"$$PROMETHEUS_MULTIPROC_DIR\" && mkdir -p \"$$PROMETHEUS_MULTIPROC_DIR\" && exec celery -A mysite worker -B --loglevel=info"]
+    command: ["sh", "-c", "rm -rf \"$$PROMETHEUS_MULTIPROC_DIR\" && mkdir -p \"$$PROMETHEUS_MULTIPROC_DIR\" && exec celery -A mysite worker -B --loglevel=info --concurrency=1"]
 
   generator:
     build:
@@ -74,7 +118,8 @@ services:
     environment:
       # 컨테이너 내부에선 127.0.0.1 가 자기 자신 → 서비스 DNS 로 Django 지정
       - DJANGO_BASE_URL=http://django:8000
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
     ports:
       - "8001:8001"
+
+volumes:
+  postgres_data:

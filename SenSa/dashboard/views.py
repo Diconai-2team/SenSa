@@ -39,7 +39,7 @@ from .models import MapImage
 # 메트릭이 노출되는 곳: GET /metrics (django-prometheus 가 자동 통합)
 # 활용 예시 (Prometheus query):
 #   - p95 ARIMA 시간:
-#       histogram_quantile(0.95, rate(sensa_ai_forecast_duration_seconds_bucket{algorithm="arima(1,1,0)"}[5m]))
+#       histogram_quantile(0.95, rate(sensa_ai_forecast_duration_seconds_bucket{algorithm="arima(1,1,1)"}[5m]))
 #   - algorithm 별 호출 비율:
 #       rate(sensa_ai_forecast_total[1m])
 from prometheus_client import Histogram, Counter
@@ -314,19 +314,25 @@ class AIForecastView(APIView):
         current = recent_values[-1]
         slope = self._calc_slope(recent_values)
 
-        # [ARIMA 보강] 1차: ARIMA(1,1,0), fallback: 선형 slope 외삽
-        from alerts.services.arima_forecast import arima_forecast, ARIMA_AVAILABLE
+        # [ARIMA 보강] AI 파이프라인이 학습한 ARIMA(1,1,1) 캐시 모델 재사용.
+        # alerts/services/arima_forecast(1,1,0) 대비:
+        #   - 동일 모델 사용 → 차트 예측선과 알람 탐지 일관성
+        #   - 매 호출 학습 없이 캐시 활용 → 응답 속도 향상
+        # fallback: 캐시 미준비(초반 30초) 시 선형 외삽
+        from ml_engine.arima_forecaster import get_forecast_values
         # [P4-B] AI forecast 실행 시간 측정 시작
         import time as _time
         _ai_start = _time.perf_counter()
-        arima_predicted = arima_forecast(recent_values, horizon=horizon)
+        arima_predicted = get_forecast_values(
+            recent_values, device_id=device_id, metric=metric, horizon=horizon
+        )
         if arima_predicted is not None:
-            algorithm = 'arima(1,1,0)'
+            algorithm = 'arima(1,1,1)'
             predicted = [round(v, 3) for v in arima_predicted]
         else:
-            # fallback — 선형 외삽 (ARIMA 미설치 또는 fit 실패)
+            # fallback — 선형 외삽 (모델 미준비: 학습 데이터 부족 초반)
             predicted = [round(current + slope * (i + 1), 3) for i in range(horizon)]
-            algorithm = 'linear' if ARIMA_AVAILABLE else 'linear (statsmodels 미설치)'
+            algorithm = 'linear'
         # [P4-B] 메트릭 기록 — algorithm 별 실행 시간 + 호출 수
         _ai_elapsed = _time.perf_counter() - _ai_start
         try:
@@ -377,7 +383,7 @@ class AIForecastView(APIView):
             'threshold_caution': th['w'],
             'threshold_danger': th['d'],
             'unit': th['unit'],
-            'algorithm': algorithm,   # [ARIMA 보강] 'arima(1,1,0)' 또는 'linear...'
+            'algorithm': algorithm,   # [ARIMA 보강] 'arima(1,1,1)' 또는 'linear'
         })
 
     def _calc_slope(self, values):

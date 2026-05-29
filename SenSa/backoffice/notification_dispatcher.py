@@ -124,7 +124,7 @@ def dispatch_for_alarm(alarm) -> int:
     [수정] @transaction.atomic 제거.
       기존: 함수 전체를 하나의 atomic 블록으로 감쌈
             → provider.send() (SMTP/SMS/FCM 등 외부 네트워크 호출) 가 트랜잭션 안에서
-              실행되어 수 초간 SQLite 쓰기 잠금 유지 → 알람 생성 흐름 차단 가능.
+              실행되어 수 초간 DB 트랜잭션 유지 → 알람 생성 흐름 차단 가능.
       변경: NotificationLog 생성만 atomic, provider.send() 는 트랜잭션 외부 실행.
             실패 시 log 상태만 별도 업데이트 — 일관성 유지.
 

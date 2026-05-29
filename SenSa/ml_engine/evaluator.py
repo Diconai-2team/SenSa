@@ -30,7 +30,7 @@ import threading
 import time
 from datetime import timedelta
 
-from django.db.models import Exists, OuterRef
+from django.db.models import Count, Exists, OuterRef, Q
 from django.utils import timezone
 
 logger = logging.getLogger(__name__)
@@ -205,6 +205,13 @@ def _compute(days: int) -> dict:
         created_at__gte=OuterRef('created_at'),
         created_at__lte=OuterRef('created_at') + slow_win,
     )
+    # 전력-가스 교차 상관관계 전용 — related_device_id(가스 센서) 기준 threshold 매칭
+    th_after_fast_corr = Alarm.objects.filter(
+        alarm_type__in=_THRESHOLD_TYPES,
+        device_id=OuterRef('related_device_id'),
+        created_at__gte=OuterRef('created_at'),
+        created_at__lte=OuterRef('created_at') + fast_win,
+    )
 
     # ── proxy TP: 알람 유형별 창 분리 ──────────────────────────
     # 즉각 탐지형(FAST): 10분 창 — Z-score/ChangePoint/IF/상관관계
@@ -212,14 +219,24 @@ def _compute(days: int) -> dict:
     no_fb_fast = ml_qs.filter(alarm_type__in=_FAST_ML_TYPES)
     no_fb_slow = ml_qs.filter(alarm_type__in=_SLOW_ML_TYPES)
 
-    proxy_tp_fast = no_fb_fast.filter(Exists(th_after_fast)).count()
+    # ai_correlation + sensor_type='power' 는 크로스 디바이스 매칭 적용
+    #   related_device_id 있는 신규 알람 → th_after_fast_corr (가스 센서 기준)
+    #   related_device_id 없는 구형 알람 → th_after_fast (전력 센서 기준, 기존 동작 유지)
+    fast_corr_power     = no_fb_fast.filter(alarm_type='ai_correlation', sensor_type='power')
+    fast_other          = no_fb_fast.exclude(Q(alarm_type='ai_correlation') & Q(sensor_type='power'))
+
+    tp_fast_other       = fast_other.filter(Exists(th_after_fast)).count()
+    tp_fast_corr_new    = fast_corr_power.exclude(related_device_id='').filter(Exists(th_after_fast_corr)).count()
+    tp_fast_corr_old    = fast_corr_power.filter(related_device_id='').filter(Exists(th_after_fast)).count()
+
+    proxy_tp_fast = tp_fast_other + tp_fast_corr_new + tp_fast_corr_old
     proxy_tp_slow = no_fb_slow.filter(Exists(th_after_slow)).count()
     proxy_used    = no_fb_fast.count() + no_fb_slow.count()
     proxy_tp      = proxy_tp_fast + proxy_tp_slow
     proxy_fp      = proxy_used - proxy_tp
 
     # ── 탐지기별 breakdown ──────────────────────────────────────
-    per_detector = _compute_per_type(ml_qs, th_after_fast, th_after_slow)
+    per_detector = _compute_per_type(ml_qs, th_after_fast, th_after_slow, th_after_fast_corr)
 
     # ── FN: 임계치 알람 직전 fast_win(10분) 내 ML 알람 없으면 미탐지 ──
     # FN 계산에는 fast_win(10분) 사용:
@@ -265,11 +282,21 @@ def _compute(days: int) -> dict:
     # proxy와 달리 ARIMA 예측이 실제로 임계치를 넘었는지를 직접 측정.
     # proxy는 "AI 알람 후 threshold 알람 발생" 여부이고,
     # arima_accuracy는 "ARIMA가 예측한 값이 실제로 발생했는지" 로 별도 지표.
-    arima_qs      = AIPrediction.objects.filter(created_at__gte=cutoff)
-    arima_total   = arima_qs.count()
-    arima_success = arima_qs.filter(result='success').count()
-    arima_failure = arima_qs.filter(result='failure').count()
-    arima_pending = arima_qs.filter(result='pending').count()
+    # COUNT + CASE WHEN 1회 쿼리로 4개 집계 (기존 쿼리 4회 → 1회)
+    arima_agg = (
+        AIPrediction.objects
+        .filter(created_at__gte=cutoff)
+        .aggregate(
+            total=Count('id'),
+            success=Count('id', filter=Q(result='success')),
+            failure=Count('id', filter=Q(result='failure')),
+            pending=Count('id', filter=Q(result='pending')),
+        )
+    )
+    arima_total   = arima_agg['total']
+    arima_success = arima_agg['success']
+    arima_failure = arima_agg['failure']
+    arima_pending = arima_agg['pending']
     arima_acc     = (
         round(arima_success / (arima_success + arima_failure) * 100, 1)
         if (arima_success + arima_failure) > 0
@@ -308,12 +335,17 @@ def _compute(days: int) -> dict:
     }
 
 
-def _compute_per_type(ml_qs, th_after_fast, th_after_slow) -> dict:
+def _compute_per_type(ml_qs, th_after_fast, th_after_slow, th_after_fast_corr=None) -> dict:
     """
     alarm_type 별 count / tp / fp / precision 집계.
 
     각 타입이 FAST(10분) 또는 SLOW(30분) 창을 사용하는지 함께 반환.
     총 14개 COUNT 쿼리 추가 (7 타입 × 2: count + tp) → 백그라운드 전용.
+
+    ai_correlation + sensor_type='power':
+      related_device_id 있는 신규 알람 → th_after_fast_corr (가스 센서 기준 크로스 매칭)
+      related_device_id 없는 구형 알람 → th_after_fast (전력 센서 기준, 기존 동작 유지)
+      ai_correlation + sensor_type='gas' → th_after_fast (동일 디바이스 기준 기존 동작 유지)
 
     반환 형식:
       {
@@ -332,9 +364,29 @@ def _compute_per_type(ml_qs, th_after_fast, th_after_slow) -> dict:
 
         qs    = ml_qs.filter(alarm_type=alarm_type)
         count = qs.count()
-        tp    = qs.filter(Exists(th_exists)).count() if count > 0 else 0
-        fp    = count - tp
 
+        if count == 0:
+            result[alarm_type] = {
+                'count': 0, 'tp': 0, 'fp': 0,
+                'precision': None,
+                'window': 'slow' if use_slow else 'fast',
+            }
+            continue
+
+        if alarm_type == 'ai_correlation' and th_after_fast_corr is not None:
+            # 전력-가스 교차: related_device_id 유무로 분기
+            corr_power_new = qs.filter(sensor_type='power').exclude(related_device_id='')
+            corr_power_old = qs.filter(sensor_type='power', related_device_id='')
+            corr_gas       = qs.exclude(sensor_type='power')
+            tp = (
+                corr_power_new.filter(Exists(th_after_fast_corr)).count() +
+                corr_power_old.filter(Exists(th_after_fast)).count() +
+                corr_gas.filter(Exists(th_exists)).count()
+            )
+        else:
+            tp = qs.filter(Exists(th_exists)).count()
+
+        fp = count - tp
         result[alarm_type] = {
             'count':     count,
             'tp':        tp,

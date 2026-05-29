@@ -484,6 +484,8 @@ NOTIFICATION_CHANNEL_CHOICES = [
     ('realtime', '관제 실시간'),
     ('sms',      'SMS'),
     ('email',    '이메일'),
+    ('slack',    'Slack Webhook'),
+    ('discord',  'Discord Webhook'),
 ]
 
 

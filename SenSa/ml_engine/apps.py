@@ -53,11 +53,29 @@ class MlEngineConfig(AppConfig):
 
             cusum_data = model_store.load_json('cusum_state')
             if isinstance(cusum_data, dict) and cusum_data:
+                before_cusum = len(cusum_data)
+                cusum_data = {
+                    k: v for k, v in cusum_data.items()
+                    if not isolation_forest._is_test_device(k.split(':')[0])
+                }
+                purged_cusum = before_cusum - len(cusum_data)
+                if purged_cusum:
+                    _log.info("[ml_engine] CUSUM 테스트 잔재 %d개 정리", purged_cusum)
+                    model_store.save_json('cusum_state', cusum_data)
                 cusum_detector._state.update(cusum_data)
                 _log.info("[ml_engine] CUSUM 상태 %d개 복원", len(cusum_data))
 
             arima_data = model_store.load_pickle('arima_cache')
             if isinstance(arima_data, dict) and arima_data:
+                before_arima = len(arima_data)
+                arima_data = {
+                    k: v for k, v in arima_data.items()
+                    if not isolation_forest._is_test_device(k.split(':')[0])
+                }
+                purged_arima = before_arima - len(arima_data)
+                if purged_arima:
+                    _log.info("[ml_engine] ARIMA 테스트 잔재 %d개 정리", purged_arima)
+                    model_store.save_pickle('arima_cache', arima_data)
                 arima_forecaster._cache.update(arima_data)
                 _log.info("[ml_engine] ARIMA 캐시 %d개 복원", len(arima_data))
 

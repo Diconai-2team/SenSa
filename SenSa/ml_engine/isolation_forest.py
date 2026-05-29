@@ -34,6 +34,7 @@ ml_engine/isolation_forest.py — Isolation Forest 이상 탐지 (STEP F)
     반드시 버전 체크 후 폐기해야 함.
 """
 import threading
+import time as _time
 from statistics import mean, stdev
 from sklearn.ensemble import IsolationForest
 import numpy as np
@@ -83,6 +84,13 @@ def set_contamination(new_value: float) -> None:
 _lock = threading.Lock()
 _models: dict[str, dict] = {}     # key → {model, trained_call_count, version}
 
+# ── Stale key 정리 (메모리 누수 방지) ────────────────────────────────────────
+# 삭제된 device/metric 조합이 _models, _call_counters 에 남는 문제 해결.
+_IF_STALE_TTL = 1800        # 미접근 TTL (초) — 30분
+_IF_CLEANUP_INTERVAL = 500  # 500호출마다 stale key 정리
+_if_total_calls = 0
+_if_last_seen: dict[str, float] = {}   # key → last monotonic timestamp
+
 # ── 테스트/개발 잔재 모델 차단 ─────────────────────────────────────────────────
 # 개발·성능 테스트 중 생성된 임시 device_id 가 pkl 에 영구 저장되는 문제 방지.
 # detect_ml_anomaly() 진입 시 device_id 가 아래 prefix 에 해당하면
@@ -91,6 +99,8 @@ _TEST_DEVICE_PREFIXES = (
     'BENCH_', 'VFY', 'FIX_TEST', 'IF_CHECK',
     'PROFILE_DEV', 'PURE_DEV', 'RETRAIN_TEST', 'TEST_DEV',
     'perf_test_dev', 'perf_v2', 'test_device', 'test-lock',
+    '_UNIT_', '_T_', '_PIPE_',   # 단위 테스트 / 파이프라인 테스트 잔재
+    'CUSUM_DEV',                  # CUSUM 개발 테스트 잔재
 )
 
 
@@ -213,6 +223,28 @@ def _make_feature_matrix(values: list[float]) -> np.ndarray:
     return np.array(rows, dtype=float)
 
 
+def _prune_stale_if_keys() -> None:
+    """
+    _IF_STALE_TTL 이상 미접근 키를 _models / _call_counters / _training 에서 제거.
+
+    삭제된 device/metric 조합이 프로세스 수명 동안 누적되는 메모리 누수 방지.
+    detect_ml_anomaly() 호출 _IF_CLEANUP_INTERVAL 번마다 자동 실행.
+    """
+    now = _time.monotonic()
+    with _lock:
+        stale = [k for k, t in _if_last_seen.items() if now - t > _IF_STALE_TTL]
+        for k in stale:
+            _models.pop(k, None)
+            _call_counters.pop(k, None)
+            _training.discard(k)
+            _if_last_seen.pop(k, None)
+    if stale:
+        import logging
+        logging.getLogger(__name__).info(
+            "[IF] stale key %d개 정리 (TTL=%ds)", len(stale), _IF_STALE_TTL
+        )
+
+
 def _background_fit(
     model_key: str,
     train_values: list[float],
@@ -280,9 +312,13 @@ def detect_ml_anomaly(device_id: str, metric: str, values: list[float], current:
     model_key = f"{device_id}:{metric}"
 
     # ── 1단계: call_count 증가 + 재학습 여부 판단 (락 내, 빠른 연산만) ──────
+    global _if_total_calls
     with _lock:
         _call_counters[model_key] = _call_counters.get(model_key, 0) + 1
         call_count = _call_counters[model_key]
+        _if_last_seen[model_key] = _time.monotonic()   # 접근 시각 갱신
+        _if_total_calls += 1
+        _should_cleanup = (_if_total_calls % _IF_CLEANUP_INTERVAL == 0)
 
         entry = _models.get(model_key)
 
@@ -314,6 +350,10 @@ def detect_ml_anomaly(device_id: str, metric: str, values: list[float], current:
             args=(model_key, list(train_values), call_count, get_contamination()),
             daemon=True,
         ).start()
+
+    # ── stale key 정리 (락 밖, 500호출마다) ─────────────────────────────────
+    if _should_cleanup:
+        _prune_stale_if_keys()
 
     # ── 3단계: 기존 모델 없으면 아직 학습 미완료 ─────────────────────────────
     if existing_model is None:

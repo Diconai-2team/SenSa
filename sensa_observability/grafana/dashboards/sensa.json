@@ -27,7 +27,7 @@
   ],
   "timezone": "browser",
   "schemaVersion": 39,
-  "version": 3,
+  "version": 4,
   "refresh": "5s",
   "time": {
     "from": "now-15m",
@@ -587,6 +587,237 @@
           "mode": "multi"
         }
       }
+    },
+    {
+      "id": 11,
+      "type": "timeseries",
+      "title": "AI 파이프라인 task 처리 속도 (가스 / 전력)",
+      "description": "devices.tasks.run_ai_pipeline / run_power_ai_pipeline 처리 건수. Celery 분리 후 AI task 부하 모니터링.",
+      "gridPos": {
+        "x": 0,
+        "y": 48,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10
+          },
+          "unit": "ops"
+        },
+        "overrides": []
+      },
+      "options": {
+        "tooltip": {
+          "mode": "multi"
+        },
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (task_name, state) (rate(sensa_celery_task_total{task_name=~\"devices.tasks.*\"}[1m]))",
+          "legendFormat": "{{task_name}} [{{state}}]",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 12,
+      "type": "timeseries",
+      "title": "AI task p95 레이턴시 — 가스 / 전력",
+      "description": "AI 파이프라인 처리 시간 95백분위. 가스(9종 메트릭) vs 전력(3종 메트릭) 차이 확인.",
+      "gridPos": {
+        "x": 12,
+        "y": 48,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10
+          },
+          "unit": "s",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 0.5
+              },
+              {
+                "color": "red",
+                "value": 1.0
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "tooltip": {
+          "mode": "multi"
+        },
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "histogram_quantile(0.95, sum by (task_name, le) (rate(sensa_celery_task_duration_seconds_bucket{state=\"succeeded\", task_name=~\"devices.tasks.*\"}[5m])))",
+          "legendFormat": "p95 {{task_name}}",
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "histogram_quantile(0.50, sum by (task_name, le) (rate(sensa_celery_task_duration_seconds_bucket{state=\"succeeded\", task_name=~\"devices.tasks.*\"}[5m])))",
+          "legendFormat": "p50 {{task_name}}",
+          "refId": "B"
+        }
+      ]
+    },
+    {
+      "id": 13,
+      "type": "timeseries",
+      "title": "외부 알림 발송 — Celery task 처리 속도",
+      "description": "alerts.tasks.send_external_notification task 처리 속도. succeeded/failed/retried 분리.",
+      "gridPos": {
+        "x": 0,
+        "y": 56,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10
+          },
+          "unit": "ops"
+        },
+        "overrides": []
+      },
+      "options": {
+        "tooltip": {
+          "mode": "multi"
+        },
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (state) (rate(sensa_celery_task_total{task_name=\"alerts.tasks.send_external_notification\"}[5m]))",
+          "legendFormat": "외부알림 [{{state}}]",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 14,
+      "type": "timeseries",
+      "title": "AI 탐지 알람 vs 임계치 알람 생성 비율",
+      "description": "ai_* 타입 알람과 sensor_caution/danger 알람 비교. AI 선제 탐지 비율이 높을수록 Recall 양호.",
+      "gridPos": {
+        "x": 12,
+        "y": 56,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10
+          },
+          "unit": "ops"
+        },
+        "overrides": []
+      },
+      "options": {
+        "tooltip": {
+          "mode": "multi"
+        },
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(rate(sensa_alarm_created_total{alarm_level=~\"caution|danger\"}[5m]))",
+          "legendFormat": "전체 알람",
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (sensor_type) (rate(sensa_alarm_created_total{alarm_level=~\"caution|danger\"}[5m]))",
+          "legendFormat": "{{sensor_type}} 알람",
+          "refId": "B"
+        }
+      ]
     }
   ]
 }

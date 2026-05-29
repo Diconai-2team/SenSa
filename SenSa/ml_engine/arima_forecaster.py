@@ -26,6 +26,7 @@ ml_engine/arima_forecaster.py — ARIMA 시계열 예측 (STEP G)
   - 일반 가스: danger 초과값을 danger 수준으로 내려 클리핑.
 """
 import threading
+import time as _time
 import warnings
 
 import numpy as np
@@ -40,13 +41,22 @@ _cache: dict[str, dict] = {}      # key → {result, trained_at_count}
 _training: set[str] = set()       # 현재 비동기 학습 중인 key
 
 # 동시 백그라운드 ARIMA 학습 제한 (CPU 포화 방지)
-_train_semaphore = threading.Semaphore(2)
+# Celery worker concurrency=1 과 일치: 동시 재학습 1개로 제한 (2개면 단일 프로세스에서 불필요한 대기)
+_train_semaphore = threading.Semaphore(1)
 
 # ── AIPrediction 피드백 기반 조기 재학습 ──────────────────────────────────────
 # ARIMA가 연속으로 N회 예측 실패하면 캐시를 즉시 삭제 → 다음 틱에 재학습 시작.
 # 재시작 시 카운터 리셋은 의도된 동작 (cold start = 깨끗한 재학습 기회).
 EARLY_RETRAIN_THRESHOLD = 3    # 연속 실패 N회 시 강제 재학습
 _failure_counts: dict[str, int] = {}   # key → 연속 실패 횟수
+
+# ── Stale key 정리 (메모리 누수 방지) ────────────────────────────────────────
+# 삭제된 device/metric 조합이 _cache, _failure_counts, _training 에 남는 문제 해결.
+# 30분(1800초) 이상 미접근 키를 주기적으로 제거.
+_ARIMA_STALE_TTL = 1800        # 미접근 TTL (초)
+_ARIMA_CLEANUP_INTERVAL = 300  # 300번 forecast() 호출마다 정리 실행
+_arima_total_calls = 0         # 전역 호출 카운터
+_last_seen: dict[str, float] = {}   # key → last monotonic timestamp
 
 
 def _clip_for_arima(
@@ -148,6 +158,7 @@ def _get_fitted(
     key = f"{device_id}:{metric}"
     n = len(values)
     with _lock:
+        _last_seen[key] = _time.monotonic()   # 접근 시각 갱신
         entry = _cache.get(key)
         if entry is None:
             # 첫 학습: 캐시 없음 → 백그라운드에서 학습, 지금은 NORMAL
@@ -218,6 +229,28 @@ def record_prediction_success(device_id: str, metric: str) -> None:
     _failure_counts.pop(key, None)
 
 
+def _prune_stale_arima_keys() -> None:
+    """
+    _ARIMA_STALE_TTL 이상 미접근 키를 _cache / _failure_counts / _training 에서 제거.
+
+    삭제된 device/metric 조합이 프로세스 수명 동안 누적되는 메모리 누수 방지.
+    _ARIMA_CLEANUP_INTERVAL 번 forecast() 호출마다 자동 실행.
+    """
+    now = _time.monotonic()
+    with _lock:
+        stale = [k for k, t in _last_seen.items() if now - t > _ARIMA_STALE_TTL]
+        for k in stale:
+            _cache.pop(k, None)
+            _failure_counts.pop(k, None)
+            _training.discard(k)
+            _last_seen.pop(k, None)
+    if stale:
+        import logging
+        logging.getLogger(__name__).info(
+            "[arima] stale key %d개 정리 (TTL=%ds)", len(stale), _ARIMA_STALE_TTL
+        )
+
+
 def forecast(
     values: list[float],
     caution_threshold: float | None,
@@ -243,7 +276,13 @@ def forecast(
         {"status": "PREDICTIVE_ALERT" | "PREDICTIVE_WARNING" | "NORMAL",
          "predicted_max": float, "steps": int, "model_ready": bool}
     """
+    global _arima_total_calls
     _no_result = {"status": "NORMAL", "predicted_max": 0.0, "predicted_values": [], "steps": FORECAST_STEPS, "model_ready": False}
+
+    if device_id:
+        from .isolation_forest import _is_test_device
+        if _is_test_device(device_id):
+            return _no_result
 
     if len(values) < MIN_POINTS:
         return _no_result
@@ -280,6 +319,11 @@ def forecast(
         if exceeds:
             status = "PREDICTIVE_WARNING"
 
+    # stale key 정리 — CLEANUP_INTERVAL 마다 실행 (락 밖, 영향 없음)
+    _arima_total_calls += 1
+    if _arima_total_calls % _ARIMA_CLEANUP_INTERVAL == 0:
+        _prune_stale_arima_keys()
+
     return {
         "status": status,
         "predicted_max": round(representative, 4),
@@ -287,3 +331,43 @@ def forecast(
         "steps": FORECAST_STEPS,
         "model_ready": True,
     }
+
+
+def get_forecast_values(
+    values: list[float],
+    device_id: str,
+    metric: str,
+    horizon: int = FORECAST_STEPS,
+) -> list[float] | None:
+    """
+    대시보드 차트용 ARIMA 예측값 반환 (horizon 스텝).
+
+    AI 파이프라인이 학습·캐시한 ARIMA(1,1,1) 모델을 재사용하므로
+    별도 학습 비용 없이 차트와 알람 탐지가 동일 모델을 공유.
+
+    캐시 미준비(모델 학습 전 초반 30초) 시 None 반환 → 호출자가 linear fallback 처리.
+
+    Args:
+        values:    최근 시계열 값 (오래된 → 최근 순)
+        device_id: 캐시 키
+        metric:    캐시 키
+        horizon:   예측 스텝 수 (기본 FORECAST_STEPS=10, 차트용 60~200 전달 가능)
+
+    Returns:
+        list[float] | None
+    """
+    key = f"{device_id}:{metric}"
+    with _lock:
+        entry = _cache.get(key)
+    if entry is None:
+        return None
+    fitted = entry["result"]
+    try:
+        arr = np.array(values, dtype=float)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            refreshed = fitted.apply(arr)
+            preds = list(refreshed.forecast(steps=horizon))
+            return [float(p) for p in preds]
+    except Exception:
+        return None

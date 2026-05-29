@@ -1,10 +1,14 @@
 """
 devices/views.py — 센서 장비 CRUD + 센서 데이터 수신/저장
 
-AI 파이프라인 구조 (방식 B):
-  데이터 수신 시 두 개의 백그라운드 스레드를 동시에 시작:
-    스레드 A: _run_evaluate_sensor() — 임계치 기반 상태 전이 알람 (evaluate_sensor)
-    스레드 B: _run_ai_pipeline()    — ml_engine AI 파이프라인 (5종 탐지기 + 상관관계 + 확산)
+AI 파이프라인 구조 (Celery 분리):
+  데이터 수신 시:
+    스레드 A : _run_evaluate_sensor()      — 임계치 기반 상태 전이 알람 (evaluate_sensor)
+    Celery task: run_ai_pipeline_task      — ml_engine AI 파이프라인 (가스)
+    Celery task: run_power_ai_pipeline_task — ml_engine AI 파이프라인 (전력)
+
+  AI 파이프라인은 Celery worker(concurrency=1) 가 Redis 큐에서 순차 처리.
+  → _AI_SEMAPHORE 불필요 (큐잉으로 대체), 틱 스킵 없음.
 """
 import logging
 import random as _random
@@ -43,9 +47,9 @@ GAS_LABELS = {
 }
 
 # ═══════════════════════════════════════════════════════════
-# AI 파이프라인 — 동시 실행 제한 (GIL thundering herd 방지)
+# AI 파이프라인 Celery task import (lazy — 순환 import 방지)
 # ═══════════════════════════════════════════════════════════
-_AI_SEMAPHORE = _threading.Semaphore(2)
+# _AI_SEMAPHORE 제거: Celery 큐잉으로 대체 (concurrency=1 → 순차 처리 보장)
 
 # AI 상태 → Alarm 타입 + 기본 레벨 매핑
 _AI_ALARM_MAP = {
@@ -248,19 +252,17 @@ class SensorDataView(APIView):
             daemon=True,
         ).start()
 
-        # ─── 스레드 B: AI 파이프라인 (ml_engine) ───────────────
+        # ─── Celery task: AI 파이프라인 (ml_engine) ────────────
+        # threading → Celery 로 전환:
+        #   - 세마포어 초과 시 스킵 제거 → 모든 틱 AI 분석 보장
+        #   - Django 프로세스 장애 격리
+        #   - Celery worker concurrency=1 로 인메모리 모델 상태 일관성 유지
         if sensor_type == 'gas' and device.sensor_type == 'gas':
-            _threading.Thread(
-                target=_run_ai_pipeline,
-                args=(device.device_id, payload_values),
-                daemon=True,
-            ).start()
+            from devices.tasks import run_ai_pipeline_task
+            run_ai_pipeline_task.delay(device.device_id, payload_values)
         elif sensor_type == 'power' and device.sensor_type == 'power':
-            _threading.Thread(
-                target=_run_power_ai_pipeline,
-                args=(device.device_id, payload_values),
-                daemon=True,
-            ).start()
+            from devices.tasks import run_power_ai_pipeline_task
+            run_power_ai_pipeline_task.delay(device.device_id, payload_values)
 
         return Response(
             {'id': sd.id, 'status': s},
@@ -346,18 +348,8 @@ def _run_evaluate_sensor(device_id: str, sensor_type: str,
 
 
 # ═══════════════════════════════════════════════════════════
-# 스레드 B: AI 파이프라인 — 가스
+# AI 파이프라인 내부 구현 — 가스 (Celery task 에서 호출)
 # ═══════════════════════════════════════════════════════════
-
-def _run_ai_pipeline(device_id: str, gas_values: dict) -> None:
-    acquired = _AI_SEMAPHORE.acquire(blocking=False)
-    if not acquired:
-        return  # 동시 2개 초과 → 이번 틱 스킵
-    try:
-        _run_ai_pipeline_inner(device_id, gas_values)
-    finally:
-        _AI_SEMAPHORE.release()
-
 
 def _run_ai_pipeline_inner(device_id: str, gas_values: dict) -> None:
     # [수정] 예외 발생 시에도 DB 연결이 반드시 반환되도록 try/except/finally 추가.
@@ -409,13 +401,10 @@ def _run_ai_pipeline_inner(device_id: str, gas_values: dict) -> None:
         if len(anomaly_metrics) >= 2:
             _check_gas_correlation(device_id, anomaly_metrics, gas_values)
 
-        # 공간 확산 탐지 (별도 스레드)
+        # 공간 확산 탐지 — Celery task 내에서 동기 호출
+        # (concurrency=1 환경이므로 별도 스레드 불필요 — 순차 실행으로 구조 단순화)
         if anomaly_metrics:
-            _threading.Thread(
-                target=_check_spatial_diffusion,
-                args=(device_id, list(anomaly_metrics)),
-                daemon=True,
-            ).start()
+            _check_spatial_diffusion(device_id, list(anomaly_metrics))
 
     except Exception as exc:
         logger.warning("[ai_pipeline/gas] %s: %s", device_id, exc)
@@ -424,18 +413,8 @@ def _run_ai_pipeline_inner(device_id: str, gas_values: dict) -> None:
 
 
 # ═══════════════════════════════════════════════════════════
-# 스레드 B: AI 파이프라인 — 전력
+# AI 파이프라인 내부 구현 — 전력 (Celery task 에서 호출)
 # ═══════════════════════════════════════════════════════════
-
-def _run_power_ai_pipeline(device_id: str, power_values: dict) -> None:
-    acquired = _AI_SEMAPHORE.acquire(blocking=False)
-    if not acquired:
-        return
-    try:
-        _run_power_ai_pipeline_inner(device_id, power_values)
-    finally:
-        _AI_SEMAPHORE.release()
-
 
 def _run_power_ai_pipeline_inner(device_id: str, power_values: dict) -> None:
     # [수정] 예외 발생 시에도 DB 연결이 반드시 반환되도록 try/except/finally 추가.
@@ -496,8 +475,13 @@ def _verify_ai_predictions(device_id: str, metric: str, actual_value: float) -> 
     """
     pending 상태의 AIPrediction을 실측값으로 검증.
 
-    - actual_value >= threshold → 예측 맞음 (success)
-    - expires_at 초과 → 임계치 미달, 예측 틀림 (failure)
+    일반 가스 (lower_is_worse=False):
+      actual_value >= threshold → 예측 맞음 (success)
+    O2 (lower_is_worse=True):
+      actual_value <= threshold → 예측 맞음 (success)
+      이유: O2 예측은 "값이 caution 이하로 떨어질 것"이므로 방향이 반대.
+
+    expires_at 초과 → 임계치 미도달, 예측 틀림 (failure)
 
     DB 호출을 최소화하기 위해 pending 건이 없으면 즉시 리턴.
     """
@@ -512,10 +496,17 @@ def _verify_ai_predictions(device_id: str, metric: str, actual_value: float) -> 
     if not pending:
         return
 
+    lower_is_worse = (metric == 'o2')
+
     success_ids = []
     failure_ids = []
     for pred in pending:
-        if actual_value >= pred.threshold:
+        if lower_is_worse:
+            is_success = actual_value <= pred.threshold
+        else:
+            is_success = actual_value >= pred.threshold
+
+        if is_success:
             success_ids.append(pred.id)
         elif now >= pred.expires_at:
             failure_ids.append(pred.id)
@@ -560,7 +551,7 @@ def _maybe_create_alarm(
     now = timezone.now()
 
     base_cutoff = now - timedelta(seconds=_BASE_COOLDOWN_SEC)
-    recent_60s = Alarm.objects.filter(
+    within_base_cooldown = Alarm.objects.filter(
         device_id=device_id,
         sensor_type=metric,
         alarm_type=alarm_type,
@@ -570,7 +561,7 @@ def _maybe_create_alarm(
     final_level = base_level
     escalated = False
     # 에스컬레이션 제외 타입은 레벨 상향 없이 쿨다운만 적용
-    if not recent_60s and alarm_type not in _NO_ESCALATION_TYPES:
+    if not within_base_cooldown and alarm_type not in _NO_ESCALATION_TYPES:
         final_level, esc_count = _escalate_level(device_id, metric, alarm_type, base_level)
         escalated = final_level != base_level
 
@@ -602,11 +593,11 @@ def _maybe_create_alarm(
     if escalated:
         pass
     elif bypass:
-        if recent_60s:
+        if within_base_cooldown:
             return
     else:
         if metric in _GAS_METRICS:
-            if recent_60s:
+            if within_base_cooldown:
                 return
             long_cutoff = now - timedelta(seconds=_GAS_COOLDOWN_SEC)
             if Alarm.objects.filter(
@@ -627,7 +618,7 @@ def _maybe_create_alarm(
                     created_at__gte=long_cutoff,
                 ).exists():
                     return
-            elif recent_60s:
+            elif within_base_cooldown:
                 return
 
     # drift: device 레벨 쿨다운 — 다른 메트릭이 같은 틱에 이미 drift 알람을 냈으면 차단
@@ -685,31 +676,58 @@ def _maybe_create_alarm(
         arima = result["details"].get("arima", {})
         predicted_max = arima.get("predicted_max")
         if predicted_max is not None:
-            # [수정] O2 는 GAS_THRESHOLDS 에 없어 None 이 되던 버그 수정
             # O2_CAUTION_LOW 를 단일 출처(classifiers.py)에서 직접 사용
             if metric == 'o2':
                 caution_th = O2_CAUTION_LOW
+                # PREDICTIVE_ALERT: 예측이 danger(16%) 미만 → danger threshold로 검증
+                # PREDICTIVE_WARNING: 예측이 caution(18%) 미만 → caution threshold로 검증
+                verify_threshold = O2_DANGER_LOW if ai_status == 'PREDICTIVE_ALERT' else O2_CAUTION_LOW
             else:
                 caution_th = GAS_THRESHOLDS.get(metric, {}).get('caution')
+                danger_th  = GAS_THRESHOLDS.get(metric, {}).get('danger')
+                # PREDICTIVE_ALERT: danger threshold로 검증 (없으면 caution으로 fallback)
+                verify_threshold = (danger_th if ai_status == 'PREDICTIVE_ALERT' and danger_th else caution_th)
 
             if caution_th:
                 steps = arima.get("steps", 10)
                 # [수정] slope·if_score 실제 값 채우기 (구 trend_predictor 0.0 하드코딩 제거)
                 if_detail = result["details"].get("isolation_forest", {})
-                AIPrediction.objects.create(
-                    device_id=device_id,
-                    sensor_key=metric,
-                    sensor_type='gas' if metric in _GAS_METRICS else 'power',
-                    value_at_predict=float(current_value),
-                    threshold=float(caution_th),
-                    slope=if_detail.get("slope", 0.0),       # IF slope feature
-                    if_score=if_detail.get("score", 0.0),    # IF anomaly score
-                    predicted_ticks=steps,
-                    predicted_value=float(predicted_max),
-                    # 예측 지평선의 3배 시간을 검증 창으로 줌 (시뮬 1틱=1s 기준 30s)
-                    expires_at=now + timedelta(seconds=steps * 3),
-                    alarm=alarm,
+
+                # ── 슬라이딩 윈도우 오염 필터 ──────────────────────────────
+                # 스파이크 잔류값이 ARIMA 학습 데이터를 오염시켜
+                # 실제 현재값 대비 2배 이상 과도한 예측을 발행하는 경우 skip.
+                #
+                # skip 조건 (AND):
+                #   1) current_value < caution * 0.7  → 현재값이 임계치와 거리가 있고
+                #   2) predicted_max > current_value * 2.0 → 예측이 현재의 2배 초과 (비약)
+                #
+                # 둘 다 해당해야 skip — 임계치 근접 시(조건1 미충족)는 항상 생성,
+                # 현재값이 낮아도 완만한 예측(조건2 미충족)이면 생성.
+                # O2(lower_is_worse)는 방향이 반대라 이 필터 적용 제외.
+                _skip_prediction = (
+                    metric != 'o2'
+                    and float(current_value) <= float(caution_th) * 0.7
+                    and float(predicted_max) > float(current_value) * 2.0
                 )
+
+                if not _skip_prediction:
+                    AIPrediction.objects.create(
+                        device_id=device_id,
+                        sensor_key=metric,
+                        sensor_type='gas' if metric in _GAS_METRICS else 'power',
+                        value_at_predict=float(current_value),
+                        threshold=float(verify_threshold),
+                        slope=if_detail.get("slope", 0.0),       # IF slope feature
+                        if_score=if_detail.get("score", 0.0),    # IF anomaly score
+                        predicted_ticks=steps,
+                        predicted_value=float(predicted_max),
+                        # 예측 지평선의 9배 시간을 검증 창으로 줌 (시뮬 1틱=1s 기준 90s)
+                        # [조정 근거] 실측 데이터 기준 ai_predictive → threshold 실현까지 p50=83s.
+                        # steps*3(30s)은 너무 짧아 맞는 예측도 failure로 기록됨.
+                        # steps*9(90s) = p50 커버 + 우연 적중률(43%) 이하로 신뢰성 유지.
+                        expires_at=now + timedelta(seconds=steps * 9),
+                        alarm=alarm,
+                    )
 
     if not is_predictive and metric in _GAS_METRICS and current_value > 0:
         with _lav_lock:
@@ -987,7 +1005,8 @@ def _check_power_gas_correlation(
     if not concern_metrics:
         return
 
-    for gas_event in recent_gas_events:
+    # 이상 메트릭 수 많은 순서로 정렬 → 60초 억제 시 가장 심각한 가스 센서가 related_device_id에 저장
+    for gas_event in sorted(recent_gas_events, key=lambda e: len(e['metrics']), reverse=True):
         _create_correlation_alarm(
             device_id=power_device_id,
             alarm_level='danger',
@@ -999,6 +1018,7 @@ def _check_power_gas_correlation(
                 f"— 전기 화재 의심"
             ),
             tag='power_gas',
+            related_device_id=gas_event['device_id'],
         )
 
 
@@ -1007,6 +1027,7 @@ def _create_correlation_alarm(
     alarm_level: str,
     message: str,
     tag: str,
+    related_device_id: str = '',
 ) -> None:
     """상관관계 알람 생성 (60초 중복 억제).
 
@@ -1016,6 +1037,9 @@ def _create_correlation_alarm(
 
     60초 내 같은 device_id + alarm_type + sensor_type 조합이 있으면 억제.
     (같은 장치에서 gas 상관관계 alarm이 60초 내 여러 종류 나오면 같은 사건으로 묶임)
+
+    related_device_id: 전력-가스 교차 상관관계 알람에서 실제 가스 센서 device_id 저장.
+    → evaluator proxy 평가 시 크로스 디바이스 threshold 알람 매칭에 사용.
     """
     sensor_type = 'power' if tag == 'power_gas' else 'gas'
     cutoff = timezone.now() - timedelta(seconds=60)
@@ -1031,6 +1055,7 @@ def _create_correlation_alarm(
         alarm_type='ai_correlation',
         alarm_level=alarm_level,
         device_id=device_id,
+        related_device_id=related_device_id,
         sensor_type=sensor_type,
         message=message,
         is_ai=True,

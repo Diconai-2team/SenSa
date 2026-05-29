@@ -1,6 +1,12 @@
 """
 ARIMA forecast — 4차 프로젝트 1단계 (AI 이상탐지) 4. 베이스라인 모델 구축.
 
+[DEPRECATED] dashboard/views.py 에서의 사용이 ml_engine.arima_forecaster.get_forecast_values()
+로 통합되었습니다. 이 파일은 레거시 참조용으로만 보관됩니다.
+
+  이전: alerts.services.arima_forecast.arima_forecast() — ARIMA(1,1,0), 매 호출 학습 (캐시 없음)
+  현재: ml_engine.arima_forecaster.get_forecast_values() — ARIMA(1,1,1), AI 파이프라인 캐시 공유
+
 ARIMA(1,1,0): 가장 단순한 ARIMA 베이스라인.
   - AR 차수 1: 직전 1개 값의 자기회귀
   - 1차 차분: 비정상 시계열 → 정상 시계열 (산업 측정값에 적합)
@@ -17,9 +23,6 @@ logger = logging.getLogger(__name__)
 # statsmodels 가용성 — import 실패 시 graceful
 try:
     from statsmodels.tsa.arima.model import ARIMA
-    import warnings
-    # statsmodels 의 ConvergenceWarning 등 무시 (운영 노이즈 감소)
-    warnings.filterwarnings('ignore')
     ARIMA_AVAILABLE = True
 except ImportError:
     ARIMA_AVAILABLE = False

@@ -92,16 +92,17 @@ def get_latest_alert() -> dict | None:
 # ═══════════════════════════════════════════════════════
 
 def clear_sensor_cache(device_id: str = None) -> None:
-    """캐시 삭제 (개별 또는 전체 sensor)."""
+    """캐시 삭제 (개별 또는 전체 sensor).
+
+    device_id 지정 시 해당 키만 삭제.
+    None 이면 Django cache framework 의 delete_pattern 으로 전체 삭제.
+    """
     if device_id:
         cache.delete(f'{_SENSOR_PREFIX}{device_id}')
     else:
-        # 전체 sensor 캐시 삭제 — Redis 직접 명령 필요
+        # Django Redis cache backend 의 delete_pattern 사용 (django_redis 불필요)
         try:
-            from django_redis import get_redis_connection
-            conn = get_redis_connection('default')
-            for key in conn.scan_iter(f'sensa:1:{_SENSOR_PREFIX}*'):
-                conn.delete(key)
-        except ImportError:
-            # django_redis 미설치 시 — 개별 device_id 만 가능
+            cache.delete_pattern(f'*{_SENSOR_PREFIX}*')
+        except AttributeError:
+            # delete_pattern 미지원 backend(e.g. LocMemCache) — 무시
             pass

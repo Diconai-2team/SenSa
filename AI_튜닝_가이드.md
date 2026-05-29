@@ -13,7 +13,7 @@
 | `_GATE_RATIO` | `0.6` | 안전 구간 기준 (caution×비율 미만이면 억제) | 게이트 좁아져 더 일찍 알람 | 안전 구간 넓어져 FP ↓ |
 | `_O2_GATE_MARGIN` | `0.1` | O2 안전 구간 마진 (caution×1.1 초과면 억제) | 억제 구간 좁아짐 | 억제 구간 넓어짐 |
 | `BASELINE_POINTS` | `20` | baseline μ/σ 산출 포인트 수 | 안정적인 baseline | 빠른 초기화 |
-| `REBASELINE_TICKS` | `500` | baseline 재산출 주기 (틱) | 환경 변화 반응 느림 | 잦은 재산출 |
+| `REBASELINE_TICKS` | `200` | baseline 재산출 주기 (틱) — 운영 전환 시 100 권장 | 환경 변화 반응 느림 | 잦은 재산출 |
 
 ---
 
@@ -21,9 +21,10 @@
 
 | 변수 | 현재값 | 역할 | 올리면 | 내리면 |
 |---|---|---|---|---|
-| `CONTAMINATION` | `0.03` | 전체 데이터 중 이상치 비율 가정 | 더 많이 이상으로 분류 → FP ↑ | 더 보수적 탐지 → FP ↓ |
+| `CONTAMINATION` | `0.03` | 전체 데이터 중 이상치 비율 가정 (자동 조정 중, 범위 0.005~0.10) | 더 많이 이상으로 분류 → FP ↑ | 더 보수적 탐지 → FP ↓ |
+| `_CONTAMINATION_STEP` | `0.005` | 자동 조정 1회 단위 | 조정 속도 빠름 | 조정 속도 느림 |
 | `MIN_TRAIN` | `30` | 학습 시작 최소 포인트 수 | 충분한 데이터 후 탐지 | 빠른 탐지 시작 (불안정) |
-| `RETRAIN_INTERVAL` | `50` | N 포인트마다 재학습 | 환경 적응 느림 | 잦은 재학습 (CPU 부하) |
+| `RETRAIN_INTERVAL` | `50` | N 포인트마다 재학습 — 운영 전환 시 25 권장 | 환경 적응 느림 | 잦은 재학습 (CPU 부하) |
 
 ---
 
@@ -33,7 +34,7 @@
 |---|---|---|---|---|
 | `ZSCORE_THRESHOLD` | `3.0` | Z-score 이상 기준 (`\|z\| > 값` 이면 발화) | 급격한 이상만 탐지 → FP ↓ | 민감도 ↑ |
 | `MEAN_SHIFT_THRESHOLD` | `2.5` | ChangePoint 평균 이동 기준 | FP ↓ | 민감도 ↑ |
-| `STD_RATIO_THRESHOLD` | `2.5` | ChangePoint 분산 변화 기준 | FP ↓ | 민감도 ↑ |
+| `STD_RATIO_THRESHOLD` | `3.5` | ChangePoint 분산 변화 기준 (2.5→3.5: 단발 spike FP 억제) | FP ↓ | 민감도 ↑ |
 | `WINDOW_HALF` | `20` | ChangePoint 비교 구간 크기 (최소 40개 필요) | 더 긴 추세 비교 | 빠른 반응 |
 
 ---
@@ -52,8 +53,8 @@
 
 | 변수 | 현재값 | 역할 | 올리면 | 내리면 |
 |---|---|---|---|---|
-| `_GAS_COOLDOWN_SEC` | `300` | 가스 AI 알람 재발화 억제 시간 (초) | 중복 알람 ↓ → Precision ↑ | 빠른 재탐지 |
-| `_BASE_COOLDOWN_SEC` | `60` | 기본 쿨다운 (전력·에스컬레이션) | 중복 ↓ | 빠른 재탐지 |
+| `_GAS_COOLDOWN_SEC` | `30` | 가스 AI 알람 재발화 억제 시간 (초) — 운영 전환 시 120 권장 | 중복 알람 ↓ → Precision ↑ | 빠른 재탐지 |
+| `_BASE_COOLDOWN_SEC` | `10` | 기본 쿨다운 전력·에스컬레이션 (초) — 운영 전환 시 60 권장 | 중복 ↓ | 빠른 재탐지 |
 | `ESCALATION_THRESHOLD` | `3` | N회 반복 발화 시 레벨 상향 | 더 많은 반복 필요 | 빠른 에스컬레이션 |
 | `ESCALATION_WINDOW_SEC` | `300` | 에스컬레이션 집계 윈도우 (초) | 더 긴 관찰 후 에스컬레이션 | 빠른 에스컬레이션 |
 
@@ -71,17 +72,20 @@
 
 ---
 
-### 지금 당장 Precision 향상에 효과적인 변수 우선순위
+### 현재 성능 기준 튜닝 우선순위 (2026-05-28)
+
+> 현재 Precision **92.6%**, 오탐률 **7.4%**, contamination hint = **raise**
 
 ```
-1순위: _GAS_COOLDOWN_SEC  (300 → 600)
-       같은 센서에서 10분 내 AI 알람 반복 억제 → Precision 직접 상승
+운영 전환 전 필수 조정:
+  _GAS_COOLDOWN_SEC   30 → 120   (개발용 30초를 운영용 120초로)
+  _BASE_COOLDOWN_SEC  10 → 60    (개발용 10초를 운영용 60초로)
+  REBASELINE_TICKS   200 → 100   (환경 변화 반응 속도 개선)
+  RETRAIN_INTERVAL    50 → 25    (IF·ARIMA 환경 적응 속도 개선)
 
-2순위: CONTAMINATION  (0.03 → 0.02)
-       IF가 더 보수적으로 이상 판정 → FP ↓
-
-3순위: _GATE_RATIO  (0.6 → 0.5)
-       CUSUM 안전 구간 더 넓게 → 억제 범위 확대
+추가 FP 감소가 필요할 때 (오탐률 >15% 이상):
+  CONTAMINATION  0.03 → 0.025   (자동 조정 중이나 수동 override 가능)
+  _GATE_RATIO    0.6  → 0.5     (CUSUM 안전 구간 확대)
 ```
 
 ---
@@ -167,13 +171,14 @@ mean_shift = |9 - 5| / 0.91 = 4.39  →  2.5 초과 → 발화
 
 **언제**: 단일 값이 아닌 여러 측면(값, 변화율, 비율)을 종합했을 때 이상한 경우
 
-**입력 특징 벡터 (5차원)**:
+**입력 특징 벡터 (6차원)**:
 ```
 [1] value      = 현재 측정값
-[2] roll_mean  = 정상 데이터만 거른 평균   (danger 초과값 제외)
-[3] roll_std   = 정상 데이터만 거른 표준편차
+[2] mu         = 정상 데이터만 거른 평균   (danger 초과값 제외)
+[3] sigma      = 정상 데이터만 거른 표준편차
 [4] diff       = 현재값 - 직전 측정값      (변화율)
-[5] ratio      = 현재값 / roll_mean        (상대적 크기)
+[5] ratio      = 현재값 / mu              (상대적 크기)
+[6] slope      = 최근 SLOPE_WINDOW 구간 기울기 (추세 방향)
 ```
 
 **작동 원리**:
@@ -236,8 +241,8 @@ S를 리셋하지 않으므로 값이 위험 구간에 진입하는 순간 즉�
 ```
 
 **단독 발화 정책**:
-CUSUM이 단독으로 발화해도 알람을 생성하지 않습니다.
-다른 탐지기와 동시에 발화(detector_count ≥ 2)할 때만 ML_ANOMALY로 처리됩니다.
+CUSUM이 단독으로 발화하면 `ai_drift_alert` (caution) 알람을 생성합니다.
+다른 탐지기와 동시에 발화(detector_count ≥ 2)할 경우 `ai_ml_anomaly` (danger)로 에스컬레이션됩니다.
 
 ---
 
@@ -311,5 +316,5 @@ ARIMA는 이 투표와 **별개로** 독립 실행됩니다.
 | Z-score | `z = \|값 - 중앙값\| / (1.4826 × MAD)` | 단발 급등 | O |
 | ChangePoint | `mean_shift = \|평균차\| / std_합성` | 분포 이동 | O |
 | IsolationForest | 5차원 벡터 → 숲 통과 → 이상 점수 | 복합 이상 | O |
-| CUSUM | `S = max(0, S_이전 + 값변화 - 허용폭)` | 느린 드리프트 | X (앙상블만) |
+| CUSUM | `S = max(0, S_이전 + 값변화 - 허용폭)` | 느린 드리프트 | O (ai_drift_alert 단독 생성, 앙상블 참여 시 ai_ml_anomaly 에스컬레이션) |
 | ARIMA | `ARIMA(1,1,1) → 10틱 후 예측` | 미래 임계치 초과 | O (별도 경로) |

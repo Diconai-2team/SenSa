@@ -28,6 +28,7 @@ Z-score/ChangePoint가 못 잡는 완만한 드리프트 전용.
   재산출 시 S도 0으로 리셋하여 새 baseline 기준 누적 시작.
 """
 import threading
+import time as _time
 from statistics import mean, stdev
 from . import model_store
 
@@ -75,6 +76,12 @@ _O2_GATE_MARGIN = 0.1   # O2용 (caution×1.1 초과 = 안전)
 _lock = threading.Lock()
 _state: dict[str, dict] = {}
 
+# ── Stale key 정리 (메모리 누수 방지) ────────────────────────────────────────
+_CUSUM_STALE_TTL = 1800        # 미접근 TTL (초) — 30분
+_CUSUM_CLEANUP_INTERVAL = 500  # 500호출마다 stale key 정리
+_cusum_total_calls = 0
+_cusum_last_seen: dict[str, float] = {}   # key → last monotonic timestamp
+
 
 def _get_or_init(key: str) -> dict:
     if key not in _state:
@@ -93,6 +100,26 @@ def _get_or_init(key: str) -> dict:
         st.setdefault("tick", 0)
         st.setdefault("recent_buf", [])
     return _state[key]
+
+
+def _prune_stale_cusum_keys() -> None:
+    """
+    _CUSUM_STALE_TTL 이상 미접근 키를 _state 에서 제거.
+
+    삭제된 device/metric 조합이 프로세스 수명 동안 누적되는 메모리 누수 방지.
+    detect_drift() 호출 _CUSUM_CLEANUP_INTERVAL 번마다 자동 실행.
+    """
+    now = _time.monotonic()
+    with _lock:
+        stale = [k for k, t in _cusum_last_seen.items() if now - t > _CUSUM_STALE_TTL]
+        for k in stale:
+            _state.pop(k, None)
+            _cusum_last_seen.pop(k, None)
+    if stale:
+        import logging
+        logging.getLogger(__name__).info(
+            "[cusum] stale key %d개 정리 (TTL=%ds)", len(stale), _CUSUM_STALE_TTL
+        )
 
 
 def detect_drift(
@@ -125,11 +152,20 @@ def detect_drift(
           "mu":        float|None,  # 기준 평균 (None이면 아직 수집 중)
         }
     """
+    global _cusum_total_calls
     _no = {"detected": False, "S_high": 0.0, "S_low": 0.0, "direction": "", "mu": None}
+
+    from .isolation_forest import _is_test_device
+    if _is_test_device(device_id):
+        return _no
+
     key = f"{device_id}:{metric}"
     save_snapshot = None
 
     with _lock:
+        _cusum_last_seen[key] = _time.monotonic()   # 접근 시각 갱신
+        _cusum_total_calls += 1
+        _should_cleanup = (_cusum_total_calls % _CUSUM_CLEANUP_INTERVAL == 0)
         st = _get_or_init(key)
 
         # ── 재산출용 롤링 버퍼 업데이트 ──────────────────
@@ -230,5 +266,9 @@ def detect_drift(
 
     if save_snapshot is not None:
         model_store.save_json('cusum_state', save_snapshot)
+
+    # stale key 정리 (락 밖, 500호출마다)
+    if _should_cleanup:
+        _prune_stale_cusum_keys()
 
     return result

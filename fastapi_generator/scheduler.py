@@ -60,6 +60,72 @@ from scenario import (
 )
 
 
+# ═══════════════════════════════════════════════════════════
+# 자동 ARIMA 학습 사이클
+# ═══════════════════════════════════════════════════════════
+
+class _AutoArimaCycle:
+    """
+    sensor_02 (G4 CO 연소이상)를 주기적으로 자동 ON/OFF해서
+    ARIMA 모델이 CO 점진 상승 패턴을 학습하도록 유도.
+
+    [왜 필요한가]
+    ARIMA는 슬라이딩 윈도우의 최근 값 추세를 외삽해 예측한다.
+    스파이크→즉시복귀 패턴만 보면 "값은 항상 내려간다"를 학습해
+    threshold 초과를 예측하지 않아 arima_acc 측정이 불가능해진다.
+    G4 시나리오를 주기적으로 실행하면:
+      phase 0 (CO~14) → phase 1 (CO~21) → phase 2 (CO~45) → phase 3+ (CO~280)
+    점진 상승 패턴을 ARIMA 에 공급해 threshold(25ppm) 초과 예측을 활성화한다.
+
+    [충돌 방지]
+    사용자가 sensor_02 를 수동으로 ON 했을 때 자동 사이클이 OFF 를 강제하면
+    의도치 않은 중단이 발생한다. _auto_active 플래그로 자동 ON 한 경우에만
+    자동 OFF 를 보장하고, 수동 ON 상태엔 개입하지 않는다.
+
+    [사이클]
+      ON_TICKS  = 60틱 (60초)  : phase 1→2 진행 (각 30초 × 2)
+                                  CO ~21ppm → ~45ppm (threshold=25의 최대 1.8배)
+                                  phase 3(280ppm)까지 가지 않아 윈도우 오염 방지.
+                                  WINDOW_SIZE=60이므로 45ppm이 윈도우 절반 차지 후
+                                  OFF_TICKS 동안 완전히 희석됨.
+      OFF_TICKS = 300틱 (300초) : phase 5 복귀(30s) + 정상 구간(270s)
+                                  윈도우(60s) × 5배 = 오염값 완전 희석 보장.
+      PERIOD    = 360틱 (6분)   : 사이클 반복
+    """
+    DEVICE    = "sensor_02"
+    ON_TICKS  = 60    # 1분: phase 1~2까지만 (CO 최대 ~45ppm, 윈도우 오염 방지)
+    OFF_TICKS = 300   # 5분: 복귀 + 정상 구간 (윈도우 60초 × 5배 → 오염 완전 희석)
+    PERIOD    = ON_TICKS + OFF_TICKS  # 6분 사이클
+
+    def __init__(self):
+        self._auto_active = False   # 자동으로 ON 했는지 여부
+
+    def tick(self, tick: int, scenario_state) -> None:
+        """매 틱 호출 — 필요한 시점에 toggle 을 자동 실행."""
+        if scenario_state is None:
+            return
+
+        pos = tick % self.PERIOD
+
+        if pos == 1:
+            # ── 자동 ON 시점 ──
+            # 사용자가 이미 ON 해놓은 경우엔 개입하지 않음
+            state = scenario_state._toggles.get(self.DEVICE, {})
+            if not state.get("on", False):
+                scenario_state.toggle(self.DEVICE, True)
+                self._auto_active = True
+                print(f"[arima_cycle] {self.DEVICE} 자동 ON (tick={tick})")
+
+        elif pos == self.ON_TICKS + 1 and self._auto_active:
+            # ── 자동 OFF 시점 (자동으로 ON 한 경우에만) ──
+            scenario_state.toggle(self.DEVICE, False)
+            self._auto_active = False
+            print(f"[arima_cycle] {self.DEVICE} 자동 OFF (tick={tick})")
+
+
+# 자동 ARIMA 사이클 싱글톤 — 루프 수명 동안 상태 유지
+_arima_cycle = _AutoArimaCycle()
+
 # P2+ 동적 재로드 주기 (초)
 # 5초: 사용자 체감상 "거의 즉시" 반영, DB 부하 무시 가능
 RELOAD_INTERVAL_SEC = 5
@@ -85,6 +151,11 @@ async def _tick_once(
       - 테스트 용이: 단일 틱 단위로 검증 가능
     """
     # ═══════════════════════════════════════════════════════
+    # 0. 자동 ARIMA 학습 사이클 — 매 틱 체크
+    # ═══════════════════════════════════════════════════════
+    _arima_cycle.tick(tick, scenario_state)
+
+    # ═══════════════════════════════════════════════════════
     # 1. 센서 POST 태스크 구성 (gas + power)
     # ═══════════════════════════════════════════════════════
     sensor_tasks: list = []
@@ -93,7 +164,8 @@ async def _tick_once(
     for d in devices:
         device_id = d["device_id"]
         sensor_type = d.get("sensor_type", "gas")
-        is_mapped = scenario_state.is_mapped(device_id)
+        # scenario_state 가 None 인 경우(초기화 경쟁/재시작 직후) is_mapped=False 로 안전 처리
+        is_mapped = scenario_state.is_mapped(device_id) if scenario_state else False
 
         # ─── 라벨 결정 (모든 분기 공통) ───
         # 매핑 device → scenario_id / expected_phase / expected_status (전부 채워짐)
