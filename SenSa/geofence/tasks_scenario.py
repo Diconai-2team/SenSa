@@ -136,6 +136,19 @@ def sustain_spike_task(
         except Exception as e:
             logger.error('[sustain_spike] publish failed: %s', e)
 
+    # 4.5 [알람 일원화 A] 실데이터와 동일한 평가 호출 → 알람 생성
+    if sd is not None:
+        try:
+            from alerts.services import evaluate_sensor
+            evaluate_sensor(
+                device_id=sensor.device_id,
+                sensor_type='gas',
+                observed_status='caution',
+                raw_value=value,
+            )
+        except Exception as _e:
+            logger.warning('[sustain_spike] evaluate_sensor 실패: %s', _e)
+
     # 5. 다음 step 큐잉 (countdown)
     sustain_spike_task.apply_async(
         args=[

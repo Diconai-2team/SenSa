@@ -116,12 +116,12 @@ def _notify_external_critical(zone, kwargs: dict) -> None:
             f"반경: {zone.current_radius_px:.0f}px"
         )
 
-        send_external_notification_task.delay(
+        _res = send_external_notification_task.delay(
             title=title,
             message=message,
             severity='critical',
         )
-        logger.debug(f"[zone={zone.id}] 외부 알림 큐잉 완료")
+        logger.info(f"[zone={zone.id}] 외부 알림 task 큐잉: task_id={_res.id}")
     except Exception as e:
         logger.warning(f"외부 알림 큐잉 실패 (라이프사이클은 정상): {e}")
 
