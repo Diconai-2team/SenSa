@@ -55,18 +55,56 @@ class AlarmViewSet(viewsets.ReadOnlyModelViewSet):
 
     @action(detail=False, methods=["get"])
     def ai_stats(self, request):
-        """AI 예측 성능 통계 — GET /dashboard/api/alarm/ai_stats/"""
-        total    = AIPrediction.objects.count()
-        success  = AIPrediction.objects.filter(result='success').count()
-        failure  = AIPrediction.objects.filter(result='failure').count()
-        pending  = AIPrediction.objects.filter(result='pending').count()
-        accuracy = round(success / (success + failure) * 100, 1) if (success + failure) > 0 else 0
+        """
+        AI 예측 성능 통계 — GET /dashboard/api/alarm/ai_stats/
+
+        지표 정의:
+          TP (True Positive)  = 예측 성공 (실제 임계치 초과 + 예측도 했음)
+          FP (False Positive) = 예측 실패 (예측했지만 임계치 미초과)
+          FN (False Negative) = 실제 위험 발생했지만 예측 못 함
+            = 고정 임계치 초과 알람 건수(is_ai=False) - TP
+
+          Precision = TP / (TP + FP)
+          Recall    = TP / (TP + FN)
+          F1        = 2 × P × R / (P + R)
+          Accuracy  = TP / (TP + FP + FN)
+        """
+        total   = AIPrediction.objects.count()
+        tp      = AIPrediction.objects.filter(result='success').count()  # TP
+        fp      = AIPrediction.objects.filter(result='failure').count()  # FP
+        pending = AIPrediction.objects.filter(result='pending').count()
+
+        # 실제 위험 발생 건수 — 고정 임계치로 감지된 caution/danger 알람
+        # is_ai=False: 고정 임계치 초과 알람 (AI 예측이 아닌 실제 발생)
+        actual_danger = Alarm.objects.filter(
+            is_ai=False,
+            alarm_level__in=['caution', 'danger'],
+        ).count()
+
+        # FN = 실제 위험 - AI가 미리 잡은 것
+        fn = max(0, actual_danger - tp)
+
+        # 지표 계산
+        precision = round(tp / (tp + fp) * 100, 1) if (tp + fp) > 0 else 0
+        recall    = round(tp / (tp + fn) * 100, 1) if (tp + fn) > 0 else 0
+        f1        = round(
+            2 * precision * recall / (precision + recall), 1
+        ) if (precision + recall) > 0 else 0
+        accuracy  = round(
+            tp / (tp + fp + fn) * 100, 1
+        ) if (tp + fp + fn) > 0 else 0
+
         return Response({
-            'total':    total,
-            'success':  success,
-            'failure':  failure,
-            'pending':  pending,
-            'accuracy': accuracy,
+            'total':         total,
+            'success':       tp,
+            'failure':       fp,
+            'pending':       pending,
+            'actual_danger': actual_danger,
+            'fn':            fn,
+            'precision':     precision,   # 예측 정확도 (%)
+            'recall':        recall,      # 실제 위험 탐지율 (%)
+            'f1':            f1,          # F1 점수 (%)
+            'accuracy':      accuracy,    # 전체 정확도 (%)
         })
 
 
