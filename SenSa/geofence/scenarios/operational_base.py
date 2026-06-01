@@ -53,7 +53,7 @@ class OperationalScenarioBase:
                                 # CO 60s = ~91px, 300s = R_MAX(400)px
 
     # ── zone ──
-    ZONE_TTL_SEC = 90           # zone 만료까지 시간
+    ZONE_TTL_SEC = 86400           # zone 만료까지 시간
     POLYGON_MARGIN_PX = 50      # convex hull 외곽 여유
     MIN_ZONE_RADIUS_PX = 150    # 정원 zone 최소 반경 (인접 sensor 거리 ~114~140 보다 큼)
                                 # 축척 고려: 평면도 3840×2088 에서 시연 가시성 확보

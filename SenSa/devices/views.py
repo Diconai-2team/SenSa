@@ -281,7 +281,7 @@ class SensorDataView(APIView):
                 return   # 60초 안 지남 — 알람/AIPrediction 생성 skip
             _ai_pred_throttle[cache_key] = now_t
 
-        expires_at = timezone.now() + timedelta(seconds=pred_info['predicted_ticks'] * 5)
+        expires_at = timezone.now() + timedelta(seconds=pred_info['predicted_ticks'] * 2)
 
         message = (
             f"AI예측 - {device.device_id} {label} "

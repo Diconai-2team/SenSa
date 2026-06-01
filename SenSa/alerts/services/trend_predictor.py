@@ -47,9 +47,9 @@ WINDOW_SIZE = 200
 # [정제 후 조정] _fit 의 MAD outlier 제거로 모델이 정상 분포만 학습 →
 # 진짜 spike 의 if_score 는 -0.4 이하로 매우 낮음.
 # 임계를 -0.3 으로 올려 가벼운 변동은 무시.
-IF_SCORE_THRESHOLD = -0.35
-SLOPE_THRESHOLD = 0.7
-PREDICTION_WINDOW_TICKS = 50
+IF_SCORE_THRESHOLD = -0.1
+SLOPE_THRESHOLD = 0.1
+PREDICTION_WINDOW_TICKS = 30
 
 
 # 선형 추세 기울기 임계치 — 이 이상 증가 추세면 예측 대상
