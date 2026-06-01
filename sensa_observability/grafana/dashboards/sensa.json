@@ -27,7 +27,7 @@
   ],
   "timezone": "browser",
   "schemaVersion": 39,
-  "version": 1,
+  "version": 3,
   "refresh": "5s",
   "time": {
     "from": "now-15m",
@@ -376,7 +376,7 @@
       },
       "targets": [
         {
-          "expr": "up",
+          "expr": "up{job=~\"sensa-django|sensa-generator|sensa-celery|prometheus\"}",
           "legendFormat": "{{job}} ({{instance}})",
           "refId": "A"
         }
@@ -438,6 +438,153 @@
         "text": {
           "titleSize": 18,
           "valueSize": 32
+        }
+      }
+    },
+    {
+      "id": 8,
+      "title": "Phase 4 — Celery task 처리 속도 (state 별)",
+      "description": "Celery task state 별 분당 발생 속도. P2 비동기 처리 가동 증거.",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 0,
+        "y": 32,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "sum by (task_name, state) (rate(sensa_celery_task_total[5m]))",
+          "legendFormat": "{{task_name}} ({{state}})",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 10
+          }
+        }
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "id": 9,
+      "title": "Phase 4 — Celery task latency p95 (성공만)",
+      "description": "Celery task 실행 시간 95p (성공 기준). task_name 별 비교.",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 12,
+        "y": 32,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum by (task_name, le) (rate(sensa_celery_task_duration_seconds_bucket{state=\"succeeded\"}[5m])))",
+          "legendFormat": "p95 {{task_name}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 10
+          }
+        }
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "id": 10,
+      "title": "Phase 4 — Celery task retry 누적 (P2 autoretry 정책 작동 증거)",
+      "description": "5분 윈도우 retry 발생. send_external_notification_task autoretry 작동 시 증가.",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 0,
+        "y": 40,
+        "w": 24,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "sum by (task_name) (increase(sensa_celery_task_total{state=\"retried\"}[5m]))",
+          "legendFormat": "{{task_name}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 10
+          }
+        }
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi"
         }
       }
     }

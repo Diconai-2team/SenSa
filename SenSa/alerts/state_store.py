@@ -182,7 +182,11 @@ SENSOR_KEY_FORMAT = "sensa:sensor:{device_id}:alarm"
 
 @_graceful_redis(default_factory=_sensor_default)
 def get_sensor_snapshot(device_id: str) -> dict:
-    """센서의 현재 스냅샷."""
+    """센서의 현재 스냅샷.
+
+    v2 추가: pending_{caution,danger,normal}_count + _first_at 6개 필드.
+    각 status별 독립 윈도우 카운터.
+    """
     r = _client()
     key = SENSOR_KEY_FORMAT.format(device_id=device_id)
     data = r.hgetall(key)
@@ -191,7 +195,42 @@ def get_sensor_snapshot(device_id: str) -> dict:
         'last_alarm_at': float(data.get('last_alarm_at', 0) or 0),
         'pending_state': data.get('pending_state') or None,
         'pending_count': int(data.get('pending_count', 0) or 0),
+        # v2: 윈도우 누적 카운터 (status별 독립)
+        'pending_caution_count':    int(data.get('pending_caution_count', 0) or 0),
+        'pending_caution_first_at': float(data.get('pending_caution_first_at', 0) or 0),
+        'pending_danger_count':     int(data.get('pending_danger_count', 0) or 0),
+        'pending_danger_first_at':  float(data.get('pending_danger_first_at', 0) or 0),
+        'pending_normal_count':     int(data.get('pending_normal_count', 0) or 0),
+        'pending_normal_first_at':  float(data.get('pending_normal_first_at', 0) or 0),
     }
+
+
+@_graceful_redis()
+def set_sensor_window_counter(device_id: str, status: str,
+                                count: int, first_at: float) -> None:
+    """observed_status별 윈도우 카운터 + 첫 신호 시각 저장 (v2)."""
+    if status not in ('normal', 'caution', 'danger'):
+        raise ValueError(f"invalid status: {status}")
+    r = _client()
+    key = SENSOR_KEY_FORMAT.format(device_id=device_id)
+    r.hset(key, mapping={
+        f'pending_{status}_count': str(count),
+        f'pending_{status}_first_at': str(first_at),
+    })
+    r.expire(key, TTL_SEC)
+
+
+@_graceful_redis()
+def clear_sensor_window_counters(device_id: str) -> None:
+    """v2: confirm 직후 모든 windowed 카운터 리셋."""
+    r = _client()
+    key = SENSOR_KEY_FORMAT.format(device_id=device_id)
+    r.hset(key, mapping={
+        'pending_caution_count':    '0', 'pending_caution_first_at': '0',
+        'pending_danger_count':     '0', 'pending_danger_first_at':  '0',
+        'pending_normal_count':     '0', 'pending_normal_first_at':  '0',
+    })
+    r.expire(key, TTL_SEC)
 
 
 @_graceful_redis()

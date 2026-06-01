@@ -1,0 +1,122 @@
+# ============================================================
+# SenSa 앱 스택 (connfix) — D + PG max_connections=200 (커넥션 고갈 대비 여유)
+#   - PostgreSQL 컨테이너 추가 (named volume 영속). Redis 는 여전히 호스트.
+#   - ★ D: Redis 를 컨테이너화. django/celery 는 REDIS_HOST=redis 로 접속.
+#     redis 는 호스트 포트 미publish(내부 redis:6379) → 호스트 Redis 와 충돌 없음.
+#     호스트 systemd Redis 는 검증 후 중지 가능(컨테이너 Redis 로 일원화).
+#     Redis 비영속(브로커/캐시/채널 — 재시작 시 비움, 결과 보존은 PG 담당).
+#   - POSTGRES_* 비밀번호 등은 ./.env 에서 주입 (setup_pg_env.sh 로 사용자가 직접 입력).
+# ============================================================
+services:
+  postgres:
+    image: postgres:16
+    container_name: sensa_postgres
+    restart: unless-stopped
+    command: ["postgres", "-c", "max_connections=200"]
+    env_file:
+      - ./.env
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+
+  redis:
+    image: redis:7-alpine
+    container_name: sensa_redis
+    restart: unless-stopped
+    # 호스트 포트 미publish — 컨테이너 네트워크 내부에서 redis:6379 로만 접근
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 5s
+
+  django:
+    build:
+      context: ./SenSa
+    image: sensa-app:latest
+    container_name: sensa_django
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    env_file:
+      - ./.env
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - ALLOWED_HOSTS=localhost,127.0.0.1,host.docker.internal,django
+      - DB_ENGINE=postgres            # ← C-2d 컷오버 (POSTGRES_* 는 .env)
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./SenSa/db.sqlite3:/app/db.sqlite3
+      - ./SenSa/media:/app/media
+    command: ["python", "manage.py", "runserver", "0.0.0.0:8000", "--noreload"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/metrics', timeout=3)"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+
+  celery:
+    build:
+      context: ./SenSa
+    image: sensa-app:latest
+    container_name: sensa_celery
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      django:
+        condition: service_started
+    env_file:
+      - ./.env
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - CELERY_METRICS_PORT=9809
+      - PROMETHEUS_MULTIPROC_DIR=/tmp/sensa_celery_prom
+      - DB_ENGINE=postgres            # ← C-2d 컷오버
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "9809:9809"
+    volumes:
+      - ./SenSa/db.sqlite3:/app/db.sqlite3
+    command: ["sh", "-c", "rm -rf \"$$PROMETHEUS_MULTIPROC_DIR\" && mkdir -p \"$$PROMETHEUS_MULTIPROC_DIR\" && exec celery -A mysite worker -B --loglevel=info"]
+
+  generator:
+    build:
+      context: ./fastapi_generator
+    image: sensa-generator:latest
+    container_name: sensa_generator
+    restart: unless-stopped
+    depends_on:
+      django:
+        condition: service_healthy
+    env_file:
+      - ./fastapi_generator/.env
+    environment:
+      - DJANGO_BASE_URL=http://django:8000
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "8001:8001"
+
+volumes:
+  pgdata:
