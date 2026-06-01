@@ -36,6 +36,48 @@
 .alarm-item.level-info     { border-left-color: var(--color-info); }
 .alarm-item.level-caution  { border-left-color: var(--color-caution); }
 .alarm-item.level-danger   { border-left-color: var(--color-danger); }
+
+/* ═══ 위험 알람 강한 시각 강조 — 평시 관제 한눈에 인지 ═══ */
+.alarm-item.level-danger,
+.alarm-item.level-critical {
+  border-left-width: 5px;
+  background: linear-gradient(90deg, #2a0f0f 0%, #1a0a0a 100%);
+  box-shadow: 0 0 10px rgba(239, 68, 68, 0.4);
+  animation: danger-glow 1.6s ease-in-out infinite;
+}
+.alarm-item.level-danger.unread,
+.alarm-item.level-critical.unread {
+  background: linear-gradient(90deg, #3a1010 0%, #2a0a0a 100%);
+}
+.alarm-item.level-danger .alarm-msg,
+.alarm-item.level-critical .alarm-msg {
+  font-size: 13px;
+  font-weight: 700;
+  color: #ffb4b4;
+}
+@keyframes danger-glow {
+  0%, 100% { box-shadow: 0 0 10px rgba(239, 68, 68, 0.4); }
+  50%      { box-shadow: 0 0 18px rgba(239, 68, 68, 0.7); }
+}
+/* 위험과 일반 알람 사이 시각적 구분선 */
+.alarm-item.level-danger + .alarm-item:not(.level-danger):not(.level-critical),
+.alarm-item.level-critical + .alarm-item:not(.level-danger):not(.level-critical) {
+  margin-top: 8px;
+  border-top: 1px dashed var(--border);
+  padding-top: 12px;
+}
+/* 위험 미읽음 큰 배지 */
+#alarm-badge-danger {
+  display: none;
+  background: var(--color-danger);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 800;
+  padding: 2px 8px;
+  border-radius: 10px;
+  margin-left: 6px;
+  animation: danger-glow 1.6s ease-in-out infinite;
+}
 .alarm-item.level-critical { border-left-color: var(--color-critical); background: #1a1525; }
 .alarm-msg  { font-size: 12px; color: var(--text); line-height: 1.5; margin-bottom: 4px; font-weight: 500; }
 .alarm-meta { font-size: 10px; color: var(--text-dim); }

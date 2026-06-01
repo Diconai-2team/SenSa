@@ -62,6 +62,7 @@ services:
       - "8000:8000"
     volumes:
       - ./SenSa/db.sqlite3:/app/db.sqlite3
+      - ./SenSa/media:/app/media
     command: ["python", "manage.py", "runserver", "0.0.0.0:8000", "--noreload"]
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/metrics', timeout=3)"]

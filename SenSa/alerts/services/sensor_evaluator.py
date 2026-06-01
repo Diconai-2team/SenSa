@@ -10,8 +10,24 @@ from ..models import Alarm
 from ..state_store import (
     get_sensor_snapshot, commit_sensor_state,
     set_sensor_pending, clear_sensor_pending,
+    # v2: 윈도우 카운터
+    set_sensor_window_counter, clear_sensor_window_counters,
 )
-from ._common import RE_ALARM_INTERVAL_SEC, RECOVERY_CONFIRM_TICKS
+# v3: 알람 실시간 WebSocket push
+from realtime.publishers import publish_alarm
+import logging
+logger = logging.getLogger(__name__)
+
+# v3: 상태 순위 (V자 진동 차단용)
+_STATE_RANK = {'normal': 0, 'caution': 1, 'danger': 2}
+from ._common import (
+    RE_ALARM_INTERVAL_SEC,
+    RECOVERY_CONFIRM_TICKS,        # v1 잔존 (worker_evaluator 호환)
+    CAUTION_CONFIRM_TICKS,         # v1 잔존 (legacy)
+    # v2 윈도우 누적 상수
+    CAUTION_WINDOW_SEC, CAUTION_COUNT_THRESHOLD, DANGER_COUNT_THRESHOLD,
+    RECOVERY_WINDOW_SEC, RECOVERY_COUNT_THRESHOLD,
+)
 from .geofence_utils import _find_sensor_geofence
 # [P4-C 8차] 알람 비즈니스 메트릭
 from alerts.metrics import alarm_created_total, alarm_throttled_total
@@ -42,19 +58,33 @@ def evaluate_sensor(device_id: str, sensor_type: str,
     confirmed_new_state = None
 
     if observed_status == official_state:
-        if snap['pending_state']:
-            clear_sensor_pending(device_id)
+        # v3: V자 진동 차단 — 격하 방향 카운터들 리셋
+        # observed==official 신호가 들어오면 "상태 유지" 의미.
+        # 격하 카운터(official보다 안전한 상태)를 0으로 리셋해서
+        # 반대 source(예: generator normal)가 누적시킨 false 격하 진행을 차단.
+        # 격상 카운터는 그대로 — 진짜 격상 진행은 보호.
+        official_rank = _STATE_RANK.get(official_state, 0)
+        for st in ('normal', 'caution', 'danger'):
+            if _STATE_RANK[st] < official_rank:
+                set_sensor_window_counter(device_id, st, 0, 0)
     elif _is_sensor_escalation(official_state, observed_status):
-        confirmed_new_state = observed_status
+        # v2 격상: observed_status별 독립 윈도우 카운터 누적
+        # V자 진동(Celery danger + generator normal 동시) 환경에서도 정확
+        threshold = (DANGER_COUNT_THRESHOLD if observed_status == 'danger'
+                     else CAUTION_COUNT_THRESHOLD)
+        confirmed_new_state = _accumulate_window(
+            snap, observed_status, now, CAUTION_WINDOW_SEC, threshold, device_id,
+        )
     else:
-        if snap['pending_state'] == observed_status:
-            new_count = snap['pending_count'] + 1
-            if new_count >= RECOVERY_CONFIRM_TICKS:
-                confirmed_new_state = observed_status
-            else:
-                set_sensor_pending(device_id, observed_status, new_count)
-        else:
-            set_sensor_pending(device_id, observed_status, 1)
+        # v2 격하 (recovery): 더 보수적 임계 (윈도우 안 7회)
+        confirmed_new_state = _accumulate_window(
+            snap, observed_status, now,
+            RECOVERY_WINDOW_SEC, RECOVERY_COUNT_THRESHOLD, device_id,
+        )
+
+    # v2: confirmed 시 모든 윈도우 카운터 리셋
+    if confirmed_new_state is not None:
+        clear_sensor_window_counters(device_id)
 
     # ─── 알람 발행 여부 ───
     should_alarm = False
@@ -115,7 +145,7 @@ def evaluate_sensor(device_id: str, sensor_type: str,
         except Exception:
             pass
 
-        created.append({
+        alarm_payload = {
             'alarm_id':      alarm.id,
             'alarm_type':    alarm_type,
             'alarm_level':   alarm_level,
@@ -128,7 +158,18 @@ def evaluate_sensor(device_id: str, sensor_type: str,
             'state_from':    official_state,
             'state_to':      target_state,
             'is_ai':         is_ai,
-        })
+            'created_at':    alarm.created_at.isoformat(),
+        }
+        created.append(alarm_payload)
+
+        # v3: WebSocket 실시간 push (frontend 알람 패널 + 좌측 토스트 즉시 갱신)
+        # devices/views.py 경로의 publish_alarm과 동일 페이로드.
+        # 시나리오 sustain_spike_task가 직접 evaluate_sensor 호출하는 경로에서
+        # 이전엔 DB 저장만 하고 push 누락 → frontend 새로고침해야만 보였음.
+        try:
+            publish_alarm(alarm_payload)
+        except Exception as e:
+            logger.warning('[evaluate_sensor] publish_alarm 실패: %s', e)
 
         if confirmed_new_state is not None:
             commit_sensor_state(device_id, target_state, mark_alarmed=True)
@@ -136,6 +177,33 @@ def evaluate_sensor(device_id: str, sensor_type: str,
             commit_sensor_state(device_id, official_state, mark_alarmed=True)
 
     return created
+
+
+def _accumulate_window(snap: dict, observed: str, now: float,
+                        window_sec: float, threshold: int,
+                        device_id: str):
+    """v2: observed_status별 독립 카운터 누적.
+
+    윈도우(window_sec) 안에 같은 observed 신호가 threshold회 들어오면 confirm.
+    다른 신호가 끼어도 해당 카운터는 영향 받지 않음 (독립).
+
+    Returns:
+        confirmed_new_state: 임계 도달 시 observed, 아니면 None
+    """
+    cnt = snap.get(f'pending_{observed}_count', 0)
+    first_at = snap.get(f'pending_{observed}_first_at', 0.0)
+
+    # 윈도우 만료 또는 첫 누적 → 새로 시작
+    if first_at == 0 or (now - first_at) > window_sec:
+        new_count, new_first = 1, now
+    else:
+        new_count, new_first = cnt + 1, first_at
+
+    if new_count >= threshold:
+        # 임계 도달 — confirmed 반환 (호출 측에서 모든 카운터 clear)
+        return observed
+    set_sensor_window_counter(device_id, observed, new_count, new_first)
+    return None
 
 
 def _is_sensor_escalation(prev: str, curr: str) -> bool:
