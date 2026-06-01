@@ -47,16 +47,15 @@ WINDOW_SIZE = 200
 # [정제 후 조정] _fit 의 MAD outlier 제거로 모델이 정상 분포만 학습 →
 # 진짜 spike 의 if_score 는 -0.4 이하로 매우 낮음.
 # 임계를 -0.3 으로 올려 가벼운 변동은 무시.
-IF_SCORE_THRESHOLD = -0.3
+IF_SCORE_THRESHOLD = -0.35
+SLOPE_THRESHOLD = 0.7
+PREDICTION_WINDOW_TICKS = 50
+
 
 # 선형 추세 기울기 임계치 — 이 이상 증가 추세면 예측 대상
 # [정제 후 조정] GAS_EVENTS 점프 (6틱 지속) 의 slope ~0.27, 시나리오 spike ~1.87 →
 # 0.5 로 올려 가벼운 transient 점프 제외, 진짜 누출 ramp-up 만 검출.
-SLOPE_THRESHOLD = 0.5
-
 # 예측 후 몇 틱 안에 임계치 초과해야 성공으로 볼지
-PREDICTION_WINDOW_TICKS = 60  # 60틱으로 여유 확대
-
 # 모델 재학습 주기 (건수 기준)
 REFIT_EVERY_N = 20
 
