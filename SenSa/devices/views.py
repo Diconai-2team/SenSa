@@ -26,7 +26,7 @@ from realtime.publishers import publish_sensor_update, publish_alarm
 
 from alerts.services import classify_gas, classify_power, evaluate_sensor
 from alerts.services.anomaly_detector import detect_anomaly
-from alerts.services.trend_predictor import predict_trend, verify_predictions
+from alerts.services.trend_predictor import predict_trend, verify_predictions_bulk
 from alerts.services.classifiers import GAS_THRESHOLDS
 from alerts.models import Alarm, AIPrediction
 
@@ -221,15 +221,17 @@ class SensorDataView(APIView):
                 ai_detail = 'ARIMA: ' + ', '.join(anomaly_kinds)
 
         # ─── IsolationForest 추세 예측 ───
+        # 미결 예측 검증 — 9번 개별 쿼리 → 1번 bulk 쿼리로 최적화
+        valid_gas = {k: v for k, v in gas.items() if v is not None and GAS_THRESHOLDS_CAUTION.get(k)}
+        verify_predictions_bulk(device.device_id, valid_gas, GAS_THRESHOLDS_CAUTION)
+
+        # 새 예측 (현재 정상 상태일 때만)
         for key, val in gas.items():
             if val is None:
                 continue
             threshold = GAS_THRESHOLDS_CAUTION.get(key)
             if not threshold:
                 continue
-            # 미결 예측 검증
-            verify_predictions(device.device_id, key, val, threshold)
-            # 새 예측 (현재 정상 상태일 때만)
             if s == 'normal':
                 pred_info = predict_trend(device.device_id, key, val, threshold)
                 if pred_info:
@@ -279,7 +281,7 @@ class SensorDataView(APIView):
         if power['watt'] is not None:
             # 전력 caution 임계치: 고정값 3000W (classify_power fallback 기준)
             watt_threshold = 3000.0
-            verify_predictions(device.device_id, 'watt', power['watt'], watt_threshold)
+            verify_predictions_bulk(device.device_id, {'watt': power['watt']}, {'watt': watt_threshold})
             if s == 'normal':
                 pred_info = predict_trend(
                     device.device_id, 'watt', power['watt'], watt_threshold

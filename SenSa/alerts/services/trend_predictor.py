@@ -65,7 +65,7 @@ REFIT_EVERY_N = 20
 # ═══════════════════════════════════════════════════════════
 
 class _SensorStore:
-    __slots__ = ('buffer', 'model', 'tick', 'last_fit_tick', 'lock', 'fitting')
+    __slots__ = ('buffer', 'model', 'tick', 'last_fit_tick', 'lock')
 
     def __init__(self):
         self.buffer       = deque(maxlen=WINDOW_SIZE)
@@ -73,7 +73,6 @@ class _SensorStore:
         self.tick         = 0
         self.last_fit_tick = 0
         self.lock         = threading.Lock()
-        self.fitting      = False
 
 
 _store: dict[tuple[str, str], _SensorStore] = defaultdict(_SensorStore)
@@ -101,35 +100,30 @@ def _fit(ss: _SensorStore) -> None:
         - MAD = Median Absolute Deviation (robust statistic, mean/std 보다 안정적)
         - |modified_z| >= 3.5 → outlier
     """
-    try:
-        data_raw = np.array(list(ss.buffer))
+    data_raw = np.array(list(ss.buffer))
 
-        # MAD 기반 outlier 제거
-        median = np.median(data_raw)
-        mad = np.median(np.abs(data_raw - median))
-        if mad > 1e-6:
-            modified_z = 0.6745 * (data_raw - median) / mad
-            clean = data_raw[np.abs(modified_z) < 3.5]
-        else:
-            clean = data_raw
+    # MAD 기반 outlier 제거
+    median = np.median(data_raw)
+    mad = np.median(np.abs(data_raw - median))
+    if mad > 1e-6:
+        modified_z = 0.6745 * (data_raw - median) / mad
+        clean = data_raw[np.abs(modified_z) < 3.5]
+    else:
+        clean = data_raw
 
-        # 정상 데이터 부족 시 학습 skip (이전 모델 stale 유지)
-        if len(clean) < int(MIN_TRAIN_SAMPLES * 0.7):
-            return
+    # 정상 데이터 부족 시 학습 skip (이전 모델 stale 유지)
+    if len(clean) < int(MIN_TRAIN_SAMPLES * 0.7):
+        return
 
-        data = clean.reshape(-1, 1)
-        model = IsolationForest(
-            n_estimators=100,
-            contamination=0.05,
-            random_state=42,
-        )
-        model.fit(data)
-        ss.model = model
-        ss.last_fit_tick = ss.tick
-    except Exception as exc:
-        logger.warning("IsolationForest fit 실패: %s", exc)
-    finally:
-        ss.fitting = False
+    data = clean.reshape(-1, 1)
+    model = IsolationForest(
+        n_estimators=100,
+        contamination=0.05,
+        random_state=42,
+    )
+    model.fit(data)
+    ss.model = model
+    ss.last_fit_tick = ss.tick
 
 
 def _get_slope(values: list[float]) -> float:
@@ -176,12 +170,10 @@ def predict_trend(device_id: str, sensor_key: str,
         if len(ss.buffer) < MIN_TRAIN_SAMPLES:
             return None
 
-        # 재학습 필요 시 — ARIMA 와 동일한 패턴으로 배경 스레드에서 fit
-        if (ss.model is None or (ss.tick - ss.last_fit_tick) >= REFIT_EVERY_N) and not ss.fitting:
-            ss.fitting = True
-            threading.Thread(target=_fit, args=(ss,), daemon=True).start()
+        # 재학습 필요 시 동기 실행
+        if ss.model is None or (ss.tick - ss.last_fit_tick) >= REFIT_EVERY_N:
+            _fit(ss)
 
-        # 모델 미준비(cold-start 또는 첫 fit 진행 중) → 예측 없음
         if ss.model is None:
             return None
 
@@ -215,29 +207,47 @@ def predict_trend(device_id: str, sensor_key: str,
         }
 
 
-def verify_predictions(device_id: str, sensor_key: str,
-                       value: float, threshold: float) -> None:
+def verify_predictions_bulk(device_id: str, gas_values: dict, thresholds: dict) -> None:
     """
-    미결 AIPrediction 중 마감 틱이 지난 것의 성공/실패 검증.
-    devices/views.py 에서 매 틱 호출.
+    미결 AIPrediction 중 마감 틱이 지난 것의 성공/실패 검증 (bulk).
+
+    기존 verify_predictions() 가 sensor_key 별로 9번 개별 쿼리하던 것을
+    device_id 기준 1번 쿼리 + bulk_update 로 최적화.
+
+    Args:
+        device_id  : 장비 ID
+        gas_values : {sensor_key: value} — None 값 제외된 상태
+        thresholds : {sensor_key: threshold}
     """
     from alerts.models import AIPrediction
 
+    sensor_keys = [k for k in gas_values if thresholds.get(k)]
+    if not sensor_keys:
+        return
+
     now = timezone.now()
-    # 이 장비+센서의 미결 예측
     pending = AIPrediction.objects.filter(
         device_id=device_id,
-        sensor_key=sensor_key,
+        sensor_key__in=sensor_keys,
         result='pending',
         expires_at__lte=now,
     )
+
+    to_update = []
     for pred in pending:
+        value = gas_values.get(pred.sensor_key)
+        threshold = thresholds.get(pred.sensor_key)
+        if value is None or threshold is None:
+            continue
         if value >= threshold:
             pred.result = 'success'
             logger.info("AI예측 성공 [%s/%s] value=%.3f >= threshold=%.3f",
-                        device_id, sensor_key, value, threshold)
+                        device_id, pred.sensor_key, value, threshold)
         else:
             pred.result = 'failure'
             logger.info("AI예측 실패 [%s/%s] value=%.3f < threshold=%.3f",
-                        device_id, sensor_key, value, threshold)
-        pred.save(update_fields=['result'])
+                        device_id, pred.sensor_key, value, threshold)
+        to_update.append(pred)
+
+    if to_update:
+        AIPrediction.objects.bulk_update(to_update, ['result'])
