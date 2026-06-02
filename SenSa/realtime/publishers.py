@@ -25,6 +25,7 @@ import logging
 
 from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
+from realtime.metrics import sensa_ws_send_total
 
 
 logger = logging.getLogger(__name__)
@@ -55,10 +56,9 @@ def _send(group: str, event_type: str, payload: dict) -> None:
                 "payload": payload,
             },
         )
+        sensa_ws_send_total.labels(result='success').inc()
     except Exception as exc:
-        # channels_redis 가 던지는 예외 종류가 다양 (redis sync ConnectionError,
-        # redis.asyncio ConnectionError, asyncio.TimeoutError, OSError 등)
-        # → Exception 으로 광범위 catch + 명시적 warn 으로 silent failure 방지.
+        sensa_ws_send_total.labels(result='failure').inc()
         logger.warning(
             "channel publish skipped (group=%s, type=%s): %s",
             group, event_type, exc,

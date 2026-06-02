@@ -43,6 +43,7 @@ services:
       context: ./SenSa
     image: sensa-app:latest
     container_name: sensa_django
+    hostname: sensa-django
     restart: unless-stopped
     depends_on:
       postgres:
@@ -54,8 +55,9 @@ services:
     environment:
       - REDIS_HOST=redis
       - REDIS_PORT=6379
-      - ALLOWED_HOSTS=localhost,127.0.0.1,host.docker.internal,django
-      - DB_ENGINE=postgres            # ← C-2d 컷오버 (POSTGRES_* 는 .env)
+      - ALLOWED_HOSTS=localhost,127.0.0.1,host.docker.internal,django,sensa-django
+      - DB_ENGINE=postgres
+      - DB_HOST=postgres
     extra_hosts:
       - "host.docker.internal:host-gateway"
     ports:
@@ -91,7 +93,8 @@ services:
       - REDIS_PORT=6379
       - CELERY_METRICS_PORT=9809
       - PROMETHEUS_MULTIPROC_DIR=/tmp/sensa_celery_prom
-      - DB_ENGINE=postgres            # ← C-2d 컷오버
+      - DB_ENGINE=postgres
+      - DB_HOST=postgres
     extra_hosts:
       - "host.docker.internal:host-gateway"
     ports:

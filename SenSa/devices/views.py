@@ -21,6 +21,7 @@ from django.views.decorators.csrf import csrf_exempt
 
 from .models import Device, SensorData
 from .serializers import DeviceSerializer
+from .metrics import sensa_api_requests_total, sensa_db_save_total
 from realtime.publishers import publish_sensor_update, publish_alarm
 
 from alerts.services import classify_gas, classify_power, evaluate_sensor
@@ -132,11 +133,26 @@ class SensorDataView(APIView):
             'expected_status': request.data.get('expected_status'),
         }
 
+        sensa_api_requests_total.labels(sensor_type=sensor_type, result='received').inc()
+
         if sensor_type == 'gas':
-            sd, s, payload_values, is_ai, ai_detail = self._save_gas(device, _get_float, labels)
+            try:
+                sd, s, payload_values, is_ai, ai_detail = self._save_gas(device, _get_float, labels)
+                sensa_db_save_total.labels(sensor_type='gas', result='success').inc()
+            except Exception as exc:
+                sensa_db_save_total.labels(sensor_type='gas', result='failure').inc()
+                sensa_api_requests_total.labels(sensor_type='gas', result='error').inc()
+                raise exc
         elif sensor_type == 'power':
-            sd, s, payload_values, is_ai, ai_detail = self._save_power(device, _get_float, labels)
+            try:
+                sd, s, payload_values, is_ai, ai_detail = self._save_power(device, _get_float, labels)
+                sensa_db_save_total.labels(sensor_type='power', result='success').inc()
+            except Exception as exc:
+                sensa_db_save_total.labels(sensor_type='power', result='failure').inc()
+                sensa_api_requests_total.labels(sensor_type='power', result='error').inc()
+                raise exc
         else:
+            sensa_api_requests_total.labels(sensor_type=sensor_type, result='error').inc()
             return Response(
                 {'error': f'미지원 sensor_type: {sensor_type}'},
                 status=http_status.HTTP_400_BAD_REQUEST,
@@ -171,6 +187,7 @@ class SensorDataView(APIView):
         for alarm in alarms:
             publish_alarm(alarm)
 
+        sensa_api_requests_total.labels(sensor_type=sensor_type, result='success').inc()
         return Response(
             {'id': sd.id, 'status': s, 'is_ai': is_ai},
             status=http_status.HTTP_201_CREATED,

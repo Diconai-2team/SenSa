@@ -27,12 +27,11 @@ services:
     build: ./prometheus
     container_name: sensa_prometheus
     restart: unless-stopped
-    # network_mode: host → 9090 포트는 docker-compose ports 설정 무시.
-    # 직접 host:9090 으로 listen. (Linux/WSL2 에서만 동작 — Mac/Windows native 미지원)
     ports:
       - "9090:9090"
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
+    networks:
+      - default
+      - sensa_net
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
       - '--storage.tsdb.path=/prometheus'
@@ -66,3 +65,8 @@ services:
 volumes:
   prometheus_data:
   grafana_data:
+
+networks:
+  sensa_net:
+    external: true
+    name: sensa_default

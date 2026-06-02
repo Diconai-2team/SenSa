@@ -12,6 +12,7 @@ realtime/consumers.py — 대시보드 실시간 WebSocket 처리
   dashboard.zones    — [Phase I-2] zone 라이프사이클 이벤트
 """
 from channels.generic.websocket import AsyncJsonWebsocketConsumer
+from realtime.metrics import sensa_ws_connections_active
 
 
 class DashboardConsumer(AsyncJsonWebsocketConsumer):
@@ -42,6 +43,7 @@ class DashboardConsumer(AsyncJsonWebsocketConsumer):
             await self.channel_layer.group_add(group, self.channel_name)
 
         await self.accept()
+        sensa_ws_connections_active.inc()
         await self.send_json({
             "type": "connection.established",
             "user": user.username,
@@ -50,6 +52,7 @@ class DashboardConsumer(AsyncJsonWebsocketConsumer):
 
     async def disconnect(self, close_code):
         """연결 끊기면 모든 그룹에서 빠짐 — 메모리 누수 방지"""
+        sensa_ws_connections_active.dec()
         for group in self.GROUPS:
             await self.channel_layer.group_discard(group, self.channel_name)
 

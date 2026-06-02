@@ -542,7 +542,7 @@
     {
       "id": 10,
       "title": "Phase 4 — Celery task retry 누적 (P2 autoretry 정책 작동 증거)",
-      "description": "5분 윈도우 retry 발생. send_external_notification_task autoretry 작동 시 증가.",
+      "description": "5분 윈도우 retry 발생. send_external_notification_task autoretry 작동 시 증가. retry가 한 번도 없으면 데이터 없음(정상).",
       "type": "timeseries",
       "gridPos": {
         "x": 0,
@@ -563,7 +563,7 @@
       ],
       "fieldConfig": {
         "defaults": {
-          "unit": "s",
+          "unit": "short",
           "color": {
             "mode": "palette-classic"
           },
@@ -586,6 +586,324 @@
         "tooltip": {
           "mode": "multi"
         }
+      }
+    },
+    {
+      "id": 11,
+      "title": "Django/DRF 요청 수 (method별)",
+      "description": "django-prometheus 자동 수집 — HTTP method(GET/POST 등)별 분당 요청 수.",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 0,
+        "y": 48,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "sum by (method) (rate(django_http_requests_total_by_method_total[1m]))",
+          "legendFormat": "{{method}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 10
+          }
+        }
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": ["mean", "lastNotNull"]
+        },
+        "tooltip": {"mode": "multi"}
+      }
+    },
+    {
+      "id": 12,
+      "title": "API 5xx 에러율",
+      "description": "5xx 응답 수 / 전체 응답 수. 0에 가까울수록 정상. 스파이크 발생 시 서버 오류 발생.",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 12,
+        "y": 48,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(django_http_responses_total_by_status_total{status=~\"5..\"}[5m])) / sum(rate(django_http_responses_total_by_status_total[5m]))",
+          "legendFormat": "5xx 에러율",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "max": 1,
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "green", "value": null},
+              {"color": "yellow", "value": 0.01},
+              {"color": "red", "value": 0.05}
+            ]
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 20
+          }
+        }
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": ["lastNotNull", "max"]
+        },
+        "tooltip": {"mode": "multi"}
+      }
+    },
+    {
+      "id": 13,
+      "title": "Django API p95 응답시간",
+      "description": "django_http_requests_latency_including_middlewares_seconds — 미들웨어 포함 전체 응답 시간 95/50 백분위.",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 0,
+        "y": 56,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(django_http_requests_latency_including_middlewares_seconds_bucket[5m])))",
+          "legendFormat": "p95",
+          "refId": "A"
+        },
+        {
+          "expr": "histogram_quantile(0.50, sum by (le) (rate(django_http_requests_latency_including_middlewares_seconds_bucket[5m])))",
+          "legendFormat": "p50",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 10
+          }
+        }
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": ["lastNotNull", "max"]
+        },
+        "tooltip": {"mode": "multi"}
+      }
+    },
+    {
+      "id": 14,
+      "title": "Celery 분석 성공률",
+      "description": "succeeded / (succeeded + failed) — task_name별 성공률. 1.0이 정상. 하락 시 task 로직 또는 DB 연결 이상.",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 12,
+        "y": 56,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "sum by (task_name) (rate(sensa_celery_task_total{state=\"succeeded\"}[5m])) / sum by (task_name) (rate(sensa_celery_task_total{state=~\"succeeded|failed\"}[5m]))",
+          "legendFormat": "{{task_name}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "max": 1,
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "red", "value": null},
+              {"color": "yellow", "value": 0.9},
+              {"color": "green", "value": 0.99}
+            ]
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 10
+          }
+        }
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": ["lastNotNull", "min"]
+        },
+        "tooltip": {"mode": "multi"}
+      }
+    },
+    {
+      "id": 16,
+      "title": "API 수신 성공률 / DB 저장 성공률",
+      "description": "sensa_api_requests_total, sensa_db_save_total — success/(success+error). 1.0이 정상.",
+      "type": "timeseries",
+      "gridPos": {"x": 0, "y": 72, "w": 12, "h": 8},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [
+        {
+          "expr": "sum(rate(sensa_api_requests_total{result=\"success\"}[5m])) / sum(rate(sensa_api_requests_total{result=~\"success|error\"}[5m]))",
+          "legendFormat": "API 수신 성공률",
+          "refId": "A"
+        },
+        {
+          "expr": "sum(rate(sensa_db_save_total{result=\"success\"}[5m])) / sum(rate(sensa_db_save_total{result=~\"success|failure\"}[5m]))",
+          "legendFormat": "DB 저장 성공률",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "max": 1,
+          "color": {"mode": "thresholds"},
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "red", "value": null},
+              {"color": "yellow", "value": 0.95},
+              {"color": "green", "value": 0.99}
+            ]
+          },
+          "custom": {"drawStyle": "line", "lineWidth": 2, "fillOpacity": 10}
+        }
+      },
+      "options": {
+        "legend": {"displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull", "min"]},
+        "tooltip": {"mode": "multi"}
+      }
+    },
+    {
+      "id": 17,
+      "title": "WebSocket 연결 수 / 전송 성공률",
+      "description": "sensa_ws_connections_active (현재 연결 수), sensa_ws_send_total (전송 성공률).",
+      "type": "timeseries",
+      "gridPos": {"x": 12, "y": 72, "w": 12, "h": 8},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [
+        {
+          "expr": "sensa_ws_connections_active",
+          "legendFormat": "WS 연결 수",
+          "refId": "A"
+        },
+        {
+          "expr": "sum(rate(sensa_ws_send_total{result=\"success\"}[5m])) / sum(rate(sensa_ws_send_total[5m]))",
+          "legendFormat": "WS 전송 성공률",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "color": {"mode": "palette-classic"},
+          "custom": {"drawStyle": "line", "lineWidth": 2, "fillOpacity": 10}
+        }
+      },
+      "options": {
+        "legend": {"displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull"]},
+        "tooltip": {"mode": "multi"}
+      }
+    },
+    {
+      "id": 15,
+      "title": "외부알림 발송 (Slack/Discord) — Celery task 처리 현황",
+      "description": "send_external_notification_task state별 누적. critical zone 승격 시 발동. Slack/Discord webhook 미설정 또는 SENSA_NOTIFY_DRY_RUN=true 시 데이터 없음.",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 0,
+        "y": 64,
+        "w": 24,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "sum by (state) (rate(sensa_celery_task_total{task_name=\"alerts.tasks.send_external_notification\"}[5m]))",
+          "legendFormat": "{{state}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 10
+          }
+        }
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": ["lastNotNull", "max"]
+        },
+        "tooltip": {"mode": "multi"}
       }
     }
   ]
