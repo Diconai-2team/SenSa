@@ -65,7 +65,7 @@ REFIT_EVERY_N = 20
 # ═══════════════════════════════════════════════════════════
 
 class _SensorStore:
-    __slots__ = ('buffer', 'model', 'tick', 'last_fit_tick', 'lock')
+    __slots__ = ('buffer', 'model', 'tick', 'last_fit_tick', 'lock', 'fitting')
 
     def __init__(self):
         self.buffer       = deque(maxlen=WINDOW_SIZE)
@@ -73,6 +73,11 @@ class _SensorStore:
         self.tick         = 0
         self.last_fit_tick = 0
         self.lock         = threading.Lock()
+        self.fitting      = False
+
+
+# 동시 fit 수 제한 — CPU 포화 방지 (blocking=False로 자리 없으면 skip)
+_fit_semaphore = threading.Semaphore(3)
 
 
 _store: dict[tuple[str, str], _SensorStore] = defaultdict(_SensorStore)
@@ -126,6 +131,21 @@ def _fit(ss: _SensorStore) -> None:
     ss.last_fit_tick = ss.tick
 
 
+def _fit_background(ss: _SensorStore) -> None:
+    """배경 스레드에서 fit 실행. Semaphore로 동시 실행 수 제한.
+
+    Semaphore 자리 없으면 즉시 skip (blocking=False) — 기존 모델 유지.
+    """
+    if not _fit_semaphore.acquire(blocking=False):
+        ss.fitting = False
+        return
+    try:
+        _fit(ss)
+    finally:
+        ss.fitting = False
+        _fit_semaphore.release()
+
+
 def _get_slope(values: list[float]) -> float:
     """최근 N개 값의 선형 추세 기울기 반환."""
     if len(values) < 2:
@@ -170,9 +190,10 @@ def predict_trend(device_id: str, sensor_key: str,
         if len(ss.buffer) < MIN_TRAIN_SAMPLES:
             return None
 
-        # 재학습 필요 시 동기 실행
-        if ss.model is None or (ss.tick - ss.last_fit_tick) >= REFIT_EVERY_N:
-            _fit(ss)
+        # 재학습 필요 시 배경 스레드로 실행 (Semaphore로 동시 수 제한)
+        if (ss.model is None or (ss.tick - ss.last_fit_tick) >= REFIT_EVERY_N) and not ss.fitting:
+            ss.fitting = True
+            threading.Thread(target=_fit_background, args=(ss,), daemon=True).start()
 
         if ss.model is None:
             return None
