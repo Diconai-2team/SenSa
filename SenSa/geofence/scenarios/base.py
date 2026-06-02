@@ -74,6 +74,21 @@ class ScenarioBase(ABC):
         stamp = timezone.now() - timedelta(seconds=seconds_ago)
         SensorData.objects.filter(pk=sd.pk).update(timestamp=stamp)
         self.created_sensordata_ids.append(sd.pk)
+        # [알람 일원화 A] 실데이터와 동일한 평가 호출 (caution/danger 만).
+        #   gas_type 이 전력 컬럼이면 'power', 아니면 'gas'.
+        if status in ('caution', 'danger'):
+            try:
+                from alerts.services import evaluate_sensor
+                _stype = 'power' if gas_type in ('current', 'voltage', 'watt') else 'gas'
+                evaluate_sensor(
+                    device_id=device.device_id,
+                    sensor_type=_stype,
+                    observed_status=status,
+                    raw_value=value,
+                )
+            except Exception as _e:
+                import logging; logging.getLogger(__name__).warning(
+                    '[scenario inject] evaluate_sensor 실패: %s', _e)
         return sd
 
     def inject_baseline(

@@ -281,6 +281,12 @@ class OperationalScenarioBase:
                     float(base_v),                # 점진 증가 시작점
                     30.0,                         # ramp-up 30초
                 ],
+                kwargs={
+                    # 시나리오 클래스에서 SUSTAIN_SEC/RAMP_DOWN_SEC 정의 시 자연 복귀
+                    # 미정의 시 None → 기존 동작 (cliff drop 후 max_steps에서 종료)
+                    'sustain_sec':   getattr(self, 'SUSTAIN_SEC', None),
+                    'ramp_down_sec': getattr(self, 'RAMP_DOWN_SEC', None),
+                },
             )
             # zone 의 confirmed_devices 에 추가 (이미 spike 받는 sensor 추적)
             zone.confirmed_devices.add(sensor)

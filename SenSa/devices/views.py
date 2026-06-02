@@ -94,7 +94,31 @@ class SensorDataView(APIView):
 
         def _get_float(key):
             v = request.data.get(key)
-            return float(v) if v is not None else None
+            if v is None:
+                return None
+            try:
+                f = float(v)
+            except (TypeError, ValueError):
+                logger.warning(
+                    "[sensor-data] %s 값 형식 오류: %r -> None 처리 (device_id=%s)",
+                    key, v, device_id,
+                )
+                return None
+            # 가스(ppm/%)·전력(A/V/W) 모두 물리적으로 음수 불가
+            if f < 0:
+                logger.warning(
+                    "[sensor-data] %s 음수 값 거부: %s -> None 처리 (device_id=%s)",
+                    key, f, device_id,
+                )
+                return None
+            # 비정상 큰 값 — 센서 오류·malformed 페이로드 차단
+            if f > 1_000_000:
+                logger.warning(
+                    "[sensor-data] %s 비정상 큰 값 거부: %s -> None 처리 (device_id=%s)",
+                    key, f, device_id,
+                )
+                return None
+            return f
 
         # ═══════════════════════════════════════════════════
         # [C′-3a v2.1] R&D 시나리오 라벨 추출

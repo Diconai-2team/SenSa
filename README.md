@@ -1,204 +1,135 @@
-# 백오피스 v6 — Production 운영 안정화
+# patch_v3_fixes — 알람 중복/미실시간/확산 부족 동시 해결
 
-v5 위에 적용. **데모 후 운영 단계 진입 직전**의 안정화 작업.
+사용자가 시연 후 발견한 4개 문제를 단일 패치로 해결.
 
-## 포함 범위 (6개 영역)
+## 해결 문제
 
-### 1. 감사 로그 (AuditLog)
+| # | 증상 | 코드 원인 | 해결 |
+|---|---|---|---|
+| 1 | 위험 알람 7~10초 주기 중복 발화 | sensor_evaluator.py:85 — transition은 RE_ALARM_INTERVAL_SEC throttle 적용 안 됨 + V자 진동 격하·격상 반복 | observed==official 시 격하 카운터 리셋 → V자 진동 자체를 차단해 transition 반복 발화 막음 |
+| 2 | 새로고침해야 위험 알람 보임 | sensor_evaluator.py에 publish_alarm 호출 0건 — DB 저장만 | Alarm 생성 직후 publish_alarm() 호출 추가 |
+| 3 | 좌측 토스트에 위험 알람 없음 | (문제 2의 직접 결과) | 문제 2 해결로 자동 해결 |
+| 4 | sensor_05/06 spike 변동성 없음 | operational_multi.py LEAK_ELAPSED_SEC=15 → 시작 반경 30px이라 인접 sensor 검출 안 됨 | LEAK_ELAPSED_SEC 15→45 (반경 30→91px) |
 
-백오피스 모든 액션 자동 추적. `post_save`/`post_delete` 시그널 + 미들웨어 thread-local 결합.
+## V자 진동 차단 알고리즘 (문제 1 핵심)
 
+**문제**: Celery sustain_spike(0.5초/danger) + fastapi_generator(1초/normal)가 같은 sensor에 동시 송신. 윈도우 누적 카운터가 격상→격하→격상 반복 confirm.
+
+**v3 해결**:
 ```python
-# backoffice/audit.py 의 TRACKED_MODELS 에 등록된 모델은 자동 audit
-# 등록·수정·삭제·로그인·로그아웃·로그인 실패 → AuditLog 1건씩 자동 생성
+# observed가 official과 같음 → 격하 카운터 리셋 (격상 카운터는 보호)
+if observed_status == official_state:
+    official_rank = _STATE_RANK.get(official_state, 0)
+    for st in ('normal', 'caution', 'danger'):
+        if _STATE_RANK[st] < official_rank:
+            set_sensor_window_counter(device_id, st, 0, 0)
 ```
 
-- **추적**: 누가(actor) / 언제(created_at) / 어떤 객체(target_app+model+pk+repr) / 어떻게(changes JSON) / 어디서(IP, request_path)
-- **추적 모델**: 16개 (백오피스 13개 + accounts.User + devices.Device + geofence.GeoFence)
-- **제외**: SensorData / WorkerLocation / NotificationLog (트래픽 폭증 방지)
-- **시드 마이그레이션 audit 안 남김** (`get_current_request() is None` 체크)
-- 페이지: `/backoffice/audit-logs/` — 필터(액션/모델/기간/키워드) + 페이지네이션 + 변경 내역 펼침
-- SNB: 운영 데이터 관리 → "└ 감사 로그" 서브 메뉴
+V자 진동 시뮬레이션 (official=danger, Celery danger + generator normal 교차):
+```
+T+0.5  Celery danger    → observed==official → normal/caution 카운터 리셋
+T+1.0  generator normal → de-escalation → normal_count = 1
+T+1.5  Celery danger    → 리셋 → normal_count = 0
+T+2.0  generator normal → normal_count = 1
+T+2.5  Celery danger    → 리셋 → normal_count = 0
+...
+```
+→ normal_count는 0~1 진동, 7에 절대 도달 못함 → 격하 안 됨 → ongoing 알람만 60초마다 1번.
 
-### 2. 외부 알림 게이트웨이 (Provider 패턴)
+정상 ramp_down (자연 곡선 후반, 둘 다 normal 보냄):
+```
+T+0  generator normal → normal_count = 1
+T+0.5 Celery normal   → normal_count = 2
+...
+T+3  → normal_count = 7 → confirm normal (recovery 알람)
+```
+→ 정상 작동.
 
-Stub-first 어댑터 — 운영 배포 시 settings 만 갈아끼우면 실제 SMTP/FCM/SMS 로 전환.
+## publish_alarm 호출 추가 (문제 2, 3 핵심)
 
-```python
-# settings.py
-NOTIFICATION_PROVIDERS = {
-    'email':    'backoffice.notification_providers.email.EmailProvider',
-    'sms':      'your_company.providers.AligoSmsProvider',  # 실제 어댑터로 교체
-    'app':      'your_company.providers.FCMProvider',       # firebase-admin 등
-    # 'realtime' 미설정 → ConsoleProvider 자동 fallback (개발 환경 안전)
-}
+기존 흐름:
+```
+sustain_spike_task → evaluate_sensor() → Alarm.objects.create()  ← DB 저장만
+                                          ↓
+                                          (publish_alarm 미호출 → frontend 무지)
 ```
 
-- 4개 stub 구현체: console, email(send_mail), sms_stub, fcm_stub
-- send_status 정확 갱신: `pending` → `sent`/`failed`/`skipped` (수신자 정보 없으면 skipped)
-- Provider 1건 실패해도 다른 (사용자 × 채널) 발송 진행 (실패 격리)
-
-### 3. 알림 비동기 큐
-
-Celery 없이 `threading.Thread` + `queue.Queue` 기반.
-
-```python
-# settings.py
-BACKOFFICE_ASYNC_NOTIFY = True   # default False (개발 환경 동기 유지)
+v3 흐름:
+```
+sustain_spike_task → evaluate_sensor() → Alarm.objects.create()
+                                          ↓
+                                          publish_alarm()  ← 신규
+                                          ↓
+                                          WebSocket → frontend
+                                          ↓
+                                          - 우측 패널 알람 즉시 표시 (UX 패치 sticky 작동)
+                                          - 좌측 토스트 즉시 표시 (section_09_map.js)
 ```
 
-- `apps.ready()` 에서 워커 자동 기동 (settings flag 조건)
-- daemon thread 1개 — 직렬 처리 (DB 쓰기만 하므로 충분)
-- 알람 → 시그널이 enqueue → 워커가 dispatch (요청은 즉시 응답, 발송 처리는 백그라운드)
-- 검증: 5건 알람 큐 push → 워커가 처리 → 20건 NotificationLog 자동 생성
+## 시작 반경 확대 (문제 4 핵심)
 
-### 4. admin API 권한 분리
+`diffusion_radius('co', elapsed_sec) = 2.0 × √(28.97/28.01) × elapsed_sec ≈ 2.03 × elapsed_sec`
 
-`@super_admin_required_api(menu_code='users', action='read')` 형식.
+| LEAK_ELAPSED_SEC | 시작 반경 | 인접 sensor 검출 |
+|---|---|---|
+| 15 (이전) | 30 px | sensor_04만 |
+| 45 (v3) | 91 px | sensor_04 + 인근 2~3개 (05/06 등) |
 
-| action | 통과 조건 |
-|---|---|
-| `read` (GET) | super_admin OR (admin AND `is_visible`) |
-| `write` (POST) | super_admin OR (admin AND `is_visible` AND `is_writable`) |
+평면도 좌표계 단위와 sensor 배치에 따라 실제 검출 개수는 다를 수 있음. 검증은 시연 후 DB 측정으로.
 
-- **65개 API 데코레이터** 일괄 패치
-- admin 시드 권한: `notices` 만 writable. 나머지는 read-only
-- 검증: admin 이 position 등록 → 403, notice 등록 → 200
+## 적용 명령 (한 블록)
 
-### 5. 장비 CSV upsert + DeviceHistory
-
-```python
-# CSV 업로드 모드
-mode=create   # 기본 — 기존 device_id 는 skip (legacy)
-mode=upsert   # v6 신규 — 기존 device_id 는 update + DeviceHistory 기록
+```bash
+cd ~/SenSa && \
+unzip -o /mnt/c/Users/kapol/Downloads/patch_v3_fixes.zip && \
+cp SenSa/alerts/services/sensor_evaluator.py /tmp/before_evaluator.py && \
+cp SenSa/geofence/scenarios/operational_multi.py /tmp/before_multi.py && \
+python3 patch_v3_fixes.py && \
+echo "===== evaluator 변경 (요약) =====" && diff /tmp/before_evaluator.py SenSa/alerts/services/sensor_evaluator.py | head -50 && \
+echo "===== multi 변경 =====" && diff /tmp/before_multi.py SenSa/geofence/scenarios/operational_multi.py && \
+docker compose up -d --build django celery
 ```
 
-- 모든 변경 (단건 등록·수정·CSV import) → DeviceHistory 자동 기록
-- 변경 항목별 `[old, new]` JSON 저장
-- 장비 화면에 [이력] 버튼 → 모달로 변경 이력 표시
-- API: `GET /backoffice/api/devices/<id>/history/` — 최신 50건 반환
+## 시연 검증 (다중 누출 클릭 후 3분 관찰)
 
-### 6. 지도 폴리곤 점 드래그 편집
+### 4가지 기대 변화
 
-지오펜스 폴리곤의 개별 점을 직접 드래그.
+1. **위험 알람 중복 사라짐** — celery 시연 동안 sensor_04 위험 알람이 transition 1회 + ongoing 60초마다 1회 (총 시연 2분 30초 안에 위험 알람 2~3건만)
+2. **새로고침 없이 즉시 표시** — 위험 알람이 발생하는 순간 우측 패널 + 좌측 토스트 모두 즉시 갱신
+3. **좌측 토스트에 위험 등장** — 빨간 위험 토스트가 좌측 알림 영역에 표시 (AI 예측 토스트와 동일 영역)
+4. **sensor_05/06 변동성 등장** — sensor_04뿐 아니라 인접 sensor도 spike 시계열
 
-- 우측 목록에서 지오펜스 클릭 → 점 핸들 표시
-- mousedown 으로 드래그 시작 → mousemove 시 폴리곤 즉시 갱신 + 캔버스 재렌더
-- mouseup 시점에만 서버 PUT (mousemove 마다 PUT 안 함, 부하 방지)
-- 드래그 안 한 단순 클릭은 자동 저장 발생 안 함
-- 모달 편집은 [편집] 버튼 클릭 시만
+### DB 검증 SQL
 
-## 적용 순서
+```bash
+# 알람 중복 차단 확인 — 위험 알람이 60초당 1건 이하인지
+docker compose exec -T postgres psql -U sensa -d sensa -c "
+SELECT to_char(created_at, 'HH24:MI:SS') AS t,
+       alarm_type, alarm_level, message
+FROM alerts_alarm
+WHERE device_id='sensor_04' AND is_ai=false
+  AND created_at > NOW() - INTERVAL '5 minutes'
+ORDER BY created_at;"
+# 기대: transition 1~2건 + ongoing 60초 간격 2~3건 = 총 3~5건 (이전 10건↑에서 감소)
 
-1. v5 적용된 SenSa 위에 압축 해제
-2. `python manage.py migrate` — backoffice.0010 적용 (AuditLog + DeviceHistory)
-3. (선택) settings.py 에 비동기/외부 게이트웨이 활성화:
-
-   ```python
-   BACKOFFICE_ASYNC_NOTIFY = True
-   NOTIFICATION_PROVIDERS = {
-       'email': 'backoffice.notification_providers.email.EmailProvider',
-       # ...
-   }
-   EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
-   EMAIL_HOST = 'smtp.gmail.com'
-   # ... SMTP 자격증명
-   ```
-
-4. Django 재시작 → 시그널·미들웨어·워커 자동 등록
-
-## 검증된 케이스
-
-| 케이스 | 결과 |
-|---|---|
-| Position 등록 → AuditLog 자동 1건 생성 (actor/IP/path 모두 캡처) | ✅ |
-| MenuPermission 변경 → AuditLog | ✅ |
-| 로그인 성공/실패 audit | ✅ 2건 자동 |
-| 시드 마이그레이션 audit 제외 | ✅ (request 없으면 skip) |
-| Provider 미설정 → console fallback | ✅ |
-| settings.NOTIFICATION_PROVIDERS 적용 → 실제 어댑터 사용 | ✅ |
-| 수신자 phone 없음 → `skipped` (실패 아님) | ✅ |
-| 비동기 큐 — 5건 enqueue → 20건 NotificationLog 자동 생성 | ✅ |
-| admin GET position → 200, POST position create → 403 (writable=False) | ✅ |
-| admin POST notice create → 200 (writable=True) | ✅ |
-| CSV upsert — GAS-001 좌표 변경 → updated=1, DeviceHistory 'csv_import' | ✅ |
-| Device 단건 등록 → DeviceHistory 'create' + PIP 자동 매핑 | ✅ |
-| 감사 로그 페이지 + 액션 필터 | ✅ |
-| 폴리곤 점 드래그 (mousedown/move/up) → mouseup 시 자동 PUT | ✅ |
-
-## v6 trade-off (양해)
-
-- **외부 게이트웨이 실제 자격증명**: stub 만 제공. 운영 시 회사별 SMS gateway 어댑터 (Twilio / 알리고 / NHN Cloud 등) 직접 작성 필요. 인터페이스는 `(ok, err) = provider.send(recipient, msg, log)` 로 통일됨.
-- **AuditLog 보관 정책 자동 적용**: cleanup_data 의 `audit_logs` target 은 모델 매핑 필요 (현재 _resolve_qs 에서 None 반환). 1줄 추가로 해결 가능.
-- **알림 큐 영속성**: 프로세스 종료 시 in-flight 작업 손실. 영속 큐가 필요하면 Celery + Redis 또는 RabbitMQ.
-- **벤더 락인 회피**: Provider 패턴이라 어댑터 교체 자유. 다만 settings 의 환경변수 주입은 운영팀 합의 필요.
-
-## 파일 변경 요약 (총 24파일, +7,006 줄)
-
-```
-[v6 신규 인프라]
-신규           backoffice/middleware.py                      ← request thread-local
-신규           backoffice/audit.py                            ← TRACKED_MODELS, write_audit, login signals
-신규           backoffice/notification_queue.py               ← threading 기반 워커
-신규           backoffice/notification_providers/__init__.py  ← Provider 레지스트리
-신규           backoffice/notification_providers/console.py
-신규           backoffice/notification_providers/email.py
-신규           backoffice/notification_providers/sms_stub.py
-신규           backoffice/notification_providers/fcm_stub.py
-
-[모델 + 마이그레이션]
-대폭수정       backoffice/models.py                           ← AuditLog, DeviceHistory
-신규           backoffice/migrations/0010_audit_and_device_history.py
-
-[시그널/디스패처/권한]
-대폭수정       backoffice/notification_dispatcher.py          ← Provider 호출 + send_status 갱신
-대폭수정       backoffice/signals.py                          ← settings flag 보고 동기/비동기 분기
-대폭수정       backoffice/permissions.py                      ← API 데코레이터 menu_code+action
-수정           backoffice/apps.py                             ← audit signals + 워커 기동
-
-[뷰/URL/폼]
-대폭수정       backoffice/views.py                            ← 65 API menu_code 부착, audit_log_list, device_history_api, csv upsert
-수정           backoffice/urls.py                             ← +2 URL
-수정           backoffice/forms.py                            ← Device 변경 추적
-
-[설정]
-수정           mysite/settings.py                             ← AuditContextMiddleware 등록
-
-[화면]
-수정           templates/backoffice/base.html                 ← 감사 로그 sub-menu
-신규           templates/backoffice/audit/log_list.html
-수정           templates/backoffice/devices/list.html         ← CSV upsert 드롭다운, history 모달
-수정           templates/backoffice/maps/edit.html            ← 점 드래그 안내
-수정           static/js/backoffice/devices.js                ← upsert + history
-수정           static/js/backoffice/maps.js                   ← vertex drag mousedown/move/up
+# 확산 sensor 검출 확인
+docker compose exec -T postgres psql -U sensa -d sensa -c "
+SELECT device_id, status, COUNT(*),
+       ROUND(MIN(co)::numeric, 1) AS co_min,
+       ROUND(MAX(co)::numeric, 1) AS co_max
+FROM devices_sensordata
+WHERE device_id IN (SELECT id FROM devices_device WHERE device_id IN ('sensor_04','sensor_05','sensor_06'))
+  AND scenario_id LIKE 'op_multi%'
+  AND timestamp > NOW() - INTERVAL '5 minutes'
+GROUP BY 1,2 ORDER BY 1,2;"
+# 기대: sensor_04 외에 sensor_05/06에도 op_multi 라벨 데이터 등장
 ```
 
-## 누적 결과 (v1 ~ v6)
+## 롤백
 
-- **약 34,000줄, 19개 화면, 8개 1Depth 메뉴 + Production 인프라**
-- 시드 → 자동화 → 권한 → 감사 → 외부 게이트웨이까지 풀스택
-- 모든 변경 추적 가능, 운영팀이 백오피스에서 시스템 전 영역 컨트롤 + 감사 추적
-
-| 카테고리 | 가능한 것 |
-|---|---|
-| 마스터 관리 | 사용자/조직/직위/코드/위험분류·기준/임계치/장비/지오펜스/공지 |
-| 운영 자동화 | 알람→알림 자동 발송 / 데이터 정리 batch / 좌표→지오펜스 자동 매핑 |
-| 권한 제어 | super_admin / admin (메뉴별 read/write) / operator |
-| 데이터 입출 | CSV 업로드 (장비, create/upsert) / CSV 다운로드 (이벤트) |
-| 시스템 통합 | FastAPI 5초 임계치 동기화 + post_save 시그널 |
-| **운영 안정화** | **AuditLog / 외부 Provider / 비동기 큐 / DeviceHistory / 폴리곤 드래그** |
-
-## 운영 진입 체크리스트
-
-- [x] 데이터 마스터 등록 가능
-- [x] 임계치 운영 중 변경 (FastAPI 동기화)
-- [x] 알림 정책 + 자동 발송
-- [x] 감사 로그 추적
-- [x] 권한 분리 (super/admin/operator)
-- [x] 데이터 정리 batch
-- [x] CSV 일괄 등록 + 변경 이력
-- [x] 외부 게이트웨이 어댑터 인터페이스
-- [x] 비동기 큐 (알람 폭증 대비)
-- [ ] 실제 SMS/FCM 자격증명 주입 (회사별 결정)
-- [ ] cron 등록 (`cleanup_data`)
-- [ ] 모니터링/로깅 인프라 (Sentry 등)
+```bash
+cd ~/SenSa/SenSa
+cp alerts/services/sensor_evaluator.py.bak.YYYYMMDD_HHMMSS alerts/services/sensor_evaluator.py
+cp geofence/scenarios/operational_multi.py.bak.YYYYMMDD_HHMMSS geofence/scenarios/operational_multi.py
+cd ~/SenSa && docker compose up -d --build django celery
+```

@@ -31,13 +31,17 @@ class OperationalMultiLeak(OperationalScenarioBase):
                    '→ 큰 확산, 다수 sensor 자동 영향 → critical zone')
 
     GAS = 'co'
-    SPIKE_VALUE = 70.0           # 더 강한 spike (잔차 큰 영향)
-    SPIKE_NOISE = 7.0
+    SPIKE_VALUE = 280.0          # CO danger(200) + 40% 마진 — 자연 ramp로 danger 도달
+    SPIKE_NOISE = 15.0           # 현실적 농도 변동
     SPIKE_INTERVAL_SEC = 0.5
-    ZONE_TTL_SEC = 180           # 3분 — 확산 단계별 검증 시간 확보
-    LEAK_ELAPSED_SEC = 30        # 6차 — zone 크기 평면도 비례 적정 (radius 시작 61px → 180s 후 427px, sensor_02 검출 유지)
+    ZONE_TTL_SEC = 180           # 3분 — ramp_up(30) + sustain(60) + ramp_down(60) + 여유(30)
+    LEAK_ELAPSED_SEC = 45        # v3: 30→91px 시작 반경 — 인접 sensor (05/06 등) 영향 sensor 포함
 
     POLYGON_MARGIN_PX = 60       # 큰 zone 외곽 여유
+
+    # ── 자연 누출 곡선 phase (산업안전 기반) ──
+    SUSTAIN_SEC   = 60           # danger 정점 유지 (60초)
+    RAMP_DOWN_SEC = 60           # 자연 복귀 (60초)
 
     def pick_source_sensor(self) -> Optional[Device]:
         """평균 거리 가장 작은 (중심부) sensor 자동 선택.

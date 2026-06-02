@@ -9,6 +9,7 @@
  */
 
 var unreadCount = 0;
+var unreadDangerCount = 0;   // v3: 위험 미읽음 분리
 var dangerCount24h  = 0;
 var cautionCount24h = 0;
 var EMOJI = { info: 'ℹ️', caution: '⚠️', danger: '🔴', critical: '🚨' };
@@ -31,9 +32,13 @@ function showBanner(alarm) {
   banner.style.display = 'flex';
 
   clearTimeout(bannerTimer);
-  // 위험/심각은 10초, 주의는 6초 후 자동 닫힘
-  var duration = (alarm.alarm_level === 'caution') ? 6000 : 10000;
-  bannerTimer = setTimeout(closeBanner, duration);
+  // v3: 위험·심각은 자동 닫기 ❌ (사용자가 X 눌러야 닫힘) — 평시 관제 우선순위
+  if (alarm.alarm_level === 'danger' || alarm.alarm_level === 'critical') {
+    // bannerTimer 설정 안 함 — 영속 유지
+  } else {
+    var duration = (alarm.alarm_level === 'caution') ? 6000 : 10000;
+    bannerTimer = setTimeout(closeBanner, duration);
+  }
 }
 
 window.closeBanner = function () {
@@ -44,10 +49,17 @@ window.closeBanner = function () {
 
 // ── 카운터 업데이트 ────────────────────────────────
 function updateBadge() {
-  var b = document.getElementById('alarm-badge');
-  if (!b) return;
-  b.textContent = unreadCount;
-  b.style.display = unreadCount > 0 ? 'inline' : 'none';
+  // v3: 위험 배지 + 일반 배지 분리
+  var b  = document.getElementById('alarm-badge');
+  var bd = document.getElementById('alarm-badge-danger');
+  if (b) {
+    b.textContent = unreadCount;
+    b.style.display = unreadCount > 0 ? 'inline' : 'none';
+  }
+  if (bd) {
+    bd.textContent = '🔴 ' + unreadDangerCount;
+    bd.style.display = unreadDangerCount > 0 ? 'inline' : 'none';
+  }
 }
 
 function updateSummary() {
@@ -82,21 +94,46 @@ function addAlarmToPanel(alarm, fromDB) {
     item.classList.remove('unread');
     var id = item.dataset.alarmId;
     if (id) markRead(id);
-    if (isUnread) { isUnread = false; unreadCount = Math.max(0, unreadCount - 1); updateBadge(); }
+    if (isUnread) {
+      isUnread = false;
+      unreadCount = Math.max(0, unreadCount - 1);
+      // v3: 위험 카운터도 감소
+      if (alarm.alarm_level === 'danger' || alarm.alarm_level === 'critical') {
+        unreadDangerCount = Math.max(0, unreadDangerCount - 1);
+      }
+      updateBadge();
+    }
   };
 
-  // 실시간 이벤트는 앞에, DB 로드는 뒤에 삽입
-  if (fromDB) {
+  // v3: 위험은 sticky pin (항상 최상단, 30개 한도 제외)
+  var isDanger = (alarm.alarm_level === 'danger' || alarm.alarm_level === 'critical');
+
+  if (isDanger) {
+    // 위험·심각 → 최상단 sticky
+    list.insertBefore(item, list.firstChild);
+  } else if (fromDB) {
+    // DB 로드(과거) → 뒤로
     list.appendChild(item);
   } else {
-    list.insertBefore(item, list.firstChild);
+    // 실시간 비-위험 → 위험 영역 아래, 일반 영역 최상단
+    var firstNonDanger = list.querySelector(
+      '.alarm-item:not(.level-danger):not(.level-critical)'
+    );
+    if (firstNonDanger) list.insertBefore(item, firstNonDanger);
+    else list.appendChild(item);
   }
 
-  // 최대 30개 유지
-  var all = list.querySelectorAll('.alarm-item');
-  if (all.length > 30) all[all.length - 1].remove();
+  // 30개 한도 — 단 위험 알람은 항상 유지 (제거 대상에서 제외)
+  var nonDanger = list.querySelectorAll(
+    '.alarm-item:not(.level-danger):not(.level-critical)'
+  );
+  if (nonDanger.length > 30) nonDanger[nonDanger.length - 1].remove();
 
-  if (isUnread) { unreadCount++; updateBadge(); }
+  if (isUnread) {
+    unreadCount++;
+    if (isDanger) unreadDangerCount++;
+    updateBadge();
+  }
 }
 
 // ── DB에서 최근 알람 로드 ─────────────────────────
@@ -146,6 +183,7 @@ window.readAllAlarms = async function () {
       el.classList.remove('unread');
     });
     unreadCount = 0;
+    unreadDangerCount = 0;   // v3: 위험 카운터 리셋
     updateBadge();
   } catch (e) {}
 };
