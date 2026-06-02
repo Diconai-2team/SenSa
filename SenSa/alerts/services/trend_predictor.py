@@ -65,7 +65,7 @@ REFIT_EVERY_N = 20
 # ═══════════════════════════════════════════════════════════
 
 class _SensorStore:
-    __slots__ = ('buffer', 'model', 'tick', 'last_fit_tick', 'lock')
+    __slots__ = ('buffer', 'model', 'tick', 'last_fit_tick', 'lock', 'fitting')
 
     def __init__(self):
         self.buffer       = deque(maxlen=WINDOW_SIZE)
@@ -73,6 +73,7 @@ class _SensorStore:
         self.tick         = 0
         self.last_fit_tick = 0
         self.lock         = threading.Lock()
+        self.fitting      = False
 
 
 _store: dict[tuple[str, str], _SensorStore] = defaultdict(_SensorStore)
@@ -100,31 +101,35 @@ def _fit(ss: _SensorStore) -> None:
         - MAD = Median Absolute Deviation (robust statistic, mean/std 보다 안정적)
         - |modified_z| >= 3.5 → outlier
     """
-    data_raw = np.array(list(ss.buffer))
+    try:
+        data_raw = np.array(list(ss.buffer))
 
-    # MAD 기반 outlier 제거
-    median = np.median(data_raw)
-    mad = np.median(np.abs(data_raw - median))
-    if mad > 1e-6:
-        modified_z = 0.6745 * (data_raw - median) / mad
-        clean = data_raw[np.abs(modified_z) < 3.5]
-    else:
-        # 데이터 변동 거의 없음 → outlier 판별 불가, 전체 사용
-        clean = data_raw
+        # MAD 기반 outlier 제거
+        median = np.median(data_raw)
+        mad = np.median(np.abs(data_raw - median))
+        if mad > 1e-6:
+            modified_z = 0.6745 * (data_raw - median) / mad
+            clean = data_raw[np.abs(modified_z) < 3.5]
+        else:
+            clean = data_raw
 
-    # 정상 데이터 부족 시 학습 skip (이전 모델 stale 유지)
-    if len(clean) < int(MIN_TRAIN_SAMPLES * 0.7):
-        return
+        # 정상 데이터 부족 시 학습 skip (이전 모델 stale 유지)
+        if len(clean) < int(MIN_TRAIN_SAMPLES * 0.7):
+            return
 
-    data = clean.reshape(-1, 1)
-    model = IsolationForest(
-        n_estimators=100,
-        contamination=0.05,  # 5% 이상치 가정 (정제 후 모델 학습)
-        random_state=42,
-    )
-    model.fit(data)
-    ss.model = model
-    ss.last_fit_tick = ss.tick
+        data = clean.reshape(-1, 1)
+        model = IsolationForest(
+            n_estimators=100,
+            contamination=0.05,
+            random_state=42,
+        )
+        model.fit(data)
+        ss.model = model
+        ss.last_fit_tick = ss.tick
+    except Exception as exc:
+        logger.warning("IsolationForest fit 실패: %s", exc)
+    finally:
+        ss.fitting = False
 
 
 def _get_slope(values: list[float]) -> float:
@@ -171,9 +176,14 @@ def predict_trend(device_id: str, sensor_key: str,
         if len(ss.buffer) < MIN_TRAIN_SAMPLES:
             return None
 
-        # 재학습 필요 시
-        if ss.model is None or (ss.tick - ss.last_fit_tick) >= REFIT_EVERY_N:
-            _fit(ss)
+        # 재학습 필요 시 — ARIMA 와 동일한 패턴으로 배경 스레드에서 fit
+        if (ss.model is None or (ss.tick - ss.last_fit_tick) >= REFIT_EVERY_N) and not ss.fitting:
+            ss.fitting = True
+            threading.Thread(target=_fit, args=(ss,), daemon=True).start()
+
+        # 모델 미준비(cold-start 또는 첫 fit 진행 중) → 예측 없음
+        if ss.model is None:
+            return None
 
         # IsolationForest 이상 점수
         arr = np.array([[float(value)]])
