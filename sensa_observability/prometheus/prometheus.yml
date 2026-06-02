@@ -21,7 +21,7 @@ scrape_configs:
   - job_name: 'sensa-generator'
     metrics_path: '/metrics'
     static_configs:
-      - targets: ['host.docker.internal:8001']
+      - targets: ['sensa_generator:8001']
         labels:
           service: 'generator'
 
@@ -29,7 +29,7 @@ scrape_configs:
   - job_name: 'sensa-celery'
     metrics_path: '/metrics'
     static_configs:
-      - targets: ['host.docker.internal:9809']
+      - targets: ['sensa_celery:9809']
         labels:
           service: 'celery'
 
