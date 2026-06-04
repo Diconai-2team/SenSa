@@ -627,9 +627,14 @@
         "legend": {
           "displayMode": "table",
           "placement": "bottom",
-          "calcs": ["mean", "lastNotNull"]
+          "calcs": [
+            "mean",
+            "lastNotNull"
+          ]
         },
-        "tooltip": {"mode": "multi"}
+        "tooltip": {
+          "mode": "multi"
+        }
       }
     },
     {
@@ -649,7 +654,7 @@
       },
       "targets": [
         {
-          "expr": "sum(rate(django_http_responses_total_by_status_total{status=~\"5..\"}[5m])) / sum(rate(django_http_responses_total_by_status_total[5m]))",
+          "expr": "(sum(rate(django_http_responses_total_by_status_total{status=~\"5..\"}[5m])) or vector(0)) / sum(rate(django_http_responses_total_by_status_total[5m]))",
           "legendFormat": "5xx 에러율",
           "refId": "A"
         }
@@ -665,9 +670,18 @@
           "thresholds": {
             "mode": "absolute",
             "steps": [
-              {"color": "green", "value": null},
-              {"color": "yellow", "value": 0.01},
-              {"color": "red", "value": 0.05}
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 0.01
+              },
+              {
+                "color": "red",
+                "value": 0.05
+              }
             ]
           },
           "custom": {
@@ -681,9 +695,14 @@
         "legend": {
           "displayMode": "table",
           "placement": "bottom",
-          "calcs": ["lastNotNull", "max"]
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
         },
-        "tooltip": {"mode": "multi"}
+        "tooltip": {
+          "mode": "multi"
+        }
       }
     },
     {
@@ -730,9 +749,14 @@
         "legend": {
           "displayMode": "table",
           "placement": "bottom",
-          "calcs": ["lastNotNull", "max"]
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
         },
-        "tooltip": {"mode": "multi"}
+        "tooltip": {
+          "mode": "multi"
+        }
       }
     },
     {
@@ -768,9 +792,18 @@
           "thresholds": {
             "mode": "absolute",
             "steps": [
-              {"color": "red", "value": null},
-              {"color": "yellow", "value": 0.9},
-              {"color": "green", "value": 0.99}
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 0.9
+              },
+              {
+                "color": "green",
+                "value": 0.99
+              }
             ]
           },
           "custom": {
@@ -784,9 +817,14 @@
         "legend": {
           "displayMode": "table",
           "placement": "bottom",
-          "calcs": ["lastNotNull", "min"]
+          "calcs": [
+            "lastNotNull",
+            "min"
+          ]
         },
-        "tooltip": {"mode": "multi"}
+        "tooltip": {
+          "mode": "multi"
+        }
       }
     },
     {
@@ -794,8 +832,16 @@
       "title": "API 수신 성공률 / DB 저장 성공률",
       "description": "sensa_api_requests_total, sensa_db_save_total — success/(success+error). 1.0이 정상.",
       "type": "timeseries",
-      "gridPos": {"x": 0, "y": 72, "w": 12, "h": 8},
-      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "gridPos": {
+        "x": 0,
+        "y": 72,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
       "targets": [
         {
           "expr": "sum(rate(sensa_api_requests_total{result=\"success\"}[5m])) / sum(rate(sensa_api_requests_total{result=~\"success|error\"}[5m]))",
@@ -813,21 +859,45 @@
           "unit": "percentunit",
           "min": 0,
           "max": 1,
-          "color": {"mode": "thresholds"},
+          "color": {
+            "mode": "thresholds"
+          },
           "thresholds": {
             "mode": "absolute",
             "steps": [
-              {"color": "red", "value": null},
-              {"color": "yellow", "value": 0.95},
-              {"color": "green", "value": 0.99}
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 0.95
+              },
+              {
+                "color": "green",
+                "value": 0.99
+              }
             ]
           },
-          "custom": {"drawStyle": "line", "lineWidth": 2, "fillOpacity": 10}
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 10
+          }
         }
       },
       "options": {
-        "legend": {"displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull", "min"]},
-        "tooltip": {"mode": "multi"}
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull",
+            "min"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
       }
     },
     {
@@ -835,8 +905,16 @@
       "title": "WebSocket 연결 수 / 전송 성공률",
       "description": "sensa_ws_connections_active (현재 연결 수), sensa_ws_send_total (전송 성공률).",
       "type": "timeseries",
-      "gridPos": {"x": 12, "y": 72, "w": 12, "h": 8},
-      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "gridPos": {
+        "x": 12,
+        "y": 72,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
       "targets": [
         {
           "expr": "sensa_ws_connections_active",
@@ -853,13 +931,27 @@
         "defaults": {
           "unit": "short",
           "min": 0,
-          "color": {"mode": "palette-classic"},
-          "custom": {"drawStyle": "line", "lineWidth": 2, "fillOpacity": 10}
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 10
+          }
         }
       },
       "options": {
-        "legend": {"displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull"]},
-        "tooltip": {"mode": "multi"}
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
       }
     },
     {
@@ -901,9 +993,259 @@
         "legend": {
           "displayMode": "table",
           "placement": "bottom",
-          "calcs": ["lastNotNull", "max"]
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
         },
-        "tooltip": {"mode": "multi"}
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "id": 18,
+      "title": "시나리오 — 센서 가스 실측값 (G1/G2/G3)",
+      "description": "활성 가스센서의 최신 가스 농도(ppm/%). op_* 시나리오 실행 시 누출 가스의 ramp-up 곡선을 device_id×gas 차원으로 추적. 어느 센서(G2)·무슨 가스(G3)·얼마나(G1)인지 한 패널에서 식별.",
+      "type": "timeseries",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 80
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "sensa_sensor_value{sensor_type=\"gas\"}",
+          "legendFormat": "{{device_id}} · {{sensor}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 10
+          }
+        }
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "id": 19,
+      "title": "시나리오 — 센서 전력 실측값",
+      "description": "활성 전력센서의 최신 current(A)/voltage(V)/watt(W). 전력 시나리오(P1/P3) 추세 추적.",
+      "type": "timeseries",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 80
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "sensa_sensor_value{sensor_type=\"power\"}",
+          "legendFormat": "{{device_id}} · {{sensor}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 10
+          }
+        }
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "id": 20,
+      "title": "시나리오 — 동적 zone 확산 반경 (G4)",
+      "description": "활성 동적 zone 의 그레이엄 확산 현재 반경(px). Phase J 핵심 — 누출 진행에 따라 위험 영역 반경이 동적으로 성장하는 과정을 zone_id 별로 관측.",
+      "type": "timeseries",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 88
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "sensa_zone_radius_px",
+          "legendFormat": "zone {{zone_id}} · {{gas_type}} · {{tier}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 10
+          }
+        }
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "id": 21,
+      "title": "시나리오 — zone 영향 센서 수 (G5)",
+      "description": "활성 동적 zone 의 confirmed(영향) 센서 수. op_multi 다중 확산 시 영향권에 들어오는 센서가 늘어나는 과정을 관측. op_single/op_h2s 는 보통 1.",
+      "type": "timeseries",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 88
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "sensa_zone_affected_sensors",
+          "legendFormat": "zone {{zone_id}} · {{gas_type}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 10
+          }
+        }
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "id": 22,
+      "title": "zone 라이프사이클 이벤트 분당 속도 (G7)",
+      "description": "GeoFence 생성/승격/polygon 확장/만료 이벤트의 분당 발생률. 시나리오의 zone 시작(created)→확장(polygon_expanded/upgraded)→종료(expired) 흐름을 시간축에서 추적.",
+      "type": "timeseries",
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 96
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "sum by (event_type) (rate(sensa_zone_event_total[1m]))",
+          "legendFormat": "{{event_type}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 10
+          }
+        }
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
       }
     }
   ]
