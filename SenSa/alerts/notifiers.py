@@ -48,10 +48,19 @@ def is_configured() -> bool:
 
 
 def _post_webhook(url: str, payload: dict, channel: str) -> bool:
-    """공통 webhook POST. 성공 시 True."""
+    """공통 webhook POST. 성공 시 True.
+
+    [b-1] 발송 실패 시 예외를 삼키지 않고 재전파한다.
+        호출 체인: send_external_notification_task → notify_external → 이 함수.
+        예외가 task 까지 올라가면 autoretry_for=(Exception,) 가 잡아
+        자동 재시도(5s→10s→20s, max 3회)를 수행한다.
+        과거엔 여기서 except 로 삼키고 False 를 반환해 task 가 succeeded 로
+        처리됐고, 그 결과 webhook 장애가 있어도 재시도가 전혀 동작하지 않았다.
+    """
     try:
         import requests
     except ImportError:
+        # requests 미설치는 일시 장애가 아닌 환경 문제 → 재시도해도 무의미하므로 skip.
         logger.warning(f"requests 라이브러리 없음 — {channel} skip")
         return False
 
@@ -60,8 +69,9 @@ def _post_webhook(url: str, payload: dict, channel: str) -> bool:
         resp.raise_for_status()
         return True
     except Exception as e:
-        logger.warning(f"{channel} 발송 실패: {e}")
-        return False
+        # 실패 로그 후 재전파 → task autoretry 가 잡아 재시도.
+        logger.warning(f"{channel} 발송 실패 (재시도 트리거): {e}")
+        raise
 
 
 def send_slack(text: str) -> bool:
