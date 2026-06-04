@@ -322,15 +322,30 @@ async def run_simulation_loop(app_state) -> None:
     """
     # timeout 은 AsyncClient 기본값. 개별 요청은 poster 에서 3초 명시.
     async with httpx.AsyncClient() as client:
-        # ─── 초기 로드 — fail-fast ───
+        # ─── 초기 로드 — 재시도 후 fail-fast (race-safe) ───
         #
         # 로드 실패 시 조용한 폴백을 두지 않는다 (통합결정 2.2).
-        # Django 가 안 켜져 있으면 로그 남기고 루프 자체를 종료.
-        try:
-            devices = await load_devices(client)
-            workers = await load_workers(client)
-        except Exception as e:
-            print(f"[scheduler] 초기 로드 실패 — Django 기동 여부 확인: {e!r}")
+        # 단, 과거엔 1회 실패 시 즉시 return 으로 루프를 영구 종료해, 콜드스타트
+        # 순서 경쟁(generator 가 Django 보다 먼저 뜸)이나 Django 일시 포화로
+        # 초기 로드가 ConnectError 가 나면 데이터가 영영 안 흐르는 footgun 이 있었다.
+        # → depends_on(service_healthy) 만으론 부족(healthcheck 통과 직후 포화 가능).
+        #   짧은 backoff 로 재시도하고, 그래도 실패하면 그때 종료(여전히 fail-fast).
+        devices = workers = None
+        INIT_RETRIES = 30          # 30회 × 2s = 최대 60초 동안 Django 기동 대기
+        INIT_BACKOFF_SEC = 2.0
+        for attempt in range(1, INIT_RETRIES + 1):
+            try:
+                devices = await load_devices(client)
+                workers = await load_workers(client)
+                break
+            except Exception as e:
+                print(
+                    f"[scheduler] 초기 로드 실패 (시도 {attempt}/{INIT_RETRIES}) "
+                    f"— Django 기동 대기: {e!r}"
+                )
+                await asyncio.sleep(INIT_BACKOFF_SEC)
+        else:
+            print("[scheduler] 초기 로드 최종 실패 (60초 초과) — 루프 종료")
             return
 
         # ─── v3 신규 — 임계치 동기화 (fail-soft) ───
