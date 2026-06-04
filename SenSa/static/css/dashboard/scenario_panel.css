@@ -129,3 +129,52 @@
     color: #4a7fff;
     border-left: 2px solid #4a7fff;
 }
+
+/* ═══════════════════════════════════════════════════════════════
+   control-overlay: 레이어+가스 탭 통합 컨트롤 패널 (시나리오 패널과 동일 톤)
+   탭 구조 → 기능 추가 시 탭만 늘고 패널 폭/개수는 고정.
+   ═══════════════════════════════════════════════════════════════ */
+#control-overlay {
+    position: absolute; top: 48px; right: 12px; z-index: 1000;
+    background: rgba(20, 23, 32, 0.95); border: 1px solid #2a2d3a;
+    border-radius: 8px; padding: 8px 10px; width: 196px;
+    backdrop-filter: blur(6px); box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+    font-family: 'Segoe UI', sans-serif;
+}
+#control-overlay .co-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+#control-overlay .co-title { font-size: 11px; font-weight: 700; color: #a0a8c0; letter-spacing: 0.5px; }
+#control-overlay .co-collapse { background: none; border: none; color: #a0a8c0; font-size: 12px; cursor: pointer; padding: 0 2px; line-height: 1; }
+#control-overlay .co-tabs { display: flex; gap: 4px; margin-bottom: 8px; border-bottom: 1px solid #2a2d3a; padding-bottom: 6px; }
+#control-overlay .co-tab {
+    flex: 1; padding: 4px 6px; font-size: 10px; font-weight: 600; color: #5a6080;
+    background: transparent; border: 1px solid #2a2d3a; border-radius: 5px; cursor: pointer; transition: all 0.15s;
+}
+#control-overlay .co-tab:hover { color: #a0a8c0; }
+#control-overlay .co-tab.active { color: #fff; background: rgba(90,96,128,0.25); border-color: #5a6080; }
+#control-overlay .co-tab-badge { font-size: 9px; color: #2ecc71; }
+#control-overlay .co-pane { display: none; }
+#control-overlay .co-pane.active { display: block; }
+#control-overlay .gt-master {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 5px 8px; margin-bottom: 6px; border-radius: 5px;
+    background: rgba(90,96,128,0.1); border: 1px solid #2a2d3a;
+}
+#control-overlay .gt-master span { font-size: 10px; color: #a0a8c0; font-weight: 600; }
+#control-overlay .gt-row {
+    display: flex; align-items: center; gap: 8px; padding: 5px 8px; margin-bottom: 3px;
+    border-radius: 5px; background: transparent; border: 1px solid #2a2d3a; transition: all 0.15s;
+}
+#control-overlay .gt-dot { width: 7px; height: 7px; border-radius: 50%; flex: none; background: #5a6080; }
+#control-overlay .gt-row.on .gt-dot { background: #2ecc71; }
+#control-overlay .gt-name { flex: 1; font-size: 11px; font-weight: 600; color: #c9d1d9; }
+#control-overlay .gt-name small { font-size: 9px; font-weight: 400; color: #6e7681; margin-left: 4px; }
+#control-overlay .gt-row:not(.on) .gt-name { color: #5a6080; }
+#control-overlay .gt-tg {
+    flex: none; width: 32px; height: 18px; border-radius: 9px; border: none; padding: 0;
+    cursor: pointer; background: #3a3f50; position: relative; transition: background 0.15s;
+}
+#control-overlay .gt-tg.on { background: #2ecc71; }
+#control-overlay .gt-tg .gt-thumb { position: absolute; top: 2px; left: 2px; width: 14px; height: 14px; border-radius: 50%; background: #fff; transition: transform 0.15s; }
+#control-overlay .gt-tg.on .gt-thumb { transform: translateX(14px); }
+#control-overlay .layer-toggle { display: flex; align-items: center; justify-content: space-between; padding: 4px 2px; gap: 10px; }
+#control-overlay .layer-toggle label { font-size: 10px; color: #a0a8c0; white-space: nowrap; }

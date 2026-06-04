@@ -45,15 +45,434 @@
   },
   "panels": [
     {
+      "id": 101,
+      "type": "timeseries",
+      "title": "⚙️ 시스템 — API 응답 성공률 (정상 응답 비율 %)",
+      "description": "django_prometheus 자동 메트릭. 2xx 응답률 — API 데이터 수신 정상 작동 증거.",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 0
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 95
+              },
+              {
+                "color": "green",
+                "value": 99
+              }
+            ]
+          }
+        }
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull",
+            "min"
+          ]
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "100 * sum(rate(django_http_responses_total_by_status_total{status=~\"2..\"}[5m])) / sum(rate(django_http_responses_total_by_status_total[5m]))",
+          "legendFormat": "2xx 성공률",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        }
+      ]
+    },
+    {
+      "id": 102,
+      "type": "timeseries",
+      "title": "⚙️ 시스템 — 시스템 요청량 (요청 종류별, 초당)",
+      "description": "django_prometheus 자동 메트릭. 평시 데이터 흐름 + 시연 시 spike 확인.",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 0
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops"
+        }
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(rate(django_http_requests_total_by_method_total[1m])) by (method)",
+          "legendFormat": "{{method}}",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        }
+      ]
+    },
+    {
+      "id": 103,
+      "type": "timeseries",
+      "title": "⚙️ 시스템 — API 응답 실패율 (서버 오류 비율 %)",
+      "description": "Django 5xx 응답 비율. 시연 도중 응답 실패 추적용.",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 1
+              },
+              {
+                "color": "red",
+                "value": 5
+              }
+            ]
+          }
+        }
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "100 * sum(rate(django_http_responses_total_by_status_total{status=~\"5..\"}[5m])) / sum(rate(django_http_responses_total_by_status_total[5m]))",
+          "legendFormat": "5xx 에러율",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        }
+      ]
+    },
+    {
+      "id": 104,
+      "type": "timeseries",
+      "title": "⚙️ 시스템 — API 응답 속도 (평균 / 최대)",
+      "description": "histogram_quantile p95 — 시연 시 응답 지연 추적용.",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        }
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(0.95, sum(rate(django_http_requests_latency_including_middlewares_seconds_bucket[5m])) by (le))",
+          "legendFormat": "p95 (incl. middleware)",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        },
+        {
+          "refId": "B",
+          "expr": "histogram_quantile(0.50, sum(rate(django_http_requests_latency_including_middlewares_seconds_bucket[5m])) by (le))",
+          "legendFormat": "p50 (중간값)",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        }
+      ]
+    },
+    {
+      "id": 105,
+      "type": "timeseries",
+      "title": "⚙️ 시스템 — 백그라운드 분석 성공률 (%)",
+      "description": "celery_task_total. succeeded ÷ (succeeded+failure). 백그라운드 분석 정상 작동 증거.",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 16
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 90
+              },
+              {
+                "color": "green",
+                "value": 98
+              }
+            ]
+          }
+        }
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull"
+          ]
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "100 * sum(rate(sensa_celery_task_total{state=\"succeeded\"}[5m])) / sum(rate(sensa_celery_task_total{state=~\"succeeded|failure\"}[5m]))",
+          "legendFormat": "Celery 성공률",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        }
+      ]
+    },
+    {
+      "id": 106,
+      "type": "timeseries",
+      "title": "📡 센서 — 데이터 저장 결과 (성공 / 실패 ops/s)",
+      "description": "SensorData.objects.create 결과. sensor_data_save_total{result}",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 16
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        }
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(rate(sensa_sensor_data_save_total{result=\"success\"}[1m])) by (device_type)",
+          "legendFormat": "성공 / {{device_type}}",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        },
+        {
+          "refId": "B",
+          "expr": "sum(rate(sensa_sensor_data_save_total{result=\"failure\"}[1m])) by (device_type)",
+          "legendFormat": "실패 / {{device_type}}",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        }
+      ]
+    },
+    {
+      "id": 107,
+      "type": "timeseries",
+      "title": "🗺️ 현장 — 실시간 화면 갱신 결과 (성공 / 실패)",
+      "description": "Channel Layer publish 결과. sensa_ws_publish_total{event_type, result}",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 24
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        }
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(rate(sensa_ws_publish_total{result=\"success\"}[1m])) by (event_type)",
+          "legendFormat": "성공 / {{event_type}}",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        },
+        {
+          "refId": "B",
+          "expr": "sum(rate(sensa_ws_publish_total{result=\"failure\"}[1m])) by (event_type)",
+          "legendFormat": "실패 / {{event_type}}",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        }
+      ]
+    },
+    {
+      "id": 108,
+      "type": "timeseries",
+      "title": "🗺️ 현장 — 현재 모니터링 접속자 수",
+      "description": "DashboardConsumer 활성 연결. sensa_ws_connections_active (Gauge)",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 24
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0
+        }
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(sensa_ws_connections_active)",
+          "legendFormat": "활성 연결 수",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        }
+      ]
+    },
+    {
       "id": 1,
-      "title": "Phase 1 — ARIMA Forecast 실행 시간 (95p / 50p)",
+      "title": "🚨 안전 — AI 위험 예측 처리 속도 (평균 / 최대)",
       "description": "AIForecastView 가 ARIMA(1,1,0) 또는 linear fallback 으로 N틱 예측을 계산하는 데 걸린 시간. 운영 실측 평균 14ms, p100 25ms 명세.",
       "type": "timeseries",
       "gridPos": {
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 0
+        "y": 32
       },
       "datasource": {
         "type": "prometheus",
@@ -100,14 +519,14 @@
     },
     {
       "id": 2,
-      "title": "Phase 5 — 60s Throttle 차단 누적 (운영자 알람 피로 감소 증거)",
+      "title": "🚨 안전 — 중복 알람 차단 건수 (운영자 부담 경감)",
       "description": "alarm_throttled_total — RE_ALARM_INTERVAL_SEC=60 정책으로 차단된 잠재 알람. sensor_type 별 분리. 큰 숫자일수록 운영자가 받지 않은 중복 알람이 많다는 뜻.",
       "type": "timeseries",
       "gridPos": {
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 0
+        "y": 32
       },
       "datasource": {
         "type": "prometheus",
@@ -148,14 +567,14 @@
     },
     {
       "id": 3,
-      "title": "알람 생성 분당 속도 (Phase 1 + Phase 5)",
+      "title": "🚨 안전 — 분당 알람 발생 건수",
       "description": "rate(alarm_created_total[1m]) — sensor_type / alarm_level 별 분리. transition (상태 전이) 알람의 burst 가 시연 시점에 보임.",
       "type": "timeseries",
       "gridPos": {
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 8
+        "y": 40
       },
       "datasource": {
         "type": "prometheus",
@@ -197,14 +616,14 @@
     },
     {
       "id": 4,
-      "title": "GeoFence 활성 zone (정적 + 동적)",
+      "title": "🗺️ 현장 — 활성 위험구역 수 (고정 + 자동 생성)",
       "description": "Gauge — 정적 zone 5 (관리자 그린 polygon) + 동적 zone (op_multi 시나리오 가동 시 +1). 실시간 매 scrape 시점 ORM 카운트.",
       "type": "timeseries",
       "gridPos": {
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 8
+        "y": 40
       },
       "datasource": {
         "type": "prometheus",
@@ -258,14 +677,14 @@
     },
     {
       "id": 5,
-      "title": "FastAPI Generator publish 속도 (endpoint × result)",
+      "title": "📡 센서 — 데이터 수신 속도 (장비별, 성공 / 실패)",
       "description": "rate(publish_total[1m]) — sensor_data / worker_location / check_geofence 3 endpoint 별. result=ok 외에 http_error/exception 노출 시 인프라 이상.",
       "type": "timeseries",
       "gridPos": {
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 16
+        "y": 48
       },
       "datasource": {
         "type": "prometheus",
@@ -307,14 +726,14 @@
     },
     {
       "id": 6,
-      "title": "Generator publish 95p latency (endpoint별)",
+      "title": "📡 센서 — 데이터 수신 응답 시간 (장비별)",
       "description": "Histogram — publish 1건 (FastAPI → Django HTTP POST) 소요 시간.",
       "type": "timeseries",
       "gridPos": {
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 16
+        "y": 48
       },
       "datasource": {
         "type": "prometheus",
@@ -361,14 +780,14 @@
     },
     {
       "id": 7,
-      "title": "Phase 4 — Scrape 가동 현황 (UP)",
+      "title": "⚙️ 시스템 — 핵심 서버 가동 상태",
       "description": "Prometheus 가 두 host 서비스를 정상 scrape 하고 있는지. 1 = 정상, 0 = 응답 없음.",
       "type": "stat",
       "gridPos": {
         "h": 8,
         "w": 24,
         "x": 0,
-        "y": 24
+        "y": 56
       },
       "datasource": {
         "type": "prometheus",
@@ -443,12 +862,12 @@
     },
     {
       "id": 8,
-      "title": "Phase 4 — Celery task 처리 속도 (state 별)",
+      "title": "⚙️ 시스템 — 백그라운드 분석 처리 속도 (성공 / 실패)",
       "description": "Celery task state 별 분당 발생 속도. P2 비동기 처리 가동 증거.",
       "type": "timeseries",
       "gridPos": {
         "x": 0,
-        "y": 32,
+        "y": 64,
         "w": 12,
         "h": 8
       },
@@ -492,12 +911,12 @@
     },
     {
       "id": 9,
-      "title": "Phase 4 — Celery task latency p95 (성공만)",
+      "title": "⚙️ 시스템 — 백그라운드 분석 응답 시간 (평균 / 최대)",
       "description": "Celery task 실행 시간 95p (성공 기준). task_name 별 비교.",
       "type": "timeseries",
       "gridPos": {
         "x": 12,
-        "y": 32,
+        "y": 64,
         "w": 12,
         "h": 8
       },
@@ -541,12 +960,12 @@
     },
     {
       "id": 10,
-      "title": "Phase 4 — Celery task retry 누적 (P2 autoretry 정책 작동 증거)",
+      "title": "⚙️ 시스템 — 일시 오류 자동 복구 누적",
       "description": "5분 윈도우 retry 발생. send_external_notification_task autoretry 작동 시 증가.",
       "type": "timeseries",
       "gridPos": {
         "x": 0,
-        "y": 40,
+        "y": 72,
         "w": 24,
         "h": 8
       },

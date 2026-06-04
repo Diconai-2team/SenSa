@@ -1,0 +1,145 @@
+# ============================================================
+# G단계 — Prometheus (K8s)
+# Compose(network_mode:host, host.docker.internal scrape) →
+# K8s(kubernetes_sd_configs endpoints role)로 변환.
+# django 2 replicas 모두 자동 발견 + HPA 확장 Pod 자동 편입.
+# RBAC: endpoints/pods/services 읽기 권한 필요 (ServiceAccount + ClusterRole).
+# ============================================================
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: prometheus
+  namespace: sensa
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: sensa-prometheus
+rules:
+  - apiGroups: [""]
+    resources: ["endpoints", "services", "pods", "nodes"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: sensa-prometheus
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: sensa-prometheus
+subjects:
+  - kind: ServiceAccount
+    name: prometheus
+    namespace: sensa
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-config
+  namespace: sensa
+data:
+  prometheus.yml: |
+    global:
+      scrape_interval: 15s
+      scrape_timeout: 10s
+      evaluation_interval: 15s
+      external_labels:
+        cluster: 'sensa_k8s'
+
+    scrape_configs:
+      # ── Prometheus 자체 ──
+      - job_name: 'prometheus'
+        static_configs:
+          - targets: ['localhost:9090']
+
+      # ── SenSa 서비스 (K8s Endpoints 서비스 디스커버리) ──
+      # django(2 replicas) + celery-metrics + generator 의 모든 Pod 자동 발견.
+      # 새 Pod이 떠도(HPA 확장 등) 자동으로 scrape 대상에 편입.
+      - job_name: 'sensa-endpoints'
+        metrics_path: '/metrics'
+        kubernetes_sd_configs:
+          - role: endpoints
+            namespaces:
+              names: ['sensa']
+        relabel_configs:
+          # sensa 안 django / celery-metrics / generator 서비스만 유지
+          - source_labels: [__meta_kubernetes_service_name]
+            regex: 'django|celery-metrics|generator'
+            action: keep
+          # service 라벨 부여 (django/celery-metrics/generator)
+          - source_labels: [__meta_kubernetes_service_name]
+            target_label: service
+          # job 라벨을 보기 좋게
+          - source_labels: [__meta_kubernetes_service_name]
+            target_label: job
+          # Pod 이름을 instance 로 (replica 구분)
+          - source_labels: [__meta_kubernetes_pod_name]
+            target_label: pod
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: prometheus
+  namespace: sensa
+spec:
+  type: ClusterIP
+  selector:
+    app: prometheus
+  ports:
+    - name: http
+      port: 9090
+      targetPort: 9090
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: prometheus
+  namespace: sensa
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: prometheus
+  template:
+    metadata:
+      labels:
+        app: prometheus
+    spec:
+      serviceAccountName: prometheus
+      containers:
+        - name: prometheus
+          image: prom/prometheus:v2.54.1
+          imagePullPolicy: IfNotPresent
+          args:
+            - '--config.file=/etc/prometheus/prometheus.yml'
+            - '--storage.tsdb.path=/prometheus'
+            - '--storage.tsdb.retention.time=15d'
+            - '--web.enable-lifecycle'
+          ports:
+            - containerPort: 9090
+              name: http
+          volumeMounts:
+            - name: config
+              mountPath: /etc/prometheus
+            - name: data
+              mountPath: /prometheus
+          readinessProbe:
+            httpGet: { path: /-/ready, port: 9090 }
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: { path: /-/healthy, port: 9090 }
+            initialDelaySeconds: 30
+            periodSeconds: 20
+          resources:
+            requests: { memory: "256Mi", cpu: "100m" }
+            limits:   { memory: "1Gi",   cpu: "500m" }
+      volumes:
+        - name: config
+          configMap:
+            name: prometheus-config
+        - name: data
+          emptyDir: {}

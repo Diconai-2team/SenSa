@@ -1,0 +1,1844 @@
+# ============================================================
+# G단계 — Grafana (K8s)
+# Compose는 Dockerfile COPY로 dashboards/provisioning 내장.
+# K8s는 ConfigMap 3개로 분리 mount:
+#   - grafana-datasource : provisioning/datasources (url=http://prometheus:9090)
+#   - grafana-provider   : provisioning/dashboards (path=/etc/grafana/dashboards)
+#   - grafana-dashboard  : sensa.json (18 패널, 안전 관리자 친화 라벨 v2)
+# 익명 Admin 로그인(시연 편의) = Compose 설정 계승.
+# ============================================================
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-datasource
+  namespace: sensa
+data:
+  prometheus.yml: |
+    apiVersion: 1
+    datasources:
+      - name: Prometheus
+        uid: prometheus
+        type: prometheus
+        access: proxy
+        url: http://prometheus:9090
+        isDefault: true
+        editable: false
+      - name: SensaPostgres
+        uid: sensa_pg
+        type: postgres
+        access: proxy
+        url: postgres:5432
+        user: sensa
+        jsonData:
+          database: sensa
+          sslmode: disable
+          postgresVersion: 1600
+          timescaledb: false
+        secureJsonData:
+          password: ${POSTGRES_PASSWORD}
+        editable: false
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-provider
+  namespace: sensa
+data:
+  sensa_provider.yml: |
+    apiVersion: 1
+    providers:
+      - name: 'SenSa'
+        orgId: 1
+        folder: 'SenSa'
+        type: file
+        disableDeletion: false
+        updateIntervalSeconds: 10
+        allowUiUpdates: true
+        options:
+          path: /etc/grafana/dashboards
+          foldersFromFilesStructure: false
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboard
+  namespace: sensa
+data:
+  sensa.json: |
+    {
+      "annotations": {
+        "list": [
+          {
+            "builtIn": 1,
+            "datasource": {
+              "type": "grafana",
+              "uid": "-- Grafana --"
+            },
+            "enable": true,
+            "hide": true,
+            "iconColor": "rgba(0, 211, 255, 1)",
+            "name": "Annotations & Alerts",
+            "type": "dashboard"
+          }
+        ]
+      },
+      "editable": true,
+      "fiscalYearStartMonth": 0,
+      "graphTooltip": 1,
+      "id": null,
+      "uid": "sensa-main",
+      "title": "SenSa — 4차 프로젝트 통합 메트릭",
+      "tags": [
+        "sensa",
+        "presentation"
+      ],
+      "timezone": "browser",
+      "schemaVersion": 39,
+      "version": 3,
+      "refresh": "5s",
+      "time": {
+        "from": "now-15m",
+        "to": "now"
+      },
+      "timepicker": {
+        "refresh_intervals": [
+          "5s",
+          "10s",
+          "30s",
+          "1m",
+          "5m",
+          "15m"
+        ]
+      },
+      "panels": [
+        {
+          "id": 101,
+          "type": "timeseries",
+          "title": "⚙️ 시스템 — API 응답 성공률 (정상 응답 비율 %)",
+          "description": "django_prometheus 자동 메트릭. 2xx 응답률 — API 데이터 수신 정상 작동 증거.",
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 0
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "percent",
+              "min": 0,
+              "max": 100,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "red",
+                    "value": null
+                  },
+                  {
+                    "color": "yellow",
+                    "value": 95
+                  },
+                  {
+                    "color": "green",
+                    "value": 99
+                  }
+                ]
+              }
+            }
+          },
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "bottom",
+              "calcs": [
+                "lastNotNull",
+                "min"
+              ]
+            }
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "100 * sum(rate(django_http_responses_total_by_status_total{status=~\"2..\"}[5m])) / sum(rate(django_http_responses_total_by_status_total[5m]))",
+              "legendFormat": "2xx 성공률",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              }
+            }
+          ]
+        },
+        {
+          "id": 102,
+          "type": "timeseries",
+          "title": "⚙️ 시스템 — 시스템 요청량 (요청 종류별, 초당)",
+          "description": "django_prometheus 자동 메트릭. 평시 데이터 흐름 + 시연 시 spike 확인.",
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 0
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "ops"
+            }
+          },
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "bottom",
+              "calcs": [
+                "lastNotNull",
+                "max"
+              ]
+            }
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum(rate(django_http_requests_total_by_method_total[1m])) by (method)",
+              "legendFormat": "{{method}}",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              }
+            }
+          ]
+        },
+        {
+          "id": 103,
+          "type": "timeseries",
+          "title": "⚙️ 시스템 — API 응답 실패율 (서버 오류 비율 %)",
+          "description": "Django 5xx 응답 비율. 시연 도중 응답 실패 추적용.",
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 8
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "percent",
+              "min": 0,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "yellow",
+                    "value": 1
+                  },
+                  {
+                    "color": "red",
+                    "value": 5
+                  }
+                ]
+              }
+            }
+          },
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "bottom",
+              "calcs": [
+                "lastNotNull",
+                "max"
+              ]
+            }
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "100 * sum(rate(django_http_responses_total_by_status_total{status=~\"5..\"}[5m])) / sum(rate(django_http_responses_total_by_status_total[5m]))",
+              "legendFormat": "5xx 에러율",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              }
+            }
+          ]
+        },
+        {
+          "id": 104,
+          "type": "timeseries",
+          "title": "⚙️ 시스템 — API 응답 속도 (평균 / 최대)",
+          "description": "histogram_quantile p95 — 시연 시 응답 지연 추적용.",
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 8
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "s"
+            }
+          },
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "bottom",
+              "calcs": [
+                "lastNotNull",
+                "max"
+              ]
+            }
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "histogram_quantile(0.95, sum(rate(django_http_requests_latency_including_middlewares_seconds_bucket[5m])) by (le))",
+              "legendFormat": "p95 (incl. middleware)",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              }
+            },
+            {
+              "refId": "B",
+              "expr": "histogram_quantile(0.50, sum(rate(django_http_requests_latency_including_middlewares_seconds_bucket[5m])) by (le))",
+              "legendFormat": "p50 (중간값)",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              }
+            }
+          ]
+        },
+        {
+          "id": 105,
+          "type": "timeseries",
+          "title": "⚙️ 시스템 — 백그라운드 분석 성공률 (%)",
+          "description": "celery_task_total. succeeded ÷ (succeeded+failure). 백그라운드 분석 정상 작동 증거.",
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 16
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "percent",
+              "min": 0,
+              "max": 100,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "red",
+                    "value": null
+                  },
+                  {
+                    "color": "yellow",
+                    "value": 90
+                  },
+                  {
+                    "color": "green",
+                    "value": 98
+                  }
+                ]
+              }
+            }
+          },
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "bottom",
+              "calcs": [
+                "lastNotNull"
+              ]
+            }
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "100 * sum(rate(sensa_celery_task_total{state=\"succeeded\"}[5m])) / sum(rate(sensa_celery_task_total{state=~\"succeeded|failure\"}[5m]))",
+              "legendFormat": "Celery 성공률",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              }
+            }
+          ]
+        },
+        {
+          "id": 106,
+          "type": "timeseries",
+          "title": "📡 센서 — 데이터 저장 결과 (성공 / 실패 ops/s)",
+          "description": "SensorData.objects.create 결과. sensor_data_save_total{result}",
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 16
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short"
+            }
+          },
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "bottom",
+              "calcs": [
+                "lastNotNull",
+                "max"
+              ]
+            }
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum(rate(sensa_sensor_data_save_total{result=\"success\"}[1m])) by (device_type)",
+              "legendFormat": "성공 / {{device_type}}",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              }
+            },
+            {
+              "refId": "B",
+              "expr": "sum(rate(sensa_sensor_data_save_total{result=\"failure\"}[1m])) by (device_type)",
+              "legendFormat": "실패 / {{device_type}}",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              }
+            }
+          ]
+        },
+        {
+          "id": 107,
+          "type": "timeseries",
+          "title": "🗺️ 현장 — 실시간 화면 갱신 결과 (성공 / 실패)",
+          "description": "Channel Layer publish 결과. sensa_ws_publish_total{event_type, result}",
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 24
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short"
+            }
+          },
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "bottom",
+              "calcs": [
+                "lastNotNull",
+                "max"
+              ]
+            }
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum(rate(sensa_ws_publish_total{result=\"success\"}[1m])) by (event_type)",
+              "legendFormat": "성공 / {{event_type}}",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              }
+            },
+            {
+              "refId": "B",
+              "expr": "sum(rate(sensa_ws_publish_total{result=\"failure\"}[1m])) by (event_type)",
+              "legendFormat": "실패 / {{event_type}}",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              }
+            }
+          ]
+        },
+        {
+          "id": 108,
+          "type": "timeseries",
+          "title": "🗺️ 현장 — 현재 모니터링 접속자 수",
+          "description": "DashboardConsumer 활성 연결. sensa_ws_connections_active (Gauge)",
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 24
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "min": 0
+            }
+          },
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "bottom",
+              "calcs": [
+                "lastNotNull",
+                "max"
+              ]
+            }
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum(sensa_ws_connections_active)",
+              "legendFormat": "활성 연결 수",
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              }
+            }
+          ]
+        },
+        {
+          "id": 1,
+          "title": "🚨 안전 — AI 위험 예측 처리 속도 (평균 / 최대)",
+          "description": "AIForecastView 가 ARIMA(1,1,0) 또는 linear fallback 으로 N틱 예측을 계산하는 데 걸린 시간. 운영 실측 평균 14ms, p100 25ms 명세.",
+          "type": "timeseries",
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 32
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "expr": "histogram_quantile(0.95, sum(rate(sensa_ai_forecast_duration_seconds_bucket[5m])) by (le, algorithm))",
+              "legendFormat": "p95 {{algorithm}}",
+              "refId": "A"
+            },
+            {
+              "expr": "histogram_quantile(0.50, sum(rate(sensa_ai_forecast_duration_seconds_bucket[5m])) by (le, algorithm))",
+              "legendFormat": "p50 {{algorithm}}",
+              "refId": "B"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "s",
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "drawStyle": "line",
+                "lineWidth": 2,
+                "fillOpacity": 10
+              }
+            }
+          },
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "bottom",
+              "calcs": [
+                "lastNotNull",
+                "max"
+              ]
+            },
+            "tooltip": {
+              "mode": "multi"
+            }
+          }
+        },
+        {
+          "id": 2,
+          "title": "🚨 안전 — 중복 알람 차단 건수 (운영자 부담 경감)",
+          "description": "alarm_throttled_total — RE_ALARM_INTERVAL_SEC=60 정책으로 차단된 잠재 알람. sensor_type 별 분리. 큰 숫자일수록 운영자가 받지 않은 중복 알람이 많다는 뜻.",
+          "type": "timeseries",
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 32
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "expr": "sensa_alarm_throttled_total",
+              "legendFormat": "{{sensor_type}} ({{reason}})",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "drawStyle": "line",
+                "lineWidth": 2,
+                "fillOpacity": 20
+              }
+            }
+          },
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "bottom",
+              "calcs": [
+                "lastNotNull"
+              ]
+            },
+            "tooltip": {
+              "mode": "multi"
+            }
+          }
+        },
+        {
+          "id": 3,
+          "title": "🚨 안전 — 분당 알람 발생 건수",
+          "description": "rate(alarm_created_total[1m]) — sensor_type / alarm_level 별 분리. transition (상태 전이) 알람의 burst 가 시연 시점에 보임.",
+          "type": "timeseries",
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 40
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "expr": "sum by (sensor_type, alarm_level) (rate(sensa_alarm_created_total[1m]))",
+              "legendFormat": "{{sensor_type}} / {{alarm_level}}",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "ops",
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "drawStyle": "line",
+                "lineWidth": 2,
+                "fillOpacity": 10
+              }
+            }
+          },
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "bottom",
+              "calcs": [
+                "mean",
+                "max"
+              ]
+            },
+            "tooltip": {
+              "mode": "multi"
+            }
+          }
+        },
+        {
+          "id": 4,
+          "title": "🗺️ 현장 — 활성 위험구역 수 (고정 + 자동 생성)",
+          "description": "Gauge — 정적 zone 5 (관리자 그린 polygon) + 동적 zone (op_multi 시나리오 가동 시 +1). 실시간 매 scrape 시점 ORM 카운트.",
+          "type": "timeseries",
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 40
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "expr": "sensa_zone_active_static",
+              "legendFormat": "정적 zone",
+              "refId": "A"
+            },
+            {
+              "expr": "sensa_zone_active_dynamic",
+              "legendFormat": "동적 zone",
+              "refId": "B"
+            },
+            {
+              "expr": "sensa_zone_active_static + sensa_zone_active_dynamic",
+              "legendFormat": "전체",
+              "refId": "C"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "short",
+              "min": 0,
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "drawStyle": "line",
+                "lineWidth": 2,
+                "fillOpacity": 20,
+                "stepAfter": true
+              }
+            }
+          },
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "bottom",
+              "calcs": [
+                "lastNotNull",
+                "max"
+              ]
+            },
+            "tooltip": {
+              "mode": "multi"
+            }
+          }
+        },
+        {
+          "id": 5,
+          "title": "📡 센서 — 데이터 수신 속도 (장비별, 성공 / 실패)",
+          "description": "rate(publish_total[1m]) — sensor_data / worker_location / check_geofence 3 endpoint 별. result=ok 외에 http_error/exception 노출 시 인프라 이상.",
+          "type": "timeseries",
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 48
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "expr": "sum by (endpoint, result) (rate(sensa_generator_publish_total[1m]))",
+              "legendFormat": "{{endpoint}} / {{result}}",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "ops",
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "drawStyle": "line",
+                "lineWidth": 2,
+                "fillOpacity": 10
+              }
+            }
+          },
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "bottom",
+              "calcs": [
+                "mean",
+                "lastNotNull"
+              ]
+            },
+            "tooltip": {
+              "mode": "multi"
+            }
+          }
+        },
+        {
+          "id": 6,
+          "title": "📡 센서 — 데이터 수신 응답 시간 (장비별)",
+          "description": "Histogram — publish 1건 (FastAPI → Django HTTP POST) 소요 시간.",
+          "type": "timeseries",
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 48
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "expr": "histogram_quantile(0.95, sum by (le, endpoint) (rate(sensa_generator_publish_duration_seconds_bucket[5m])))",
+              "legendFormat": "p95 {{endpoint}}",
+              "refId": "A"
+            },
+            {
+              "expr": "histogram_quantile(0.50, sum by (le, endpoint) (rate(sensa_generator_publish_duration_seconds_bucket[5m])))",
+              "legendFormat": "p50 {{endpoint}}",
+              "refId": "B"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "s",
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "drawStyle": "line",
+                "lineWidth": 2,
+                "fillOpacity": 10
+              }
+            }
+          },
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "bottom",
+              "calcs": [
+                "lastNotNull",
+                "max"
+              ]
+            },
+            "tooltip": {
+              "mode": "multi"
+            }
+          }
+        },
+        {
+          "id": 7,
+          "title": "⚙️ 시스템 — 핵심 서버 가동 상태",
+          "description": "Prometheus 가 두 host 서비스를 정상 scrape 하고 있는지. 1 = 정상, 0 = 응답 없음.",
+          "type": "stat",
+          "gridPos": {
+            "h": 8,
+            "w": 24,
+            "x": 0,
+            "y": 56
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "expr": "up{job=~\"sensa-django|sensa-generator|sensa-celery|prometheus\"}",
+              "legendFormat": "{{job}} ({{instance}})",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "thresholds"
+              },
+              "mappings": [
+                {
+                  "options": {
+                    "0": {
+                      "color": "red",
+                      "text": "DOWN"
+                    }
+                  },
+                  "type": "value"
+                },
+                {
+                  "options": {
+                    "1": {
+                      "color": "green",
+                      "text": "UP"
+                    }
+                  },
+                  "type": "value"
+                }
+              ],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "red",
+                    "value": null
+                  },
+                  {
+                    "color": "green",
+                    "value": 1
+                  }
+                ]
+              },
+              "unit": "short"
+            }
+          },
+          "options": {
+            "colorMode": "background",
+            "graphMode": "none",
+            "justifyMode": "center",
+            "orientation": "vertical",
+            "reduceOptions": {
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "",
+              "values": false
+            },
+            "textMode": "value_and_name",
+            "text": {
+              "titleSize": 18,
+              "valueSize": 32
+            }
+          }
+        },
+        {
+          "id": 8,
+          "title": "⚙️ 시스템 — 백그라운드 분석 처리 속도 (성공 / 실패)",
+          "description": "Celery task state 별 분당 발생 속도. P2 비동기 처리 가동 증거.",
+          "type": "timeseries",
+          "gridPos": {
+            "x": 0,
+            "y": 64,
+            "w": 12,
+            "h": 8
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "expr": "sum by (task_name, state) (rate(sensa_celery_task_total[5m]))",
+              "legendFormat": "{{task_name}} ({{state}})",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "s",
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "drawStyle": "line",
+                "lineWidth": 2,
+                "fillOpacity": 10
+              }
+            }
+          },
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "bottom",
+              "calcs": [
+                "lastNotNull",
+                "max"
+              ]
+            },
+            "tooltip": {
+              "mode": "multi"
+            }
+          }
+        },
+        {
+          "id": 9,
+          "title": "⚙️ 시스템 — 백그라운드 분석 응답 시간 (평균 / 최대)",
+          "description": "Celery task 실행 시간 95p (성공 기준). task_name 별 비교.",
+          "type": "timeseries",
+          "gridPos": {
+            "x": 12,
+            "y": 64,
+            "w": 12,
+            "h": 8
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "expr": "histogram_quantile(0.95, sum by (task_name, le) (rate(sensa_celery_task_duration_seconds_bucket{state=\"succeeded\"}[5m])))",
+              "legendFormat": "p95 {{task_name}}",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "s",
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "drawStyle": "line",
+                "lineWidth": 2,
+                "fillOpacity": 10
+              }
+            }
+          },
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "bottom",
+              "calcs": [
+                "lastNotNull",
+                "max"
+              ]
+            },
+            "tooltip": {
+              "mode": "multi"
+            }
+          }
+        },
+        {
+          "id": 10,
+          "title": "⚙️ 시스템 — 일시 오류 자동 복구 누적",
+          "description": "5분 윈도우 retry 발생. send_external_notification_task autoretry 작동 시 증가.",
+          "type": "timeseries",
+          "gridPos": {
+            "x": 0,
+            "y": 72,
+            "w": 24,
+            "h": 8
+          },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "expr": "sum by (task_name) (increase(sensa_celery_task_total{state=\"retried\"}[5m]))",
+              "legendFormat": "{{task_name}}",
+              "refId": "A"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "unit": "s",
+              "color": {
+                "mode": "palette-classic"
+              },
+              "custom": {
+                "drawStyle": "line",
+                "lineWidth": 2,
+                "fillOpacity": 10
+              }
+            }
+          },
+          "options": {
+            "legend": {
+              "displayMode": "table",
+              "placement": "bottom",
+              "calcs": [
+                "lastNotNull",
+                "max"
+              ]
+            },
+            "tooltip": {
+              "mode": "multi"
+            }
+          }
+        }
+      ]
+    }
+  sensa_gas.json: |
+    {
+      "uid": "sensa-gas",
+      "title": "🧪 가스 농도 추세 (이상 상승 탐지)",
+      "tags": [
+        "sensa",
+        "gas"
+      ],
+      "timezone": "browser",
+      "schemaVersion": 39,
+      "refresh": "10s",
+      "time": {
+        "from": "now-30m",
+        "to": "now"
+      },
+      "templating": {
+        "list": []
+      },
+      "panels": [
+        {
+          "id": 200,
+          "title": "CO 일산화탄소  (주의 25 / 위험 200 ppm)",
+          "type": "timeseries",
+          "datasource": {
+            "type": "postgres",
+            "uid": "sensa_pg"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 8,
+            "x": 0,
+            "y": 0
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "ppm",
+              "color": {
+                "mode": "thresholds"
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "yellow",
+                    "value": 25
+                  },
+                  {
+                    "color": "red",
+                    "value": 200
+                  }
+                ]
+              },
+              "custom": {
+                "drawStyle": "line",
+                "lineWidth": 2,
+                "fillOpacity": 8,
+                "showPoints": "never",
+                "spanNulls": true,
+                "thresholdsStyle": {
+                  "mode": "line"
+                }
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "postgres",
+                "uid": "sensa_pg"
+              },
+              "format": "time_series",
+              "rawQuery": true,
+              "rawSql": "SELECT $__timeGroupAlias(timestamp, $__interval), MAX(\"co\") AS \"최대(가장 위험)\", AVG(\"co\") AS \"평균\" FROM devices_sensordata WHERE $__timeFilter(timestamp) AND \"co\" IS NOT NULL GROUP BY 1 ORDER BY 1"
+            }
+          ]
+        },
+        {
+          "id": 201,
+          "title": "H₂S 황화수소  (주의 10 / 위험 50 ppm)",
+          "type": "timeseries",
+          "datasource": {
+            "type": "postgres",
+            "uid": "sensa_pg"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 8,
+            "x": 8,
+            "y": 0
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "ppm",
+              "color": {
+                "mode": "thresholds"
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "yellow",
+                    "value": 10
+                  },
+                  {
+                    "color": "red",
+                    "value": 50
+                  }
+                ]
+              },
+              "custom": {
+                "drawStyle": "line",
+                "lineWidth": 2,
+                "fillOpacity": 8,
+                "showPoints": "never",
+                "spanNulls": true,
+                "thresholdsStyle": {
+                  "mode": "line"
+                }
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "postgres",
+                "uid": "sensa_pg"
+              },
+              "format": "time_series",
+              "rawQuery": true,
+              "rawSql": "SELECT $__timeGroupAlias(timestamp, $__interval), MAX(\"h2s\") AS \"최대(가장 위험)\", AVG(\"h2s\") AS \"평균\" FROM devices_sensordata WHERE $__timeFilter(timestamp) AND \"h2s\" IS NOT NULL GROUP BY 1 ORDER BY 1"
+            }
+          ]
+        },
+        {
+          "id": 202,
+          "title": "CO₂ 이산화탄소  (주의 1000 / 위험 5000 ppm)",
+          "type": "timeseries",
+          "datasource": {
+            "type": "postgres",
+            "uid": "sensa_pg"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 8,
+            "x": 16,
+            "y": 0
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "ppm",
+              "color": {
+                "mode": "thresholds"
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "yellow",
+                    "value": 1000
+                  },
+                  {
+                    "color": "red",
+                    "value": 5000
+                  }
+                ]
+              },
+              "custom": {
+                "drawStyle": "line",
+                "lineWidth": 2,
+                "fillOpacity": 8,
+                "showPoints": "never",
+                "spanNulls": true,
+                "thresholdsStyle": {
+                  "mode": "line"
+                }
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "postgres",
+                "uid": "sensa_pg"
+              },
+              "format": "time_series",
+              "rawQuery": true,
+              "rawSql": "SELECT $__timeGroupAlias(timestamp, $__interval), MAX(\"co2\") AS \"최대(가장 위험)\", AVG(\"co2\") AS \"평균\" FROM devices_sensordata WHERE $__timeFilter(timestamp) AND \"co2\" IS NOT NULL GROUP BY 1 ORDER BY 1"
+            }
+          ]
+        },
+        {
+          "id": 203,
+          "title": "NH₃ 암모니아  (주의 25 / 위험 50 ppm)",
+          "type": "timeseries",
+          "datasource": {
+            "type": "postgres",
+            "uid": "sensa_pg"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 8,
+            "x": 0,
+            "y": 8
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "ppm",
+              "color": {
+                "mode": "thresholds"
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "yellow",
+                    "value": 25
+                  },
+                  {
+                    "color": "red",
+                    "value": 50
+                  }
+                ]
+              },
+              "custom": {
+                "drawStyle": "line",
+                "lineWidth": 2,
+                "fillOpacity": 8,
+                "showPoints": "never",
+                "spanNulls": true,
+                "thresholdsStyle": {
+                  "mode": "line"
+                }
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "postgres",
+                "uid": "sensa_pg"
+              },
+              "format": "time_series",
+              "rawQuery": true,
+              "rawSql": "SELECT $__timeGroupAlias(timestamp, $__interval), MAX(\"nh3\") AS \"최대(가장 위험)\", AVG(\"nh3\") AS \"평균\" FROM devices_sensordata WHERE $__timeFilter(timestamp) AND \"nh3\" IS NOT NULL GROUP BY 1 ORDER BY 1"
+            }
+          ]
+        },
+        {
+          "id": 204,
+          "title": "NO₂ 이산화질소  (주의 3 / 위험 5 ppm)",
+          "type": "timeseries",
+          "datasource": {
+            "type": "postgres",
+            "uid": "sensa_pg"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 8,
+            "x": 8,
+            "y": 8
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "ppm",
+              "color": {
+                "mode": "thresholds"
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "yellow",
+                    "value": 3
+                  },
+                  {
+                    "color": "red",
+                    "value": 5
+                  }
+                ]
+              },
+              "custom": {
+                "drawStyle": "line",
+                "lineWidth": 2,
+                "fillOpacity": 8,
+                "showPoints": "never",
+                "spanNulls": true,
+                "thresholdsStyle": {
+                  "mode": "line"
+                }
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "postgres",
+                "uid": "sensa_pg"
+              },
+              "format": "time_series",
+              "rawQuery": true,
+              "rawSql": "SELECT $__timeGroupAlias(timestamp, $__interval), MAX(\"no2\") AS \"최대(가장 위험)\", AVG(\"no2\") AS \"평균\" FROM devices_sensordata WHERE $__timeFilter(timestamp) AND \"no2\" IS NOT NULL GROUP BY 1 ORDER BY 1"
+            }
+          ]
+        },
+        {
+          "id": 205,
+          "title": "SO₂ 이산화황  (주의 2 / 위험 5 ppm)",
+          "type": "timeseries",
+          "datasource": {
+            "type": "postgres",
+            "uid": "sensa_pg"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 8,
+            "x": 16,
+            "y": 8
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "ppm",
+              "color": {
+                "mode": "thresholds"
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "yellow",
+                    "value": 2
+                  },
+                  {
+                    "color": "red",
+                    "value": 5
+                  }
+                ]
+              },
+              "custom": {
+                "drawStyle": "line",
+                "lineWidth": 2,
+                "fillOpacity": 8,
+                "showPoints": "never",
+                "spanNulls": true,
+                "thresholdsStyle": {
+                  "mode": "line"
+                }
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "postgres",
+                "uid": "sensa_pg"
+              },
+              "format": "time_series",
+              "rawQuery": true,
+              "rawSql": "SELECT $__timeGroupAlias(timestamp, $__interval), MAX(\"so2\") AS \"최대(가장 위험)\", AVG(\"so2\") AS \"평균\" FROM devices_sensordata WHERE $__timeFilter(timestamp) AND \"so2\" IS NOT NULL GROUP BY 1 ORDER BY 1"
+            }
+          ]
+        },
+        {
+          "id": 206,
+          "title": "O₃ 오존  (주의 0.05 / 위험 0.1 ppm)",
+          "type": "timeseries",
+          "datasource": {
+            "type": "postgres",
+            "uid": "sensa_pg"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 8,
+            "x": 0,
+            "y": 16
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "ppm",
+              "color": {
+                "mode": "thresholds"
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "yellow",
+                    "value": 0.05
+                  },
+                  {
+                    "color": "red",
+                    "value": 0.1
+                  }
+                ]
+              },
+              "custom": {
+                "drawStyle": "line",
+                "lineWidth": 2,
+                "fillOpacity": 8,
+                "showPoints": "never",
+                "spanNulls": true,
+                "thresholdsStyle": {
+                  "mode": "line"
+                }
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "postgres",
+                "uid": "sensa_pg"
+              },
+              "format": "time_series",
+              "rawQuery": true,
+              "rawSql": "SELECT $__timeGroupAlias(timestamp, $__interval), MAX(\"o3\") AS \"최대(가장 위험)\", AVG(\"o3\") AS \"평균\" FROM devices_sensordata WHERE $__timeFilter(timestamp) AND \"o3\" IS NOT NULL GROUP BY 1 ORDER BY 1"
+            }
+          ]
+        },
+        {
+          "id": 207,
+          "title": "VOC 휘발성유기  (주의 0.5 / 위험 2.0 ppm)",
+          "type": "timeseries",
+          "datasource": {
+            "type": "postgres",
+            "uid": "sensa_pg"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 8,
+            "x": 8,
+            "y": 16
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "ppm",
+              "color": {
+                "mode": "thresholds"
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "yellow",
+                    "value": 0.5
+                  },
+                  {
+                    "color": "red",
+                    "value": 2.0
+                  }
+                ]
+              },
+              "custom": {
+                "drawStyle": "line",
+                "lineWidth": 2,
+                "fillOpacity": 8,
+                "showPoints": "never",
+                "spanNulls": true,
+                "thresholdsStyle": {
+                  "mode": "line"
+                }
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "postgres",
+                "uid": "sensa_pg"
+              },
+              "format": "time_series",
+              "rawQuery": true,
+              "rawSql": "SELECT $__timeGroupAlias(timestamp, $__interval), MAX(\"voc\") AS \"최대(가장 위험)\", AVG(\"voc\") AS \"평균\" FROM devices_sensordata WHERE $__timeFilter(timestamp) AND \"voc\" IS NOT NULL GROUP BY 1 ORDER BY 1"
+            }
+          ]
+        },
+        {
+          "id": 208,
+          "title": "O₂ 산소  (주의 19.5 / 위험 18.0 percent)",
+          "type": "timeseries",
+          "datasource": {
+            "type": "postgres",
+            "uid": "sensa_pg"
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 8,
+            "x": 16,
+            "y": 16
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "percent",
+              "color": {
+                "mode": "thresholds"
+              },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "red",
+                    "value": null
+                  },
+                  {
+                    "color": "yellow",
+                    "value": 18.0
+                  },
+                  {
+                    "color": "green",
+                    "value": 19.5
+                  }
+                ]
+              },
+              "custom": {
+                "drawStyle": "line",
+                "lineWidth": 2,
+                "fillOpacity": 8,
+                "showPoints": "never",
+                "spanNulls": true,
+                "thresholdsStyle": {
+                  "mode": "line"
+                }
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "postgres",
+                "uid": "sensa_pg"
+              },
+              "format": "time_series",
+              "rawQuery": true,
+              "rawSql": "SELECT $__timeGroupAlias(timestamp, $__interval), MAX(\"o2\") AS \"최대(가장 위험)\", AVG(\"o2\") AS \"평균\" FROM devices_sensordata WHERE $__timeFilter(timestamp) AND \"o2\" IS NOT NULL GROUP BY 1 ORDER BY 1"
+            }
+          ]
+        }
+      ]
+    }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: grafana
+  namespace: sensa
+spec:
+  type: ClusterIP
+  selector:
+    app: grafana
+  ports:
+    - name: http
+      port: 3000
+      targetPort: 3000
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: grafana
+  namespace: sensa
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: grafana
+  template:
+    metadata:
+      labels:
+        app: grafana
+    spec:
+      containers:
+        - name: grafana
+          image: grafana/grafana:11.2.2
+          imagePullPolicy: IfNotPresent
+          env:
+            - { name: GF_AUTH_ANONYMOUS_ENABLED,    value: "true" }
+            - { name: GF_AUTH_ANONYMOUS_ORG_ROLE,   value: "Admin" }
+            - { name: GF_AUTH_DISABLE_LOGIN_FORM,   value: "true" }
+            - { name: GF_SECURITY_ADMIN_PASSWORD,   value: "sensa_admin" }
+            - { name: GF_USERS_DEFAULT_THEME,       value: "dark" }
+            - { name: GF_LOG_LEVEL,                 value: "warn" }
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef: { name: sensa-secret, key: POSTGRES_PASSWORD }
+          ports:
+            - containerPort: 3000
+              name: http
+          volumeMounts:
+            - name: datasource
+              mountPath: /etc/grafana/provisioning/datasources
+            - name: provider
+              mountPath: /etc/grafana/provisioning/dashboards
+            - name: dashboard
+              mountPath: /etc/grafana/dashboards
+            - name: data
+              mountPath: /var/lib/grafana
+          readinessProbe:
+            httpGet: { path: /api/health, port: 3000 }
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: { path: /api/health, port: 3000 }
+            initialDelaySeconds: 30
+            periodSeconds: 20
+          resources:
+            requests: { memory: "128Mi", cpu: "100m" }
+            limits:   { memory: "512Mi", cpu: "500m" }
+      volumes:
+        - name: datasource
+          configMap: { name: grafana-datasource }
+        - name: provider
+          configMap: { name: grafana-provider }
+        - name: dashboard
+          configMap: { name: grafana-dashboard }
+        - name: data
+          emptyDir: {}

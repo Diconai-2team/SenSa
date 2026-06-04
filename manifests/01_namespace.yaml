@@ -1,0 +1,10 @@
+# E단계 — Namespace
+# K8s 안 SenSa 리소스를 'sensa' namespace로 격리.
+# Compose 환경(default)과 분리하여 시연 안전성 확보.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: sensa
+  labels:
+    app.kubernetes.io/part-of: sensa-platform
+    app.kubernetes.io/managed-by: kubectl

@@ -1,0 +1,20 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: sensa-config
+  namespace: sensa
+data:
+  POSTGRES_DB: "sensa"
+  POSTGRES_USER: "sensa"
+  POSTGRES_HOST: "postgres"
+  POSTGRES_PORT: "5432"
+  REDIS_HOST: "redis"
+  REDIS_PORT: "6379"
+  DEBUG: "True"
+  # K8s probe가 Pod IP (10.244.x.x)로 직접 호출하므로 * 허용
+  # 시연 환경(DEBUG=True)이라 안전. 프로덕션은 Ingress host만 명시 권장.
+  ALLOWED_HOSTS: "*"
+  DB_ENGINE: "postgres"
+  CELERY_METRICS_PORT: "9809"
+  TICK_INTERVAL: "1.0"
+  DEFAULT_SCENARIO: "mixed"

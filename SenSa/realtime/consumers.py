@@ -12,6 +12,7 @@ realtime/consumers.py — 대시보드 실시간 WebSocket 처리
   dashboard.zones    — [Phase I-2] zone 라이프사이클 이벤트
 """
 from channels.generic.websocket import AsyncJsonWebsocketConsumer
+from realtime.metrics import ws_connections_active
 
 
 class DashboardConsumer(AsyncJsonWebsocketConsumer):
@@ -37,6 +38,7 @@ class DashboardConsumer(AsyncJsonWebsocketConsumer):
             await self.close(code=4001)
             return
 
+        ws_connections_active.inc()
         # 모든 그룹 가입
         for group in self.GROUPS:
             await self.channel_layer.group_add(group, self.channel_name)
@@ -52,6 +54,7 @@ class DashboardConsumer(AsyncJsonWebsocketConsumer):
         """연결 끊기면 모든 그룹에서 빠짐 — 메모리 누수 방지"""
         for group in self.GROUPS:
             await self.channel_layer.group_discard(group, self.channel_name)
+        ws_connections_active.dec()
 
     async def receive_json(self, content, **kwargs):
         """클라이언트 → 서버 메시지 처리 (ping/pong)."""

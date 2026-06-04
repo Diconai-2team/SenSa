@@ -1,0 +1,208 @@
+{
+  "_comment": "신규 8개 패널 — sensa.json 상단에 삽입할 정의 (id 101~108)",
+  "panels": [
+    {
+      "id": 101,
+      "type": "timeseries",
+      "title": "API 수신 성공률 (Django 2xx ÷ 전체) %",
+      "description": "django_prometheus 자동 메트릭. 2xx 응답률 — API 데이터 수신 정상 작동 증거.",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "yellow", "value": 95 },
+              { "color": "green", "value": 99 }
+            ]
+          }
+        }
+      },
+      "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull", "min"] } },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "100 * sum(rate(django_http_responses_total_by_status_total{status=~\"2..\"}[5m])) / sum(rate(django_http_responses_total_by_status_total[5m]))",
+          "legendFormat": "2xx 성공률",
+          "datasource": { "type": "prometheus", "uid": "prometheus" }
+        }
+      ]
+    },
+    {
+      "id": 102,
+      "type": "timeseries",
+      "title": "Django/DRF 요청 수 (method 별, ops/s)",
+      "description": "django_prometheus 자동 메트릭. 평시 데이터 흐름 + 시연 시 spike 확인.",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "ops" } },
+      "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull", "max"] } },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(rate(django_http_requests_total_by_method_total[1m])) by (method)",
+          "legendFormat": "{{method}}",
+          "datasource": { "type": "prometheus", "uid": "prometheus" }
+        }
+      ]
+    },
+    {
+      "id": 103,
+      "type": "timeseries",
+      "title": "API 5xx 에러율 %",
+      "description": "Django 5xx 응답 비율. 시연 도중 응답 실패 추적용.",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 1 },
+              { "color": "red", "value": 5 }
+            ]
+          }
+        }
+      },
+      "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull", "max"] } },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "100 * sum(rate(django_http_responses_total_by_status_total{status=~\"5..\"}[5m])) / sum(rate(django_http_responses_total_by_status_total[5m]))",
+          "legendFormat": "5xx 에러율",
+          "datasource": { "type": "prometheus", "uid": "prometheus" }
+        }
+      ]
+    },
+    {
+      "id": 104,
+      "type": "timeseries",
+      "title": "API p95 응답시간 (Django, by view)",
+      "description": "histogram_quantile p95 — 시연 시 응답 지연 추적용.",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "s" } },
+      "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull", "max"] } },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(0.95, sum(rate(django_http_requests_latency_including_middlewares_seconds_bucket[5m])) by (le))",
+          "legendFormat": "p95 (incl. middleware)",
+          "datasource": { "type": "prometheus", "uid": "prometheus" }
+        },
+        {
+          "refId": "B",
+          "expr": "histogram_quantile(0.50, sum(rate(django_http_requests_latency_including_middlewares_seconds_bucket[5m])) by (le))",
+          "legendFormat": "p50 (중간값)",
+          "datasource": { "type": "prometheus", "uid": "prometheus" }
+        }
+      ]
+    },
+    {
+      "id": 105,
+      "type": "timeseries",
+      "title": "Celery 분석 성공률 %",
+      "description": "celery_task_total. succeeded ÷ (succeeded+failure). 백그라운드 분석 정상 작동 증거.",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "yellow", "value": 90 },
+              { "color": "green", "value": 98 }
+            ]
+          }
+        }
+      },
+      "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull"] } },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "100 * sum(rate(sensa_celery_task_total{state=\"succeeded\"}[5m])) / sum(rate(sensa_celery_task_total{state=~\"succeeded|failure\"}[5m]))",
+          "legendFormat": "Celery 성공률",
+          "datasource": { "type": "prometheus", "uid": "prometheus" }
+        }
+      ]
+    },
+    {
+      "id": 106,
+      "type": "timeseries",
+      "title": "DB 저장 성공률 % + 성공/실패 ops/s",
+      "description": "SensorData.objects.create 결과. sensor_data_save_total{result}",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "short" } },
+      "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull", "max"] } },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(rate(sensa_sensor_data_save_total{result=\"success\"}[1m])) by (device_type)",
+          "legendFormat": "성공 / {{device_type}}",
+          "datasource": { "type": "prometheus", "uid": "prometheus" }
+        },
+        {
+          "refId": "B",
+          "expr": "sum(rate(sensa_sensor_data_save_total{result=\"failure\"}[1m])) by (device_type)",
+          "legendFormat": "실패 / {{device_type}}",
+          "datasource": { "type": "prometheus", "uid": "prometheus" }
+        }
+      ]
+    },
+    {
+      "id": 107,
+      "type": "timeseries",
+      "title": "WebSocket 전송 성공률 % + 성공/실패 ops/s",
+      "description": "Channel Layer publish 결과. sensa_ws_publish_total{event_type, result}",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 24 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "short" } },
+      "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull", "max"] } },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(rate(sensa_ws_publish_total{result=\"success\"}[1m])) by (event_type)",
+          "legendFormat": "성공 / {{event_type}}",
+          "datasource": { "type": "prometheus", "uid": "prometheus" }
+        },
+        {
+          "refId": "B",
+          "expr": "sum(rate(sensa_ws_publish_total{result=\"failure\"}[1m])) by (event_type)",
+          "legendFormat": "실패 / {{event_type}}",
+          "datasource": { "type": "prometheus", "uid": "prometheus" }
+        }
+      ]
+    },
+    {
+      "id": 108,
+      "type": "timeseries",
+      "title": "WebSocket 활성 연결 수",
+      "description": "DashboardConsumer 활성 연결. sensa_ws_connections_active (Gauge)",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 24 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "short", "min": 0 } },
+      "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["lastNotNull", "max"] } },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(sensa_ws_connections_active)",
+          "legendFormat": "활성 연결 수",
+          "datasource": { "type": "prometheus", "uid": "prometheus" }
+        }
+      ]
+    }
+  ]
+}

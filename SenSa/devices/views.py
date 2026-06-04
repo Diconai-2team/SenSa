@@ -16,6 +16,7 @@ from django.utils import timezone
 from rest_framework import viewsets, status as http_status
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from devices.metrics import sensor_data_save_total
 from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_exempt
 
@@ -36,7 +37,7 @@ logger = logging.getLogger(__name__)
 # AI 예측 알람 throttle — sensor + gas 별 60초 이내 중복 알람 차단
 # (CRITICAL/WARNING 즉시 알람은 evaluate_sensor 별도 경로 — 영향 없음)
 # ═══════════════════════════════════════════════════════════
-_AI_PRED_THROTTLE_SEC = 60.0
+_AI_PRED_THROTTLE_SEC = 180.0   # AI 예측 알람 60s → 180s (시연 빈도 통제)
 _ai_pred_throttle: dict[tuple[str, str], float] = {}
 _ai_pred_throttle_lock = Lock()
 
@@ -227,16 +228,21 @@ class SensorDataView(APIView):
                     )
 
         # SensorData 저장 — C′-3a 라벨 컬럼 포함
-        sd = SensorData.objects.create(
-            device=device,
-            co=gas['co'],   h2s=gas['h2s'], co2=gas['co2'], o2=gas['o2'],
-            no2=gas['no2'], so2=gas['so2'], o3=gas['o3'],
-            nh3=gas['nh3'], voc=gas['voc'],
-            status=s,
-            scenario_id=labels['scenario_id'],
-            expected_phase=labels['expected_phase'],
-            expected_status=labels['expected_status'],
-        )
+        try:
+            sd = SensorData.objects.create(
+                device=device,
+                co=gas['co'],   h2s=gas['h2s'], co2=gas['co2'], o2=gas['o2'],
+                no2=gas['no2'], so2=gas['so2'], o3=gas['o3'],
+                nh3=gas['nh3'], voc=gas['voc'],
+                status=s,
+                scenario_id=labels['scenario_id'],
+                expected_phase=labels['expected_phase'],
+                expected_status=labels['expected_status'],
+            )
+            sensor_data_save_total.labels(device_type='gas', result='success').inc()
+        except Exception:
+            sensor_data_save_total.labels(device_type='gas', result='failure').inc()
+            raise
         if gas['co'] is not None:
             device.last_value = gas['co']
         return sd, s, gas, is_ai, ai_detail
@@ -279,16 +285,21 @@ class SensorDataView(APIView):
                     )
 
         # SensorData 저장 — C′-3a 라벨 컬럼 포함
-        sd = SensorData.objects.create(
-            device=device,
-            current=power['current'],
-            voltage=power['voltage'],
-            watt=power['watt'],
-            status=s,
-            scenario_id=labels['scenario_id'],
-            expected_phase=labels['expected_phase'],
-            expected_status=labels['expected_status'],
-        )
+        try:
+            sd = SensorData.objects.create(
+                device=device,
+                current=power['current'],
+                voltage=power['voltage'],
+                watt=power['watt'],
+                status=s,
+                scenario_id=labels['scenario_id'],
+                expected_phase=labels['expected_phase'],
+                expected_status=labels['expected_status'],
+            )
+            sensor_data_save_total.labels(device_type='power', result='success').inc()
+        except Exception:
+            sensor_data_save_total.labels(device_type='power', result='failure').inc()
+            raise
         if power['watt'] is not None:
             device.last_value = power['watt']
         return sd, s, power, is_ai, ai_detail

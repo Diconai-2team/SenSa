@@ -47,12 +47,90 @@
     <div id="rd-scenario-status">대기 중</div>
   </div>
 
+
+
   <!-- 레이어 토글 -->
-  <div id="layer-overlay">
-    <div class="layer-toggle"><label>⚠️ 지오펜스</label><label class="toggle-switch"><input type="checkbox" id="layer-geofence" checked><span class="slider"></span></label></div>
-    <div class="layer-toggle"><label>📡 센서</label><label class="toggle-switch"><input type="checkbox" id="layer-sensor" checked><span class="slider"></span></label></div>
-    <div class="layer-toggle"><label>👷 작업자</label><label class="toggle-switch"><input type="checkbox" id="layer-worker" checked><span class="slider"></span></label></div>
+  <!-- control-overlay: 레이어 + 가스 탭 통합 컨트롤 패널 -->
+  <div id="control-overlay">
+    <div class="co-header">
+      <span class="co-title">⚙ 컨트롤</span>
+      <button class="co-collapse" id="co-collapse" type="button" aria-label="패널 접기">▾</button>
+    </div>
+    <div class="co-body" id="co-body">
+      <div class="co-tabs">
+        <button class="co-tab active" type="button" data-tab="layer">레이어</button>
+        <button class="co-tab" type="button" data-tab="gas">가스 <span class="co-tab-badge" id="co-gas-badge">9</span></button>
+      </div>
+      <div class="co-pane active" data-pane="layer">
+        <div class="layer-toggle"><label>⚠️ 지오펜스</label><label class="toggle-switch"><input type="checkbox" id="layer-geofence" checked><span class="slider"></span></label></div>
+        <div class="layer-toggle"><label>📡 센서</label><label class="toggle-switch"><input type="checkbox" id="layer-sensor" checked><span class="slider"></span></label></div>
+        <div class="layer-toggle"><label>👷 작업자</label><label class="toggle-switch"><input type="checkbox" id="layer-worker" checked><span class="slider"></span></label></div>
+      </div>
+      <div class="co-pane" data-pane="gas">
+        <div class="gt-master"><span>전체</span><button class="gt-tg on" id="gt-master" type="button" aria-label="전체 토글" aria-pressed="true"><span class="gt-thumb"></span></button></div>
+        <div class="gt-row on" data-gas="o2"><span class="gt-dot"></span><span class="gt-name">O₂<small>산소</small></span><button class="gt-tg on" type="button" aria-label="O₂ 토글" aria-pressed="true"><span class="gt-thumb"></span></button></div>
+        <div class="gt-row on" data-gas="co"><span class="gt-dot"></span><span class="gt-name">CO<small>일산화탄소</small></span><button class="gt-tg on" type="button" aria-label="CO 토글" aria-pressed="true"><span class="gt-thumb"></span></button></div>
+        <div class="gt-row on" data-gas="co2"><span class="gt-dot"></span><span class="gt-name">CO₂<small>이산화탄소</small></span><button class="gt-tg on" type="button" aria-label="CO₂ 토글" aria-pressed="true"><span class="gt-thumb"></span></button></div>
+        <div class="gt-row on" data-gas="h2s"><span class="gt-dot"></span><span class="gt-name">H₂S<small>황화수소</small></span><button class="gt-tg on" type="button" aria-label="H₂S 토글" aria-pressed="true"><span class="gt-thumb"></span></button></div>
+        <div class="gt-row on" data-gas="no2"><span class="gt-dot"></span><span class="gt-name">NO₂<small>이산화질소</small></span><button class="gt-tg on" type="button" aria-label="NO₂ 토글" aria-pressed="true"><span class="gt-thumb"></span></button></div>
+        <div class="gt-row on" data-gas="so2"><span class="gt-dot"></span><span class="gt-name">SO₂<small>이산화황</small></span><button class="gt-tg on" type="button" aria-label="SO₂ 토글" aria-pressed="true"><span class="gt-thumb"></span></button></div>
+        <div class="gt-row on" data-gas="o3"><span class="gt-dot"></span><span class="gt-name">O₃<small>오존</small></span><button class="gt-tg on" type="button" aria-label="O₃ 토글" aria-pressed="true"><span class="gt-thumb"></span></button></div>
+        <div class="gt-row on" data-gas="nh3"><span class="gt-dot"></span><span class="gt-name">NH₃<small>암모니아</small></span><button class="gt-tg on" type="button" aria-label="NH₃ 토글" aria-pressed="true"><span class="gt-thumb"></span></button></div>
+        <div class="gt-row on" data-gas="voc"><span class="gt-dot"></span><span class="gt-name">VOC<small>휘발성유기</small></span><button class="gt-tg on" type="button" aria-label="VOC 토글" aria-pressed="true"><span class="gt-thumb"></span></button></div>
+      </div>
+    </div>
   </div>
+  <script>
+  (function() {
+    var ov = document.getElementById('control-overlay');
+    if (!ov || ov.dataset.wired) return;
+    ov.dataset.wired = '1';
+    var tabs = ov.querySelectorAll('.co-tab');
+    var panes = ov.querySelectorAll('.co-pane');
+    tabs.forEach(function(t) {
+      t.addEventListener('click', function() {
+        tabs.forEach(function(x) { x.classList.remove('active'); });
+        panes.forEach(function(x) { x.classList.remove('active'); });
+        t.classList.add('active');
+        ov.querySelector('.co-pane[data-pane="' + t.dataset.tab + '"]').classList.add('active');
+      });
+    });
+    var col = document.getElementById('co-collapse');
+    col.addEventListener('click', function() {
+      var body = document.getElementById('co-body');
+      var hidden = body.style.display === 'none';
+      body.style.display = hidden ? '' : 'none';
+      col.textContent = hidden ? '▾' : '▸';
+    });
+    function gasRow(g) { var v = document.getElementById('val-' + g); return v ? v.closest('tr') : null; }
+    function apply(g, on) { var tr = gasRow(g); if (tr) tr.style.display = on ? '' : 'none'; }
+    function count() {
+      var rows = ov.querySelectorAll('.gt-row');
+      var n = ov.querySelectorAll('.gt-row.on').length;
+      var b = document.getElementById('co-gas-badge'); if (b) b.textContent = n;
+      var m = document.getElementById('gt-master');
+      var all = (n === rows.length); m.classList.toggle('on', all); m.setAttribute('aria-pressed', all);
+    }
+    ov.querySelectorAll('.gt-row').forEach(function(row) {
+      row.querySelector('.gt-tg').addEventListener('click', function() {
+        var on = !this.classList.contains('on');
+        this.classList.toggle('on', on); row.classList.toggle('on', on);
+        this.setAttribute('aria-pressed', on); apply(row.dataset.gas, on); count();
+      });
+    });
+    document.getElementById('gt-master').addEventListener('click', function() {
+      var on = !this.classList.contains('on');
+      this.classList.toggle('on', on); this.setAttribute('aria-pressed', on);
+      ov.querySelectorAll('.gt-row').forEach(function(row) {
+        row.classList.toggle('on', on);
+        var b = row.querySelector('.gt-tg'); b.classList.toggle('on', on); b.setAttribute('aria-pressed', on);
+        apply(row.dataset.gas, on);
+      });
+      count();
+    });
+    count();
+  })();
+  </script>
 
   <!-- 업로드 -->
   <div id="upload-overlay">

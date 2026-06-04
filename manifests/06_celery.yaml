@@ -1,0 +1,83 @@
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: celery-metrics
+  namespace: sensa
+spec:
+  type: ClusterIP
+  selector:
+    app: celery
+  ports:
+    - name: metrics
+      port: 9809
+      targetPort: 9809
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: celery
+  namespace: sensa
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: celery
+  template:
+    metadata:
+      labels:
+        app: celery
+    spec:
+      initContainers:
+        - name: wait-postgres
+          image: postgres:16
+          imagePullPolicy: IfNotPresent
+          command:
+            - sh
+            - -c
+            - |
+              until pg_isready -h postgres -U sensa -d sensa; do sleep 2; done
+        - name: wait-redis
+          image: redis:7-alpine
+          imagePullPolicy: IfNotPresent
+          command:
+            - sh
+            - -c
+            - |
+              until redis-cli -h redis ping | grep -q PONG; do sleep 2; done
+      containers:
+        - name: celery
+          image: localhost:5000/sensa-app:latest
+          imagePullPolicy: IfNotPresent
+          command:
+            - sh
+            - -c
+            - |
+              rm -rf "$PROMETHEUS_MULTIPROC_DIR" && \
+              mkdir -p "$PROMETHEUS_MULTIPROC_DIR" && \
+              exec celery -A mysite worker -B --loglevel=info
+          ports:
+            - containerPort: 9809
+              name: metrics
+          envFrom:
+            - configMapRef: { name: sensa-config }
+            - secretRef:    { name: sensa-secret }
+          env:
+            # ━━━ Celery만 multiprocess prometheus 사용 ━━━
+            - name: PROMETHEUS_MULTIPROC_DIR
+              value: "/tmp/sensa_celery_prom"
+          readinessProbe:
+            httpGet:
+              path: /metrics
+              port: 9809
+            initialDelaySeconds: 30
+            periodSeconds: 15
+          livenessProbe:
+            httpGet:
+              path: /metrics
+              port: 9809
+            initialDelaySeconds: 60
+            periodSeconds: 30
+          resources:
+            requests: { memory: "256Mi", cpu: "200m" }
+            limits:   { memory: "1Gi",   cpu: "1000m" }

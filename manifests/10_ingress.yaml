@@ -1,0 +1,48 @@
+# ============================================================
+# G단계 — Ingress (host 기반 라우팅)
+# sensa.localhost   → svc/django:8000   (대시보드)
+# grafana.localhost → svc/grafana:3000  (모니터링)
+# ingressClassName: nginx (nginx-ingress controller 필요)
+# /etc/hosts: 127.0.0.1  sensa.localhost grafana.localhost
+# ============================================================
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: sensa-dashboard
+  namespace: sensa
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: sensa.localhost
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: django
+                port:
+                  number: 8000
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: sensa-grafana
+  namespace: sensa
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: grafana.localhost
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: grafana
+                port:
+                  number: 3000

@@ -1,0 +1,40 @@
+# ============================================================
+# G단계 — HorizontalPodAutoscaler (django)
+# CPU 평균 70% 초과 시 replicas 2 → 최대 5 자동 확장.
+# metrics-server 필요 (kubectl top 으로 metric 노출).
+# django Deployment에 CPU requests 200m 정의됨 → % 계산 기준.
+# autoscaling/v2 (behavior로 스케일 속도 제어).
+# ============================================================
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: django
+  namespace: sensa
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: django
+  minReplicas: 2
+  maxReplicas: 5
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 0
+      policies:
+        - type: Pods
+          value: 2
+          periodSeconds: 30
+    scaleDown:
+      stabilizationWindowSeconds: 120
+      policies:
+        - type: Pods
+          value: 1
+          periodSeconds: 60

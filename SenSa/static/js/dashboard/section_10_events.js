@@ -10,6 +10,8 @@
 
 var unreadCount = 0;
 var unreadDangerCount = 0;   // v3: 위험 미읽음 분리
+var unreadAiPredCount = 0;   // v2: AI 예측 미읽음
+var aiPredVisible = true;    // v2: AI 토글 상태 (default ON)
 var dangerCount24h  = 0;
 var cautionCount24h = 0;
 var EMOJI = { info: 'ℹ️', caution: '⚠️', danger: '🔴', critical: '🚨' };
@@ -17,6 +19,9 @@ var bannerTimer = null;
 
 // ── 배너 ──────────────────────────────────────────
 function showBanner(alarm) {
+  // v2: AI 예측 + 토글 OFF → 배너 안 띄움 (시각 노이즈 차단)
+  if (alarm.is_ai && !aiPredVisible) return;
+
   var banner  = document.getElementById('alert-banner');
   var content = document.getElementById('alert-banner-content');
   if (!banner || !content) return;
@@ -71,6 +76,13 @@ function updateSummary() {
 
 // ── 패널에 알람 아이템 추가 ───────────────────────
 function addAlarmToPanel(alarm, fromDB) {
+  // v2: AI 예측 알람은 별도 영역
+  if (alarm.is_ai) {
+    if (!aiPredVisible) return;
+    addAiPredictionAlarm(alarm, fromDB);
+    return;
+  }
+
   var list  = document.getElementById('alarm-list');
   if (!list) return;
   var empty = list.querySelector('.alarm-empty');
@@ -212,3 +224,76 @@ refresh24hStats();
 
 // 5분마다 24h 통계 갱신
 setInterval(refresh24hStats, 5 * 60 * 1000);
+
+// ═══════ v2: AI 예측 알람 전용 핸들러 ═══════
+
+function addAiPredictionAlarm(alarm, fromDB) {
+  var list = document.getElementById('ai-pred-list');
+  if (!list) return;
+
+  var item = document.createElement('div');
+  var isUnread = !alarm.is_read;
+  item.className = 'alarm-item' + (isUnread ? ' unread' : '') + ' level-' + alarm.alarm_level;
+  item.dataset.alarmId = alarm.alarm_id || alarm.id || '';
+
+  var ts = alarm.created_at
+    ? new Date(alarm.created_at).toLocaleTimeString('ko-KR')
+    : new Date().toLocaleTimeString('ko-KR');
+
+  item.innerHTML =
+    '<div class="alarm-msg">🤖 ' + alarm.message + '</div>' +
+    '<div class="alarm-meta">' + ts + '</div>';
+
+  item.onclick = function () {
+    item.classList.remove('unread');
+    var id = item.dataset.alarmId;
+    if (id) markRead(id);
+    if (isUnread) {
+      isUnread = false;
+      unreadAiPredCount = Math.max(0, unreadAiPredCount - 1);
+      updateAiPredCount();
+    }
+  };
+
+  if (fromDB) list.appendChild(item);
+  else list.insertBefore(item, list.firstChild);
+
+  // 30개 한도 (AI 영역 자체)
+  var all = list.querySelectorAll('.alarm-item');
+  if (all.length > 30) all[all.length - 1].remove();
+
+  if (isUnread) {
+    unreadAiPredCount++;
+    updateAiPredCount();
+  }
+}
+
+function updateAiPredCount() {
+  var b = document.getElementById('ai-pred-count');
+  if (b) b.textContent = unreadAiPredCount;
+}
+
+function initAiToggle() {
+  var btn = document.getElementById('ai-pred-toggle');
+  var section = document.getElementById('ai-prediction-section');
+  if (btn && section) {
+    btn.onclick = function () {
+      aiPredVisible = !aiPredVisible;
+      btn.textContent = '🤖 ' + (aiPredVisible ? 'ON' : 'OFF');
+      btn.classList.toggle('off', !aiPredVisible);
+      section.style.display = aiPredVisible ? 'block' : 'none';
+    };
+  }
+  var header = document.getElementById('ai-pred-header');
+  if (header && section) {
+    header.onclick = function () {
+      section.classList.toggle('ai-pred-collapsed');
+    };
+  }
+}
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initAiToggle);
+} else {
+  initAiToggle();
+}
