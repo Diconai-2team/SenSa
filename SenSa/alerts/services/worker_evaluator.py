@@ -341,6 +341,18 @@ def evaluate_worker(worker_id: str, worker_name: str,
         except Exception as e:
             logger.warning('[evaluate_worker] publish_alarm 실패: %s', e)
 
+        # ── 외부 알림(디스코드): 작업자가 '위험' 지오펜스에 '진입'하는 순간 1회만 ──
+        #   danger/critical 진입만 발송(caution 은 제외 — 화면 알람/토스트로만).
+        #   caution 까지 보내면 주의구역 진입마다 외부 발송 → 소음. 진짜 위험만 외부로.
+        #   reason='transition'(상태 변화) + 악화(escalation) → 진입 시 1회, 머물러도 반복 없음.
+        if (reason == 'transition'
+                and target_state in ('danger', 'critical')
+                and _is_escalation(official_state, target_state)):
+            _notify_worker_zone_entry(
+                worker_name, official_state, target_state,
+                primary_fence, x, y, worst_sensor_status,
+            )
+
         logger.info(
             "[ALARM-CREATED] %s %s level=%s reason=%s",
             worker_id, alarm_type, alarm_level, reason,
@@ -352,3 +364,42 @@ def evaluate_worker(worker_id: str, worker_name: str,
             commit_state(worker_id, official_state, mark_alarmed=True)
 
     return created
+
+
+def _notify_worker_zone_entry(worker_name, from_state, to_state,
+                              primary_fence, x, y, worst_sensor_status) -> None:
+    """작업자 위험구역 진입 시 외부 알림(디스코드) 큐잉. zone-critical 발송과 동일 정책.
+
+    실패해도 라이프사이클 영향 없도록 모든 예외 흡수. webhook 미설정 시 skip.
+    """
+    try:
+        from alerts.notifiers import is_configured
+        if not is_configured():
+            return
+
+        from alerts.tasks import send_external_notification_task
+
+        state_label = {'caution': '주의', 'danger': '위험', 'critical': '긴급'}.get(
+            to_state, to_state or '?')
+        zone_name = primary_fence.name if primary_fence else '?'
+        zone_type = getattr(primary_fence, 'zone_type', '') if primary_fence else ''
+
+        title = f"작업자 위험구역 진입 — {worker_name}"
+        message = (
+            f"상태: {from_state} → {state_label}\n"
+            f"구역: {zone_name}" + (f" ({zone_type})" if zone_type else "") + "\n"
+            f"위치: ({x:.0f}, {y:.0f})\n"
+            f"주변 센서: {worst_sensor_status}"
+        )
+
+        send_external_notification_task.delay(
+            title=title,
+            message=message,
+            severity=to_state,   # caution/danger/critical → notifiers 이모지 매핑
+        )
+        logger.info(
+            "[worker=%s] 위험구역 진입 외부 알림 큐잉: %s (%s)",
+            worker_name, zone_name, to_state,
+        )
+    except Exception as e:
+        logger.warning("작업자 진입 외부 알림 큐잉 실패 (라이프사이클은 정상): %s", e)

@@ -187,10 +187,11 @@ if DEBUG:
     CORS_ALLOW_ALL_ORIGINS = True
 CORS_ALLOW_CREDENTIALS = True
 
-CSRF_TRUSTED_ORIGINS = [
-    'http://localhost:8000',
-    'http://127.0.0.1:8000',
-]
+CSRF_TRUSTED_ORIGINS = os.getenv(
+    'CSRF_TRUSTED_ORIGINS',
+    'http://localhost:8000,http://127.0.0.1:8000,'
+    'http://sensa.localhost,http://grafana.localhost',
+).split(',')
 
 # ==========================================================
 # 국제화
@@ -257,6 +258,12 @@ ALARM_RECOVERY_CONFIRM_TICKS = 3   # 회복 전이에 필요한 연속 관측 �
 # SensorData / WorkerLocation 의 DB row INSERT 만 device 별로 이 주기마다 1건씩 저장.
 # 0 으로 두면 기존처럼 매 POST 저장. (멀티 Pod 일관성: cache.add = Redis SET NX EX)
 DB_SAVE_INTERVAL_SEC = int(os.getenv('DB_SAVE_INTERVAL_SEC', '5'))
+
+# AI 추론(ARIMA 이상탐지·IsolationForest 추세예측) 호출 주기.
+# 임계 분류·임계초과 알람은 매 POST 그대로 동작하고, "임계 도달 전 조기경보 AI" 만
+# device 별로 이 주기마다 1회 실행(매초 9가스×N device 추론 → CPU 부하 대부분).
+# 0 이면 매 POST 실행(옛 동작). 알고리즘 내부(팀원 영역)는 불변, 호출 시점만 조절.
+AI_INFERENCE_INTERVAL_SEC = int(os.getenv('AI_INFERENCE_INTERVAL_SEC', '5'))
 # ─────────────────────────────────────────────
 # Celery / Redis (Phase G)
 # ─────────────────────────────────────────────

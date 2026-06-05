@@ -40,7 +40,23 @@ from prometheus_client import Counter, Histogram
 logger = logging.getLogger(__name__)
 
 # metrics HTTP 서버 포트 (prometheus.yml 의 sensa-celery job 과 일치해야 함)
-CELERY_METRICS_PORT = int(os.environ.get('CELERY_METRICS_PORT', '9809'))
+# 주의: 'celery-metrics' K8s Service 가 있으면 K8s 가 동명 env 를
+#   CELERY_METRICS_PORT=tcp://<clusterIP>:9809 형태로 자동 주입한다.
+#   이 경우 int() 가 깨지므로(invalid literal), 숫자가 아니면 끝의 :PORT 만 뽑고
+#   그래도 실패하면 9809 로 안전 fallback 한다.
+def _resolve_metrics_port(default: int = 9809) -> int:
+    raw = os.environ.get('CELERY_METRICS_PORT', str(default)).strip()
+    try:
+        return int(raw)
+    except (TypeError, ValueError):
+        # 'tcp://10.96.155.138:9809' 같은 K8s Service env → 마지막 ':' 뒤 숫자
+        tail = raw.rsplit(':', 1)[-1]
+        try:
+            return int(tail)
+        except (TypeError, ValueError):
+            return default
+
+CELERY_METRICS_PORT = _resolve_metrics_port()
 
 
 # ═══════════════════════════════════════════════════════════

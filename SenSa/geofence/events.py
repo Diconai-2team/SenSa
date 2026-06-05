@@ -72,6 +72,13 @@ def _emit(zone, event_type: str, **kwargs) -> ZoneEvent | None:
     if event_type == 'upgraded_to_critical':
         _notify_external_critical(zone, kwargs)
 
+    # [Phase I-4b] 외부 채널 알림 — 동적 '위험' 구역 생성(=위험 요소 발생) 시 1회.
+    #   on_zone_created 가 zone 당 1회만 호출되므로 자연히 1회. 정적 zone·caution 은 제외.
+    if (event_type == 'created'
+            and getattr(zone, 'is_dynamic', False)
+            and zone.zone_type in ('danger', 'restricted')):
+        _notify_external_zone_created(zone, kwargs)
+
     # [P4-C 8차] zone 이벤트 메트릭 — 라이프사이클 누적
     try:
         from geofence.metrics import zone_event_total
@@ -124,6 +131,52 @@ def _notify_external_critical(zone, kwargs: dict) -> None:
         logger.info(f"[zone={zone.id}] 외부 알림 task 큐잉: task_id={_res.id}")
     except Exception as e:
         logger.warning(f"외부 알림 큐잉 실패 (라이프사이클은 정상): {e}")
+
+
+def _notify_external_zone_created(zone, kwargs: dict) -> None:
+    """[Phase I-4b] 동적 위험구역 생성 시 외부 알림(디스코드) 큐잉.
+
+    '위험 요소 발생 자체'를 작업자에게 1회 통지. critical 발송과 동일 정책
+    (webhook 미설정 시 skip, 모든 예외 흡수 → 라이프사이클 영향 없음).
+    """
+    try:
+        from alerts.notifiers import is_configured
+        if not is_configured():
+            return
+
+        from alerts.tasks import send_external_notification_task
+
+        # zone_type → severity(이모지) 매핑
+        severity = {'restricted': 'critical', 'danger': 'danger',
+                    'caution': 'caution'}.get(zone.zone_type, 'danger')
+
+        trigger_label = {
+            'ttm_anomaly':  '실측 이상',
+            'ttm_forecast': '사전경고',
+            'threshold':    '임계초과',
+            'manual':       '수동',
+        }.get(zone.trigger_source, zone.trigger_source or '?')
+
+        title = f"위험구역 발생 — {zone.name}"
+        message = (
+            f"가스: {zone.gas_type.upper() if zone.gas_type else '?'}\n"
+            f"등급: {zone.zone_type}\n"
+            f"발동: {trigger_label}\n"
+            f"초기 반경: {zone.current_radius_px:.0f}px"
+            if zone.current_radius_px else
+            f"가스: {zone.gas_type.upper() if zone.gas_type else '?'}\n"
+            f"등급: {zone.zone_type}\n"
+            f"발동: {trigger_label}"
+        )
+
+        _res = send_external_notification_task.delay(
+            title=title,
+            message=message,
+            severity=severity,
+        )
+        logger.info(f"[zone={zone.id}] 위험구역 발생 외부 알림 큐잉: task_id={_res.id}")
+    except Exception as e:
+        logger.warning(f"위험구역 발생 외부 알림 큐잉 실패 (라이프사이클은 정상): {e}")
 
 
 # ─────────────────────────────────────────
