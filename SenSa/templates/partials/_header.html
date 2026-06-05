@@ -19,10 +19,42 @@
   </div>
 
   <div id="section-04-admin-menu">
-    {% if request.user.is_staff %}
-      <a href="/admin/" target="_blank" rel="noopener">관리자 메뉴 🔑</a>
+    {% if request.user.is_authenticated %}
+      {% if request.user.is_super_admin_role %}
+        <a href="{% url 'backoffice:landing' %}">관리자 메뉴 🔑</a>
+      {% else %}
+        {# 슈퍼관리자 아님 → 클릭 시 경고만, 백오피스 진입 차단 #}
+        <a href="#" id="admin-menu-denied" role="button">관리자 메뉴 🔑</a>
+      {% endif %}
     {% endif %}
   </div>
+
+  {% if request.user.is_authenticated and not request.user.is_super_admin_role %}
+  <script>
+  (function () {
+    var btn = document.getElementById('admin-menu-denied');
+    if (!btn || btn.dataset.bound) return;
+    btn.dataset.bound = '1';
+    btn.addEventListener('click', function (e) {
+      e.preventDefault();
+      var prev = document.getElementById('admin-denied-toast');
+      if (prev) prev.remove();
+      var t = document.createElement('div');
+      t.id = 'admin-denied-toast';
+      t.textContent = '⚠ 관리자 메뉴는 슈퍼관리자 권한이 필요합니다.';
+      t.style.cssText = 'position:fixed;top:64px;right:20px;z-index:9999;' +
+        'background:#dc2626;color:#fff;padding:12px 18px;border-radius:8px;' +
+        'font-size:14px;font-weight:600;box-shadow:0 4px 12px rgba(0,0,0,.25);';
+      document.body.appendChild(t);
+      setTimeout(function () {
+        t.style.transition = 'opacity .4s';
+        t.style.opacity = '0';
+        setTimeout(function () { t.remove(); }, 400);
+      }, 2600);
+    });
+  })();
+  </script>
+  {% endif %}
 
   <div id="section-05-system-time">
     <div>현재 시스템 시간 : <span class="time-value" id="system-time-now">--</span></div>

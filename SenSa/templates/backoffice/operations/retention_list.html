@@ -135,7 +135,7 @@
                 <div>🗓️ 파일명 형식: <code>{target}_YYYYMMDD_HHMMSS.json.gz</code></div>
             </div>
             <div id="bo-backup-progress" style="display:none;margin-top:16px;color:#2563eb;">
-                ⏳ 백업 중입니다... 데이터가 많으면 시간이 걸릴 수 있습니다.
+                ⏳ 백그라운드에서 백업을 시작합니다... 완료되면 '백업 파일 조회'에 나타납니다.
             </div>
         </div>
         <div class="bo-modal-footer">
@@ -165,7 +165,7 @@
                 <input type="text" id="bo-init-confirm-text" placeholder="DELETE" style="width:100%;margin-top:8px;padding:8px 12px;border:2px solid #dc2626;border-radius:4px;font-size:14px;">
             </div>
             <div id="bo-init-progress" style="display:none;margin-top:16px;color:#dc2626;">
-                ⏳ 백업 중입니다... 백업이 완료되면 데이터가 삭제됩니다.
+                ⏳ 백그라운드에서 백업 후 삭제를 시작합니다... 잠시 후 누적 건수를 새로고침해 확인하세요.
             </div>
         </div>
         <div class="bo-modal-footer">
@@ -294,7 +294,7 @@
             backupConfirm.textContent = '백업 시작';
             return;
         }
-        BO.toast(`${data.message} (${data.size_human})`, 'success');
+        BO.toast(data.message || '백업을 백그라운드에서 시작했습니다.', 'success');
         closeBackupModal();
     });
 
@@ -365,7 +365,7 @@
             initConfirm.textContent = '백업 후 삭제';
             return;
         }
-        BO.toast(`백업: ${data.backup.count.toLocaleString()}건 (${data.backup.size_human}), 삭제: ${data.deleted_count.toLocaleString()}건`, 'success');
+        BO.toast(data.message || '백업 후 삭제를 백그라운드에서 시작했습니다.', 'success');
         closeInitModal();
         setTimeout(() => location.reload(), 1500);
     });

@@ -45,18 +45,19 @@
       🧹 시나리오 정리
     </button>
     <div id="rd-scenario-status">대기 중</div>
-  </div>
+
+    <!-- ⚙ 환경 설정: 레이어/가스 컨트롤 토글 (구 우측 컨트롤 패널 흡수) -->
+    <button class="rd-cleanup-btn rd-env-toggle" id="rd-env-toggle" type="button"
+            aria-expanded="false" aria-controls="control-overlay">
+      <span>⚙ 환경 설정</span><span class="rd-env-caret" id="rd-env-caret">▸</span>
+    </button>
 
 
 
   <!-- 레이어 토글 -->
   <!-- control-overlay: 레이어 + 가스 탭 통합 컨트롤 패널 -->
   <div id="control-overlay">
-    <div class="co-header">
-      <span class="co-title">⚙ 컨트롤</span>
-      <button class="co-collapse" id="co-collapse" type="button" aria-label="패널 접기">▾</button>
-    </div>
-    <div class="co-body" id="co-body">
+      <div class="co-body" id="co-body">
       <div class="co-tabs">
         <button class="co-tab active" type="button" data-tab="layer">레이어</button>
         <button class="co-tab" type="button" data-tab="gas">가스 <span class="co-tab-badge" id="co-gas-badge">9</span></button>
@@ -79,7 +80,8 @@
         <div class="gt-row on" data-gas="voc"><span class="gt-dot"></span><span class="gt-name">VOC<small>휘발성유기</small></span><button class="gt-tg on" type="button" aria-label="VOC 토글" aria-pressed="true"><span class="gt-thumb"></span></button></div>
       </div>
     </div>
-  </div>
+  </div><!-- /#control-overlay -->
+  </div><!-- /#rd-scenario-overlay (control-overlay 흡수) -->
   <script>
   (function() {
     var ov = document.getElementById('control-overlay');
@@ -95,13 +97,16 @@
         ov.querySelector('.co-pane[data-pane="' + t.dataset.tab + '"]').classList.add('active');
       });
     });
-    var col = document.getElementById('co-collapse');
-    col.addEventListener('click', function() {
-      var body = document.getElementById('co-body');
-      var hidden = body.style.display === 'none';
-      body.style.display = hidden ? '' : 'none';
-      col.textContent = hidden ? '▾' : '▸';
-    });
+    // ⚙ 환경 설정 토글: control-overlay(레이어/가스) 펼침·접힘 (기본 접힘)
+    var envBtn = document.getElementById('rd-env-toggle');
+    var envCaret = document.getElementById('rd-env-caret');
+    if (envBtn) {
+      envBtn.addEventListener('click', function() {
+        var open = ov.classList.toggle('open');
+        envBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+        if (envCaret) envCaret.textContent = open ? '◂' : '▸';
+      });
+    }
     function gasRow(g) { var v = document.getElementById('val-' + g); return v ? v.closest('tr') : null; }
     function apply(g, on) { var tr = gasRow(g); if (tr) tr.style.display = on ? '' : 'none'; }
     function count() {

@@ -13,6 +13,8 @@ from datetime import timedelta
 from threading import Lock
 
 from django.utils import timezone
+from django.core.cache import cache
+from django.conf import settings
 from rest_framework import viewsets, status as http_status
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -28,6 +30,37 @@ from alerts.services import classify_gas, classify_power, evaluate_sensor
 from alerts.services.anomaly_detector import detect_anomaly
 from alerts.services.trend_predictor import predict_trend, verify_predictions
 from alerts.services.classifiers import GAS_THRESHOLDS
+
+
+def _should_persist(throttle_key: str) -> bool:
+    """DB row INSERT 솎기 — device 별 DB_SAVE_INTERVAL_SEC 창마다 1건만 True.
+
+    cache.add 는 Redis SET NX EX(원자적)라 django replica 가 여러 개여도
+    한 창에서 정확히 1번만 True 를 돌려준다. interval=0 이면 항상 저장.
+    캐시 장애 시엔 데이터 유실 방지를 위해 저장(True)으로 폴백.
+    """
+    interval = getattr(settings, 'DB_SAVE_INTERVAL_SEC', 5)
+    if interval <= 0:
+        return True
+    try:
+        return bool(cache.add(f'dbsave:{throttle_key}', 1, interval))
+    except Exception:
+        return True
+
+
+def _ai_due(device_id: str) -> bool:
+    """AI 추론(ARIMA·IsolationForest) 호출 주기 게이트 — device 별
+    AI_INFERENCE_INTERVAL_SEC 창마다 1회만 True. cache.add = Redis SET NX EX(원자적).
+    interval=0 이면 항상 실행. 캐시 장애 시엔 실행(True)으로 폴백.
+    임계 분류·알람과 무관(그쪽은 매 POST 그대로) — 조기경보 AI 빈도만 조절.
+    """
+    interval = getattr(settings, 'AI_INFERENCE_INTERVAL_SEC', 5)
+    if interval <= 0:
+        return True
+    try:
+        return bool(cache.add(f'aiinfer:{device_id}', 1, interval))
+    except Exception:
+        return True
 from alerts.models import Alarm, AIPrediction
 
 logger = logging.getLogger(__name__)
@@ -143,15 +176,20 @@ class SensorDataView(APIView):
                 status=http_status.HTTP_400_BAD_REQUEST,
             )
 
+        prev_status = device.status
         device.status = s
-        device.save(update_fields=['status', 'last_value'])
+        # device row UPDATE 도 솎기: 상태 전이(즉시 반영 필요) 또는
+        # 이번 틱에 SensorData 를 실제 저장한 경우(=5초틱)에만 기록.
+        # → 상태 안 바뀌는 평상시 매초 UPDATE 제거(상태는 항상 즉시 반영).
+        if s != prev_status or sd is not None:
+            device.save(update_fields=['status', 'last_value'])
 
         publish_sensor_update({
             "device_id":   device.device_id,
             "sensor_type": sensor_type,
             "status":      s,
             "values":      payload_values,
-            "timestamp":   sd.timestamp.isoformat(),
+            "timestamp":   (sd.timestamp if sd else timezone.now()).isoformat(),
         })
 
         # ─── 알람 평가 (모든 POST 마다 호출, 즉시 알람 보장) ───
@@ -169,11 +207,13 @@ class SensorDataView(APIView):
             is_ai=is_ai,
             ai_detail=ai_detail,
         )
-        for alarm in alarms:
-            publish_alarm(alarm)
+        # evaluate_sensor 가 생성한 알람을 내부에서 이미 publish 함.
+        # 여기서 또 발행하면 토스트가 2번 뜸(이중). 단일 출처 유지 — 재발행 제거.
+        # (시나리오 sustain_spike_task→evaluate_sensor 직접 호출 경로와 동일 정책)
 
         return Response(
-            {'id': sd.id, 'status': s, 'is_ai': is_ai},
+            {'id': (sd.id if sd else None), 'status': s, 'is_ai': is_ai,
+             'persisted': sd is not None},
             status=http_status.HTTP_201_CREATED,
         )
 
@@ -189,60 +229,67 @@ class SensorDataView(APIView):
         is_ai = False
         ai_detail = ''
 
-        # ─── ARIMA 이상 탐지 (보조) ───
-        # [D 분리] sensor.status 갱신 안 함 (classify_gas 임계 기반만 사용).
-        # ARIMA 의 9가스 OR + 3σ + online learning 조합은 false positive 폭증 구조.
-        # ARIMA 의 anomaly 탐지 결과는 ai_detail 로 기록 (AI 알람 채널 별도 유지).
-        if s == 'normal':
-            anomaly_kinds = []
-            for key, val in gas.items():
-                if val is not None:
-                    if detect_anomaly(device.device_id, f'gas_{key}', val):
-                        anomaly_kinds.append(GAS_LABELS.get(key, key.upper()))
-            if anomaly_kinds:
-                # s = 'caution'   ← 제거: sensor.status 안 잠금
-                is_ai = True
-                ai_detail = 'ARIMA: ' + ', '.join(anomaly_kinds)
+        # 무거운 per-tick 작업(AI 추론 + DB INSERT)을 같은 5초틱으로 묶는다.
+        # classify_gas / publish / 알람 판정 / status 는 매 POST 그대로 → 실시간·알람 무영향.
+        # 가스는 ARIMA 가 status 를 바꾸지 않으므로(아래 주석 참고) 전체를 묶어도 안전.
+        # AI 알람은 어차피 60초 throttle 이라 5초 주기 탐지로도 지연 무의미.
+        do_heavy = _should_persist(device.device_id)
 
-        # ─── IsolationForest 추세 예측 ───
-        for key, val in gas.items():
-            if val is None:
-                continue
-            threshold = GAS_THRESHOLDS_CAUTION.get(key)
-            if not threshold:
-                continue
-            # 미결 예측 검증
-            verify_predictions(device.device_id, key, val, threshold)
-            # 새 예측 (현재 정상 상태일 때만)
+        if do_heavy:
+            # ─── ARIMA 이상 탐지 (보조) ───
+            # [D 분리] sensor.status 갱신 안 함 (classify_gas 임계 기반만 사용).
+            # ARIMA 의 anomaly 결과는 ai_detail 로만 기록 (AI 알람 채널 별도 유지).
             if s == 'normal':
-                pred_info = predict_trend(device.device_id, key, val, threshold)
-                if pred_info:
-                    self._create_ai_prediction(
-                        device=device,
-                        sensor_key=key,
-                        sensor_type='gas',
-                        value=val,
-                        threshold=threshold,
-                        pred_info=pred_info,
-                        label=GAS_LABELS.get(key, key.upper()),
-                    )
+                anomaly_kinds = []
+                for key, val in gas.items():
+                    if val is not None:
+                        if detect_anomaly(device.device_id, f'gas_{key}', val):
+                            anomaly_kinds.append(GAS_LABELS.get(key, key.upper()))
+                if anomaly_kinds:
+                    is_ai = True
+                    ai_detail = 'ARIMA: ' + ', '.join(anomaly_kinds)
 
-        # SensorData 저장 — C′-3a 라벨 컬럼 포함
-        try:
-            sd = SensorData.objects.create(
-                device=device,
-                co=gas['co'],   h2s=gas['h2s'], co2=gas['co2'], o2=gas['o2'],
-                no2=gas['no2'], so2=gas['so2'], o3=gas['o3'],
-                nh3=gas['nh3'], voc=gas['voc'],
-                status=s,
-                scenario_id=labels['scenario_id'],
-                expected_phase=labels['expected_phase'],
-                expected_status=labels['expected_status'],
-            )
-            sensor_data_save_total.labels(device_type='gas', result='success').inc()
-        except Exception:
-            sensor_data_save_total.labels(device_type='gas', result='failure').inc()
-            raise
+            # ─── IsolationForest 추세 예측 ───
+            for key, val in gas.items():
+                if val is None:
+                    continue
+                threshold = GAS_THRESHOLDS_CAUTION.get(key)
+                if not threshold:
+                    continue
+                # 미결 예측 검증
+                verify_predictions(device.device_id, key, val, threshold)
+                # 새 예측 (현재 정상 상태일 때만)
+                if s == 'normal':
+                    pred_info = predict_trend(device.device_id, key, val, threshold)
+                    if pred_info:
+                        self._create_ai_prediction(
+                            device=device,
+                            sensor_key=key,
+                            sensor_type='gas',
+                            value=val,
+                            threshold=threshold,
+                            pred_info=pred_info,
+                            label=GAS_LABELS.get(key, key.upper()),
+                        )
+
+        # SensorData 저장 — C′-3a 라벨 컬럼 포함 (do_heavy = 5초틱마다 1건만)
+        sd = None
+        if do_heavy:
+            try:
+                sd = SensorData.objects.create(
+                    device=device,
+                    co=gas['co'],   h2s=gas['h2s'], co2=gas['co2'], o2=gas['o2'],
+                    no2=gas['no2'], so2=gas['so2'], o3=gas['o3'],
+                    nh3=gas['nh3'], voc=gas['voc'],
+                    status=s,
+                    scenario_id=labels['scenario_id'],
+                    expected_phase=labels['expected_phase'],
+                    expected_status=labels['expected_status'],
+                )
+                sensor_data_save_total.labels(device_type='gas', result='success').inc()
+            except Exception:
+                sensor_data_save_total.labels(device_type='gas', result='failure').inc()
+                raise
         if gas['co'] is not None:
             device.last_value = gas['co']
         return sd, s, gas, is_ai, ai_detail
@@ -257,15 +304,20 @@ class SensorDataView(APIView):
         is_ai = False
         ai_detail = ''
 
-        # ─── ARIMA 이상 탐지 (보조) ───
+        # ─── ARIMA 이상 탐지 (보조) — 매 tick 유지 ───
+        # 전력 ARIMA 는 status(s)를 caution 으로 올리므로, 솎으면 마커가 5초마다
+        # normal↔caution 진동 + 알람 들쭉날쭉. 따라서 status 결정 경로는 매초 그대로 둔다.
         if s == 'normal' and power['watt'] is not None:
             if detect_anomaly(device.device_id, 'power_watt', power['watt']):
                 s = 'caution'
                 is_ai = True
                 ai_detail = '전력'
 
-        # ─── IsolationForest 추세 예측 ───
-        if power['watt'] is not None:
+        # 무거운 작업(IsolationForest 추세예측 + 예측검증 DB조회 + DB INSERT)만 5초틱으로.
+        do_heavy = _should_persist(device.device_id)
+
+        if do_heavy and power['watt'] is not None:
+            # ─── IsolationForest 추세 예측 ───
             # 전력 caution 임계치: 고정값 3000W (classify_power fallback 기준)
             watt_threshold = 3000.0
             verify_predictions(device.device_id, 'watt', power['watt'], watt_threshold)
@@ -284,22 +336,24 @@ class SensorDataView(APIView):
                         label='전력',
                     )
 
-        # SensorData 저장 — C′-3a 라벨 컬럼 포함
-        try:
-            sd = SensorData.objects.create(
-                device=device,
-                current=power['current'],
-                voltage=power['voltage'],
-                watt=power['watt'],
-                status=s,
-                scenario_id=labels['scenario_id'],
-                expected_phase=labels['expected_phase'],
-                expected_status=labels['expected_status'],
-            )
-            sensor_data_save_total.labels(device_type='power', result='success').inc()
-        except Exception:
-            sensor_data_save_total.labels(device_type='power', result='failure').inc()
-            raise
+        # SensorData 저장 — C′-3a 라벨 컬럼 포함 (do_heavy = 5초틱마다 1건만)
+        sd = None
+        if do_heavy:
+            try:
+                sd = SensorData.objects.create(
+                    device=device,
+                    current=power['current'],
+                    voltage=power['voltage'],
+                    watt=power['watt'],
+                    status=s,
+                    scenario_id=labels['scenario_id'],
+                    expected_phase=labels['expected_phase'],
+                    expected_status=labels['expected_status'],
+                )
+                sensor_data_save_total.labels(device_type='power', result='success').inc()
+            except Exception:
+                sensor_data_save_total.labels(device_type='power', result='failure').inc()
+                raise
         if power['watt'] is not None:
             device.last_value = power['watt']
         return sd, s, power, is_ai, ai_detail

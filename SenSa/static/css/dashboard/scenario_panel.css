@@ -130,15 +130,42 @@
     border-left: 2px solid #4a7fff;
 }
 
+/* ⚙ 환경 설정 토글 버튼 — .rd-cleanup-btn 톤 재사용 + 캐럿 정렬 */
+.rd-env-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    text-align: left;
+}
+.rd-env-caret {
+    font-size: 9px;
+    color: inherit;
+    transition: transform 0.15s;
+}
+
 /* ═══════════════════════════════════════════════════════════════
-   control-overlay: 레이어+가스 탭 통합 컨트롤 패널 (시나리오 패널과 동일 톤)
-   탭 구조 → 기능 추가 시 탭만 늘고 패널 폭/개수는 고정.
+   control-overlay: 레이어+가스 탭 통합 컨트롤
+   → '환경 설정' 버튼으로 토글. 기본 접힘, 펼치면 패널 "오른쪽"으로 flyout
+     (아래로 안 밀려 화면 하단 잘림 방지. 길면 내부 스크롤.)
    ═══════════════════════════════════════════════════════════════ */
 #control-overlay {
-    position: absolute; top: 48px; right: 12px; z-index: 1000;
-    background: rgba(20, 23, 32, 0.95); border: 1px solid #2a2d3a;
-    border-radius: 8px; padding: 8px 10px; width: 196px;
-    backdrop-filter: blur(6px); box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+    display: none;                 /* 기본 접힘 — 환경 설정 버튼으로 .open 토글 */
+}
+#control-overlay.open {
+    display: block;
+    position: absolute;            /* #rd-scenario-overlay(absolute) 기준 */
+    top: 0;
+    left: calc(100% + 8px);        /* 패널 오른쪽으로 8px 띄워 펼침 */
+    width: 196px;
+    z-index: 1100;
+    background: rgba(20, 23, 32, 0.97);
+    border: 1px solid #2a2d3a;
+    border-radius: 8px;
+    padding: 8px 10px;
+    backdrop-filter: blur(6px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+    max-height: calc(100vh - 140px);  /* 길면 잘리지 말고 */
+    overflow-y: auto;                  /* 내부 스크롤 */
     font-family: 'Segoe UI', sans-serif;
 }
 #control-overlay .co-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }

@@ -116,7 +116,11 @@ if DB_ENGINE == 'postgres':
             'PASSWORD': os.getenv('POSTGRES_PASSWORD', ''),
             'HOST': os.getenv('POSTGRES_HOST', 'postgres'),
             'PORT': os.getenv('POSTGRES_PORT', '5432'),
-            'CONN_MAX_AGE': int(os.getenv('DB_CONN_MAX_AGE', '0')),
+            # 영속 커넥션 — 요청마다 PG 연결 open/close 하던 부하 제거.
+            # 기본 60초 재사용. 0 으로 두면 매 요청 재연결(옛 동작).
+            'CONN_MAX_AGE': int(os.getenv('DB_CONN_MAX_AGE', '60')),
+            # 재사용 커넥션이 끊겼는지 쿼리 전 점검(끊겼으면 자동 재연결) — Django 4.1+
+            'CONN_HEALTH_CHECKS': os.getenv('DB_CONN_HEALTH_CHECKS', '1') == '1',
         }
     }
 else:
@@ -244,7 +248,16 @@ INTERNAL_API_ALLOWED_PATHS = [
 ]
 
 ALARM_RE_ALARM_INTERVAL_SEC = 60   # 상태 지속 시 재알림 주기
-ALARM_RECOVERY_CONFIRM_TICKS = 3   # 회복 전이에 필요한 연속 관측 횟수 (3 = 약 3초)# ─────────────────────────────────────────────
+ALARM_RECOVERY_CONFIRM_TICKS = 3   # 회복 전이에 필요한 연속 관측 횟수 (3 = 약 3초)
+
+# ─────────────────────────────────────────────
+# DB 저장 솎기 (write 부하 절감)
+# ─────────────────────────────────────────────
+# WebSocket 실시간 push·알람 판정·AI 는 매 POST(1초) 그대로 동작하고,
+# SensorData / WorkerLocation 의 DB row INSERT 만 device 별로 이 주기마다 1건씩 저장.
+# 0 으로 두면 기존처럼 매 POST 저장. (멀티 Pod 일관성: cache.add = Redis SET NX EX)
+DB_SAVE_INTERVAL_SEC = int(os.getenv('DB_SAVE_INTERVAL_SEC', '5'))
+# ─────────────────────────────────────────────
 # Celery / Redis (Phase G)
 # ─────────────────────────────────────────────
 # 이 블록을 mysite/settings.py 의 가장 아래에 추가하세요.
@@ -275,10 +288,17 @@ CACHES = {
 
 # ── Beat 스케줄 ──
 # 30초마다 동적 zone 의 반경 갱신 + 만료 + 승격 검사
+from celery.schedules import crontab   # noqa: E402  (beat 스케줄용)
 CELERY_BEAT_SCHEDULE = {
     'tick-dynamic-zones': {
         'task': 'geofence.tasks.tick_zones',
         'schedule': 30.0,
+    },
+    # 보관 정책(DataRetentionPolicy) 초과 데이터 자동 삭제 — 매일 03:00.
+    # 누적 테이블(SensorData 등)이 무한 증가하지 않도록 총량을 잡아줌.
+    'cleanup-old-data': {
+        'task': 'backoffice.tasks.run_cleanup_data',
+        'schedule': crontab(hour=3, minute=0),
     },
     # ─── 5차 세션 C′-3b-1: Phase L (TTM 사전 경고) 항목 제거 ──────────
     # 'scan-forecast-warnings' 항목은 TTM 폐기에 따라 삭제됨.

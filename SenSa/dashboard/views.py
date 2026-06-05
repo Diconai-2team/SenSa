@@ -224,9 +224,8 @@ class CheckGeofenceView(APIView):
             )
             all_alarms.extend(alarms)
 
-        # 3) WS 방송
-        for alarm in all_alarms:
-            publish_alarm(alarm)
+        # 3) WS 방송: evaluate_sensor / evaluate_worker 가 각자 알람을 내부에서 이미 publish 함.
+        #    여기서 all_alarms 를 재발행하면 이중 → 재발행 제거. all_alarms 는 응답 본문 용도로만 사용.
 
         return Response({
             'alarms': all_alarms,

@@ -165,29 +165,23 @@ def retention_backup_api(request, pk):
         }, status=400)
 
     try:
-        result = backup_util.stream_backup_to_file(target)
-        # 오래된 백업 자동 정리
-        deleted_old = backup_util.cleanup_old_backups(target)
-
-        # 감사 로그
-        _audit_log_backup_action(
-            request, 'data_backup', target,
-            filename=result['filename'], count=result['count'],
+        from backoffice.tasks import run_backup
+        run_backup.delay(
+            target,
+            actor_id=request.user.id if request.user.is_authenticated else None,
+            actor_username=getattr(request.user, 'username', '') or '',
+            ip=request.META.get('REMOTE_ADDR', ''),
+            path=request.path,
         )
-
         return JsonResponse({
             'ok': True,
-            'count': result['count'],
-            'filename': result['filename'],
-            'size_bytes': result['size_bytes'],
-            'size_human': backup_util._human_size(result['size_bytes']),
-            'cleaned_old_backups': deleted_old,
-            'message': f'{result["count"]:,}건을 백업했습니다.',
-        })
+            'async': True,
+            'message': '백업을 백그라운드에서 시작했습니다. 잠시 후 백업 파일 조회에서 확인하세요.',
+        }, status=202)
     except Exception as e:
         return JsonResponse({
             'ok': False,
-            'errors': {'_form': [f'백업 실패: {e}']},
+            'errors': {'_form': [f'백업 시작 실패: {e}']},
         }, status=500)
 
 
@@ -219,50 +213,28 @@ def retention_init_with_backup_api(request, pk):
             'errors': {'_form': [f'초기화 미지원 target: {target}']},
         }, status=400)
 
-    # Step 1: 백업
+    # 무거운 백업+삭제는 Celery 워커로 오프로드 — 웹 요청은 즉시 반환.
+    # (요청 안에서 동기 실행 시 daphne 워커가 오래 묶여 /metrics probe 실패 → Pod 재시작)
     try:
-        backup_result = backup_util.stream_backup_to_file(target)
-        backup_util.cleanup_old_backups(target)
+        from backoffice.tasks import run_init_with_backup
+        run_init_with_backup.delay(
+            target,
+            actor_id=request.user.id if request.user.is_authenticated else None,
+            actor_username=getattr(request.user, 'username', '') or '',
+            ip=request.META.get('REMOTE_ADDR', ''),
+            path=request.path,
+        )
     except Exception as e:
         return JsonResponse({
             'ok': False,
-            'errors': {'_form': [f'백업 실패 (삭제 미진행): {e}']},
+            'errors': {'_form': [f'초기화 시작 실패: {e}']},
         }, status=500)
-
-    _audit_log_backup_action(
-        request, 'data_backup_pre_init', target,
-        filename=backup_result['filename'], count=backup_result['count'],
-    )
-
-    # Step 2: 삭제
-    try:
-        deleted_count = backup_util.delete_all_data(target)
-    except Exception as e:
-        return JsonResponse({
-            'ok': False,
-            'errors': {'_form': [f'백업은 성공했으나 삭제 실패: {e}']},
-            'backup': {
-                'filename': backup_result['filename'],
-                'count': backup_result['count'],
-            },
-        }, status=500)
-
-    _audit_log_backup_action(
-        request, 'data_init', target,
-        filename=backup_result['filename'], count=deleted_count,
-    )
 
     return JsonResponse({
         'ok': True,
-        'backup': {
-            'filename': backup_result['filename'],
-            'count': backup_result['count'],
-            'size_bytes': backup_result['size_bytes'],
-            'size_human': backup_util._human_size(backup_result['size_bytes']),
-        },
-        'deleted_count': deleted_count,
-        'message': f'{deleted_count:,}건을 백업 후 삭제했습니다.',
-    })
+        'async': True,
+        'message': '백업 후 삭제를 백그라운드에서 시작했습니다. 잠시 후 새로고침해 누적 건수를 확인하세요.',
+    }, status=202)
 
 
 @super_admin_required(menu_code='retention')

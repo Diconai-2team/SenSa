@@ -256,8 +256,11 @@ def preview_backup(target, filename, limit=100):
 # 삭제 (모든 데이터)
 # ═══════════════════════════════════════════════════════════
 
-def delete_all_data(target):
+def delete_all_data(target, chunk_size=5000):
     """target 의 모든 데이터 삭제. 백업 후 호출 권장.
+
+    66만+ 행을 한 트랜잭션으로 지우면 대형 락/장시간 점유가 생기므로
+    PK 청크(chunk_size)로 나눠 삭제 — 각 트랜잭션을 작게 유지.
 
     Returns:
         int: 삭제된 레코드 수
@@ -266,8 +269,14 @@ def delete_all_data(target):
     if Model is None:
         raise ValueError(f'Unknown target: {target!r}')
 
-    deleted, _ = Model.objects.all().delete()
-    return deleted
+    total = 0
+    while True:
+        ids = list(Model.objects.values_list('id', flat=True)[:chunk_size])
+        if not ids:
+            break
+        deleted, _ = Model.objects.filter(id__in=ids).delete()
+        total += deleted
+    return total
 
 
 # ═══════════════════════════════════════════════════════════

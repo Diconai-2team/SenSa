@@ -14,6 +14,8 @@ workers/views.py — 작업자 API + 페이지 (Phase 4A)
 from datetime import timedelta
 
 from django.contrib.auth.decorators import login_required
+from django.conf import settings
+from django.core.cache import cache
 from django.db import transaction
 from django.shortcuts import render
 from django.utils import timezone
@@ -77,26 +79,52 @@ class WorkerLocationViewSet(viewsets.ModelViewSet):
 
         return qs[:limit]
 
-    def perform_create(self, serializer):
-        instance = serializer.save()
+    def create(self, request, *args, **kwargs):
+        """위치 수신 — DB INSERT 는 DB_SAVE_INTERVAL_SEC 마다 1건만,
+        heartbeat(last_seen_at) 갱신과 WS 실시간 방송은 매 tick(1초) 유지.
+        """
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        vd = serializer.validated_data
+        worker = vd['worker']
+        now = timezone.now()
 
-        # ─── Phase 4A: heartbeat 갱신 ───
-        # 위치 업데이트가 올 때마다 Worker.last_seen_at 을 함께 갱신해서
-        # '연결 상태' 판정의 단일 출처로 삼는다.
-        Worker.objects.filter(pk=instance.worker_id).update(
-            last_seen_at=instance.timestamp,
+        # ─── DB 저장 5초틱 솎기 (cache.add = Redis SET NX EX, 멀티 Pod 일관) ───
+        interval = getattr(settings, 'DB_SAVE_INTERVAL_SEC', 5)
+        persist = True
+        if interval > 0:
+            try:
+                persist = bool(cache.add(f'dbsave:worker:{worker.worker_id}', 1, interval))
+            except Exception:
+                persist = True   # 캐시 장애 시 유실 방지로 저장
+
+        if persist:
+            instance = serializer.save()                      # WorkerLocation INSERT
+            ts, x, y, mv, rid = (
+                instance.timestamp, instance.x, instance.y,
+                instance.movement_status, instance.id,
+            )
+        else:
+            ts = now
+            x, y, mv, rid = vd.get('x'), vd.get('y'), vd.get('movement_status'), None
+
+        # heartbeat 는 매 tick 갱신 — '연결 상태'(30s) 판정 정확도 유지
+        Worker.objects.filter(pk=worker.pk).update(last_seen_at=ts)
+
+        # WS 실시간 방송은 매 tick — 마커 1초 갱신 유지
+        publish_worker_position({
+            "worker_id":       worker.worker_id,
+            "worker_name":     worker.name,
+            "x":               x,
+            "y":               y,
+            "movement_status": mv,
+            "timestamp":       ts.isoformat(),
+        })
+
+        return Response(
+            {'id': rid, 'persisted': persist},
+            status=http_status.HTTP_201_CREATED,
         )
-
-        # WS 방송 (기존)
-        payload = {
-            "worker_id": instance.worker.worker_id,
-            "worker_name": instance.worker.name,
-            "x": instance.x,
-            "y": instance.y,
-            "movement_status": instance.movement_status,
-            "timestamp": instance.timestamp.isoformat(),
-        }
-        publish_worker_position(payload)
 
 
 # ═══════════════════════════════════════════════════════════

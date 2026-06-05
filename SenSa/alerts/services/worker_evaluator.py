@@ -31,6 +31,7 @@ import logging
 import time
 
 from ..models import Alarm
+from realtime.publishers import publish_alarm
 from ..state_store import (
     get_worker_snapshot, commit_state, set_pending, clear_pending,
 )
@@ -319,7 +320,7 @@ def evaluate_worker(worker_id: str, worker_name: str,
             message=message,
         )
 
-        created.append({
+        alarm_payload = {
             'alarm_id': alarm.id,
             'alarm_type': alarm_type,
             'alarm_level': alarm_level,
@@ -331,7 +332,14 @@ def evaluate_worker(worker_id: str, worker_name: str,
             'reason': reason,
             'state_from': official_state,
             'state_to': target_state,
-        })
+        }
+        created.append(alarm_payload)
+
+        # 알람 단일 출처 발행 — evaluate_sensor 와 동일 정책. 호출자(dashboard view)는 재발행 안 함.
+        try:
+            publish_alarm(alarm_payload)
+        except Exception as e:
+            logger.warning('[evaluate_worker] publish_alarm 실패: %s', e)
 
         logger.info(
             "[ALARM-CREATED] %s %s level=%s reason=%s",
