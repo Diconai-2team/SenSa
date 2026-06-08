@@ -80,8 +80,8 @@ _NO_ESCALATION_TYPES = {'ai_drift_alert', 'ai_predictive_warning', 'ai_predictiv
 # ═══════════════════════════════════════════════════════════
 # 알람 쿨다운 (중복 억제)
 # ═══════════════════════════════════════════════════════════
-_GAS_COOLDOWN_SEC  = 30    # 가스 AI 알람 쿨다운 [운영 전환 시] → 120
-_BASE_COOLDOWN_SEC = 10    # 전력·에스컬레이션 쿨다운 [운영 전환 시] → 60
+_GAS_COOLDOWN_SEC  = 120   # 가스 AI 알람 쿨다운 (과발화 방지: 채널별 30→120)
+_BASE_COOLDOWN_SEC = 60    # 전력·에스컬레이션 쿨다운
 
 # 드리프트 device 레벨 쿨다운:
 #   CUSUM이 9개 메트릭을 각각 판정하므로 같은 틱에 9건 동시 발화.
@@ -689,7 +689,15 @@ def _maybe_create_alarm(
                 verify_threshold = (danger_th if ai_status == 'PREDICTIVE_ALERT' and danger_th else caution_th)
 
             if caution_th:
-                steps = arima.get("steps", 10)
+                # first_exceed_tick: ARIMA 예측 배열에서 처음으로 임계치를 초과하는 틱.
+                # None이면 FORECAST_STEPS(10틱) fallback — 초과 시점이 명확하지 않은 경우.
+                first_exceed = arima.get("first_exceed_tick")
+                predicted_ticks = first_exceed if first_exceed is not None else arima.get("steps", 10)
+
+                # expires_at: predicted_ticks 기반으로 검증 창 계산.
+                # 최소 45초 보장 — 틱이 매우 짧을 때 expires_at이 너무 짧아 false failure 방지.
+                expires_sec = max(predicted_ticks * 9, 45)
+
                 # [수정] slope·if_score 실제 값 채우기 (구 trend_predictor 0.0 하드코딩 제거)
                 if_detail = result["details"].get("isolation_forest", {})
 
@@ -719,13 +727,9 @@ def _maybe_create_alarm(
                         threshold=float(verify_threshold),
                         slope=if_detail.get("slope", 0.0),       # IF slope feature
                         if_score=if_detail.get("score", 0.0),    # IF anomaly score
-                        predicted_ticks=steps,
+                        predicted_ticks=predicted_ticks,
                         predicted_value=float(predicted_max),
-                        # 예측 지평선의 9배 시간을 검증 창으로 줌 (시뮬 1틱=1s 기준 90s)
-                        # [조정 근거] 실측 데이터 기준 ai_predictive → threshold 실현까지 p50=83s.
-                        # steps*3(30s)은 너무 짧아 맞는 예측도 failure로 기록됨.
-                        # steps*9(90s) = p50 커버 + 우연 적중률(43%) 이하로 신뢰성 유지.
-                        expires_at=now + timedelta(seconds=steps * 9),
+                        expires_at=now + timedelta(seconds=expires_sec),
                         alarm=alarm,
                     )
 

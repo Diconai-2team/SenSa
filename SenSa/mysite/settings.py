@@ -246,6 +246,20 @@ CELERY_TASK_TRACK_STARTED = True
 CELERY_TASK_TIME_LIMIT = 5 * 60       # 5분 (TTM 추론 여유)
 CELERY_TASK_SOFT_TIME_LIMIT = 4 * 60
 
+# ── 큐 라우팅 (D: 시나리오 전용 큐 분리) ──────────────────────────────────
+# AI 분석(run_ai_pipeline)은 기본 큐(celery) — AI 워커가 처리.
+# 시나리오 spike·zone tick·외부알림은 'scenario' 큐 — 전용 워커가 처리.
+#   이유: AI backlog 551건이 spike·tick·Discord를 막는 문제 해소.
+#         AI 신뢰성(매 틱 분석) 유지하면서 시나리오/알람을 독립 실행.
+CELERY_TASK_ROUTES = {
+    # ── 시나리오 spike 주입 ──
+    'geofence.tasks_scenario.sustain_spike_task':       {'queue': 'scenario'},
+    # ── zone tick (반경 성장·만료·승격) ──
+    'geofence.tasks.tick_zones':                        {'queue': 'scenario'},
+    # ── 외부알림 (critical Discord/Slack — 안전 알람은 빨라야 함) ──
+    'alerts.tasks.send_external_notification':          {'queue': 'scenario'},
+}
+
 # ─────────────────────────────────────────────
 # Django 캐시 (Phase 3 — Redis DB 2)
 # ─────────────────────────────────────────────
@@ -268,6 +282,7 @@ CELERY_BEAT_SCHEDULE = {
     'tick-dynamic-zones': {
         'task': 'geofence.tasks.tick_zones',
         'schedule': 30.0,
+        'options': {'queue': 'scenario'},  # 시나리오 워커 전용 큐
     },
     # ─── 5차 세션 C′-3b-1: Phase L (TTM 사전 경고) 항목 제거 ──────────
     # 'scan-forecast-warnings' 항목은 TTM 폐기에 따라 삭제됨.

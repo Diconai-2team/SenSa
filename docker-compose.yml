@@ -89,6 +89,7 @@ services:
     env_file:
       - ./.env
     environment:
+      - DB_ENGINE=postgres
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - DB_HOST=postgres
@@ -102,7 +103,35 @@ services:
       - "9809:9809"
     volumes:
       - ./SenSa/ml_engine/saved_models:/app/ml_engine/saved_models
-    command: ["sh", "-c", "rm -rf \"$$PROMETHEUS_MULTIPROC_DIR\" && mkdir -p \"$$PROMETHEUS_MULTIPROC_DIR\" && exec celery -A mysite worker -B --loglevel=info --concurrency=1"]
+    command: ["sh", "-c", "rm -rf \"$$PROMETHEUS_MULTIPROC_DIR\" && mkdir -p \"$$PROMETHEUS_MULTIPROC_DIR\" && exec celery -A mysite worker -B --loglevel=info --concurrency=1 -Q celery"]
+
+  celery_scenario:
+    build:
+      context: ./SenSa
+    image: sensa-app:latest
+    container_name: sensa_celery_scenario
+    restart: unless-stopped
+    depends_on:
+      django:
+        condition: service_healthy
+    env_file:
+      - ./.env
+    environment:
+      - DB_ENGINE=postgres
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - DB_HOST=postgres
+      - DB_NAME=sensa
+      - DB_USER=sensa
+      - DB_PASSWORD=sensa
+      - DB_PORT=5432
+      - CELERY_METRICS_PORT=9810
+      - PROMETHEUS_MULTIPROC_DIR=/tmp/sensa_celery_scenario_prom
+    ports:
+      - "9810:9810"
+    volumes:
+      - ./SenSa/ml_engine/saved_models:/app/ml_engine/saved_models
+    command: ["sh", "-c", "rm -rf \"$$PROMETHEUS_MULTIPROC_DIR\" && mkdir -p \"$$PROMETHEUS_MULTIPROC_DIR\" && exec celery -A mysite worker --loglevel=info --concurrency=2 -Q scenario"]
 
   generator:
     build:

@@ -319,6 +319,30 @@ def forecast(
         if exceeds:
             status = "PREDICTIVE_WARNING"
 
+    # 처음으로 임계치를 초과하는 틱 계산 → predicted_ticks 동적 산출용.
+    # lower_is_worse(O2): 처음으로 threshold 미만이 되는 틱.
+    # 일반 가스: 처음으로 threshold 이상이 되는 틱.
+    # 초과 없으면 None → views.py 에서 FORECAST_STEPS fallback.
+    first_exceed_tick: int | None = None
+    if status == "PREDICTIVE_ALERT" and danger_threshold is not None:
+        if lower_is_worse:
+            first_exceed_tick = next(
+                (i + 1 for i, p in enumerate(preds) if p < danger_threshold), None
+            )
+        else:
+            first_exceed_tick = next(
+                (i + 1 for i, p in enumerate(preds) if p >= danger_threshold), None
+            )
+    elif status == "PREDICTIVE_WARNING" and caution_threshold is not None:
+        if lower_is_worse:
+            first_exceed_tick = next(
+                (i + 1 for i, p in enumerate(preds) if p < caution_threshold), None
+            )
+        else:
+            first_exceed_tick = next(
+                (i + 1 for i, p in enumerate(preds) if p >= caution_threshold), None
+            )
+
     # stale key 정리 — CLEANUP_INTERVAL 마다 실행 (락 밖, 영향 없음)
     _arima_total_calls += 1
     if _arima_total_calls % _ARIMA_CLEANUP_INTERVAL == 0:
@@ -329,6 +353,7 @@ def forecast(
         "predicted_max": round(representative, 4),
         "predicted_values": [round(float(p), 4) for p in preds],
         "steps": FORECAST_STEPS,
+        "first_exceed_tick": first_exceed_tick,
         "model_ready": True,
     }
 

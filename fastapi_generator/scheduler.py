@@ -47,7 +47,7 @@ FastAPI 기동 시 lifespan 에서 백그라운드 태스크로 돌며 Django RE
 import asyncio
 import httpx
 
-from config import TICK_INTERVAL, DEFAULT_SCENARIO
+from config import TICK_INTERVAL, DEFAULT_SCENARIO, ARIMA_CYCLE_ENABLED
 from django_loader import load_devices, load_workers, load_thresholds
 from generators import (
     generate_gas, generate_power, move_worker,
@@ -102,6 +102,8 @@ class _AutoArimaCycle:
 
     def tick(self, tick: int, scenario_state) -> None:
         """매 틱 호출 — 필요한 시점에 toggle 을 자동 실행."""
+        if not ARIMA_CYCLE_ENABLED:
+            return
         if scenario_state is None:
             return
 
