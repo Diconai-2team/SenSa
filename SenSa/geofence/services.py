@@ -5,6 +5,7 @@ geofence/services.py
 점(x, y)에서 오른쪽으로 무한히 뻗는 광선이
 polygon의 변(edge)과 홀수 번 교차하면 내부, 짝수 번이면 외부.
 """
+
 # 이 파일의 핵심: 점-다각형 포함 판정 — 컴퓨터 그래픽스/GIS의 고전 알고리즘
 # 시스템 전체에서 가장 자주 호출되는 함수 중 하나 (작업자/센서마다 매 평가에 호출됨)
 
@@ -16,7 +17,7 @@ def point_in_polygon(x: float, y: float, polygon: list) -> bool:
     """
     # Ray Casting (광선 캐스팅) 알고리즘 구현 — Jordan Curve Theorem 기반
     # 시간복잡도 O(n), 공간복잡도 O(1) — 정점 개수에 선형 비례
-    
+
     n = len(polygon)
     if n < 3:
         return False
@@ -37,8 +38,9 @@ def point_in_polygon(x: float, y: float, polygon: list) -> bool:
         xj, yj = polygon[j]
         # 이전 정점 좌표
 
-        if ((yi > y) != (yj > y)) and \
-           (x < (xj - xi) * (y - yi) / (yj - yi) + xi):
+        if ((yi > y) != (yj > y)) and (
+            x < (xj - xi) * (y - yi) / ((yj - yi) or 1e-9) + xi
+        ):
             # 두 조건이 모두 참일 때만 inside 토글
             # 조건 1 (yi > y) != (yj > y):
             #   변의 두 끝점이 점의 y 기준선을 사이에 두고 있는지 — 광선이 변을 가로지를 가능성 검사
