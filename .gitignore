@@ -107,3 +107,13 @@ _backups/
 # Celery beat 의 schedule 캐시 — 매 실행 시 자동 갱신, 머신별 상이
 celerybeat-schedule
 celerybeat-schedule.*
+
+# ─────────────────────────────────────────
+# K8s 시크릿 (평문 PW·SECRET_KEY·DISCORD_WEBHOOK — 절대 푸쉬 금지)
+# placeholder 만 레포에 두고, 실제 값은 각자 로컬에서 채워 사용
+# ─────────────────────────────────────────
+manifests/02_config_secret.yaml
+manifests/*secret*.yaml
+
+# Jupyter 자동저장 (ai_lab)
+.ipynb_checkpoints/

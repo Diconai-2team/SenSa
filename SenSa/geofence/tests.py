@@ -36,7 +36,7 @@ from geofence.zone_lifecycle import (
     TIER_TTL_SECONDS,
     INITIAL_ELAPSED_SEC,
 )
-from geofence.anomaly_detector import get_recent_residual, has_anomaly
+from geofence.zone_anomaly import get_recent_residual, has_anomaly
 
 
 # ────────────────────────────────────────

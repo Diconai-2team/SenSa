@@ -1,11 +1,14 @@
 """
-geofence/anomaly_detector.py — 센서 이상 신호 판정.
+geofence/zone_anomaly.py — (구 anomaly_detector.py) zone 승격용 센서 이상 신호 판정.
 
 [v4 — TTM 완전 제거 (5차 세션 C′-3b-1)]
 이전 v3 에서 TTM zero-shot 추론을 1차 경로로 사용했으나,
 Isolation Forest 기반 신규 분석기 (geofence/if_analyzer.py, C′-3b-2) 도입에 따라 폐기.
 TTM 입력 부족 시 fallback 으로만 동작하던 v2 단순 평균 차이 로직이
 이제 단일 경로로 동작.
+
+[리네임] alerts/services/anomaly_detector.py(ARIMA detect_anomaly)와 이름이 겹쳐 혼동되어
+zone_anomaly.py 로 개명. 심볼·동작 불변(get_recent_residual / has_anomaly).
 
 [인터페이스 무수정]
 get_recent_residual(device, gas_type) → float
