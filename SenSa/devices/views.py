@@ -211,6 +211,14 @@ class SensorDataView(APIView):
         # 여기서 또 발행하면 토스트가 2번 뜸(이중). 단일 출처 유지 — 재발행 제거.
         # (시나리오 sustain_spike_task→evaluate_sensor 직접 호출 경로와 동일 정책)
 
+        # ─── [P-AZ] 가스 danger '전이' → 동적 위험구역 자동 발동 ───
+        # GeoFence 모델의 trigger_source='threshold' 배선. 전이 시에만 발동하고
+        # (지속 danger 의 확산·승격·만료는 기존 30초 tick 담당), 내부에서 모든
+        # 예외를 흡수하므로 geofence 장애가 수집 경로를 깨지 않는다(장애 격리).
+        if sensor_type == 'gas':
+            from geofence.auto_trigger import maybe_trigger_zone
+            maybe_trigger_zone(device, payload_values, s, prev_status)
+
         return Response(
             {'id': (sd.id if sd else None), 'status': s, 'is_ai': is_ai,
              'persisted': sd is not None},

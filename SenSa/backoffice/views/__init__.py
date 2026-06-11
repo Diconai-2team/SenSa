@@ -180,6 +180,7 @@ from .audit import (
     audit_log_list,
     device_history_api,
 )
+from .logs import unified_log_list
 
 
 __all__ = [
@@ -233,4 +234,5 @@ __all__ = [
     'notice_dispatch_api', 'notice_bulk_delete_api', 'notice_bulk_toggle_api',
     # audit
     'audit_log_list', 'device_history_api',
+    'unified_log_list',
 ]

@@ -23,6 +23,7 @@
       </a>
       <span class="bo-system-name">산재 예방 통합 관제 시스템</span>
       <a href="/dashboard/" class="bo-realtime-link">실시간 관제 홈</a>
+      <a href="http://grafana.localhost/dashboards/f/ffo2kz23tep6od/sensa" class="bo-realtime-link" target="_blank" rel="noopener">모니터링 관제 홈</a>
     </div>
 
     <div class="bo-header-right">
@@ -117,7 +118,7 @@
           </a>
         </li>
         {% endif %}
-        {% if 'operations' in visible_menus %}<li class="bo-snb-item bo-snb-group {% if active_menu == 'retention' or active_menu == 'audit' %}active{% endif %}">
+        {% if 'operations' in visible_menus %}<li class="bo-snb-item bo-snb-group {% if active_menu == 'retention' or active_menu == 'audit' or active_menu == 'logs' %}active{% endif %}">
           <a href="{% url 'backoffice:retention-list' %}">
             <span class="bo-snb-icon">📊</span>
             <span class="bo-snb-label">운영 데이터 관리</span>
@@ -133,6 +134,12 @@
           <a href="{% url 'backoffice:audit-log-list' %}">
             <span class="bo-snb-icon"></span>
             <span class="bo-snb-label">└ 감사 로그</span>
+          </a>
+        </li>
+        <li class="bo-snb-subitem {% if active_menu == 'logs' %}active{% endif %}">
+          <a href="{% url 'backoffice:unified-log-list' %}">
+            <span class="bo-snb-icon"></span>
+            <span class="bo-snb-label">└ 통합 로그</span>
           </a>
         </li>{% endif %}
         {% if 'notices' in visible_menus %}<li class="bo-snb-item {% if active_menu == 'notices' %}active{% endif %}">
