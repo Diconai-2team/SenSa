@@ -54,9 +54,16 @@ spec:
             - secretRef:    { name: sensa-secret }
       containers:
         - name: django
+          # image 주의: ':latest'는 최초 부트스트랩용. 실제 운영 이미지는 redeploy.sh가
+          #   고유 태그(vHHMMSS)로 'kubectl set image' 하여 반영한다(:latest 캐시 함정 회피).
+          #   ⚠ 운영 중 이 파일을 apply하면 이미지가 :latest로 롤백됨 — apply 후 ./redeploy.sh 필수.
           image: localhost:5000/sensa-app:latest
           imagePullPolicy: IfNotPresent
-          # runserver → daphne ASGI 전환 (handoff §5 line 228)
+          # 실행 방식: daphne ASGI 단독 구동
+          #  - 과거 daphne 화면 깨짐의 원인은 collectstatic 부재(STATIC_ROOT 비어 있음)였고,
+          #    Dockerfile 빌드 단계의 collectstatic 으로 근본 해소(P-DAPHNE).
+          #  - static/media 서빙: DEBUG=True 환경에서 urls.py static 헬퍼가
+          #    STATIC_ROOT·MEDIA_ROOT 를 서빙. 운영 전환 시 WhiteNoise/Nginx 가 정석.
           command: ['daphne', '-b', '0.0.0.0', '-p', '8000', 'mysite.asgi:application']
           ports:
             - containerPort: 8000
@@ -64,20 +71,31 @@ spec:
           envFrom:
             - configMapRef: { name: sensa-config }
             - secretRef:    { name: sensa-secret }
+          # probe: httpGet /metrics → tcpSocket 8000 (운영 중 변경분을 매니페스트에 동기화)
           readinessProbe:
-            httpGet:
-              path: /metrics
+            tcpSocket:
               port: 8000
             initialDelaySeconds: 10
-            periodSeconds: 5
+            periodSeconds: 20
             timeoutSeconds: 3
+            failureThreshold: 3
+            successThreshold: 1
           livenessProbe:
-            httpGet:
-              path: /metrics
+            tcpSocket:
               port: 8000
             initialDelaySeconds: 30
-            periodSeconds: 20
+            periodSeconds: 30
             timeoutSeconds: 5
+            failureThreshold: 6
+            successThreshold: 1
           resources:
             requests: { memory: "256Mi", cpu: "500m" }   # HPA 시연: 평상 부하 흡수 (200m→500m, 14차)
             limits:   { memory: "1Gi",   cpu: "1000m" }
+          # 업로드(media) 공유 볼륨 — Pod 간 파일 불일치·재시작 유실 해결 (05b_media_pvc.yaml)
+          volumeMounts:
+            - name: media
+              mountPath: /app/media
+      volumes:
+        - name: media
+          persistentVolumeClaim:
+            claimName: media-pvc
