@@ -8,7 +8,7 @@
 
 ![SenSa 실시간 관제 데모](assets/demo.gif)
 
-**▶ 전체 시연 영상: [YouTube/Drive 링크 넣기](영상_링크)** · **📄 [기술문서](docs/SenSa_기술문서_최종_v3.docx)** · **🧪 [검증보고서](docs/SenSa_검증보고서_검증3_시나리오동작.docx)**
+**▶ 전체 시연 영상: [YouTube/Drive 링크 넣기](영상_링크)** · **📄 [기술문서](docs/2팀_기술문서_디코나이.pdf)** · **🧪 [검증보고서](docs/SenSa_검증보고서_검증3_시나리오동작.docx)**
 
 ![Python](https://img.shields.io/badge/Python-3.11-3776AB?logo=python&logoColor=white)
 ![Django](https://img.shields.io/badge/Django-ASGI%2FDaphne-092E20?logo=django&logoColor=white)
