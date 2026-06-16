@@ -124,6 +124,15 @@ class SensorDataView(APIView):
         except Device.DoesNotExist:
             return Response({'error': '센서 없음'}, status=http_status.HTTP_404_NOT_FOUND)
 
+        # [시나리오 충돌 방지] 이 센서가 현재 sustain_spike 주입 중이면 생성기 baseline POST 를 버린다.
+        # 생성기 baseline(저농도) + 시나리오 spike(고농도)가 같은 센서에 번갈아 쓰여 생기는
+        # V자 진동을 차단. spike task 는 SensorData 를 직접 생성하므로 이 뷰를 안 거침 → 영향 없음.
+        if cache.get(f'scenario_spike:{device_id}'):
+            return Response(
+                {'skipped': 'under_scenario_spike', 'status': device.status},
+                status=http_status.HTTP_200_OK,
+            )
+
         sensor_type = request.data.get('sensor_type') or device.sensor_type
 
         def _get_float(key):

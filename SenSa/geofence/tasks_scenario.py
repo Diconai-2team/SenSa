@@ -15,6 +15,7 @@ geofence/tasks_scenario.py — Phase Demo v3.1 spike 지속 주입.
 import random
 import logging
 from celery import shared_task
+from django.core.cache import cache
 
 
 logger = logging.getLogger(__name__)
@@ -92,6 +93,11 @@ def sustain_spike_task(
         )
         return
 
+    # [충돌 방지] 이 센서는 지금 시나리오 spike 가 점유 중 → 생성기 baseline POST 를
+    # 버리게 하는 플래그(devices.views.SensorDataView 가 읽음). interval 보다 넉넉한
+    # TTL 로 step 사이에 끊기지 않게, 시나리오 종료 후엔 자동 만료(해제 실패해도 self-healing).
+    cache.set(f'scenario_spike:{sensor.device_id}', 1, timeout=max(5, int(interval_sec * 4)))
+
     # ── 곡선 계산 (5단계) ──
     elapsed_in_spike = step * interval_sec
     base_v = base_value if base_value is not None else spike_value
@@ -114,6 +120,7 @@ def sustain_spike_task(
             '[sustain_spike] zone=%s natural-end at step=%s (elapsed=%.1fs)',
             zone_id, step, elapsed_in_spike,
         )
+        cache.delete(f'scenario_spike:{sensor.device_id}')
         return
 
     noise_val = random.uniform(-noise, noise)
