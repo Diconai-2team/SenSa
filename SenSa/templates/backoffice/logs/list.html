@@ -1,0 +1,113 @@
+{% extends "backoffice/base.html" %}
+{% load static %}
+{% block title %}통합 로그 — 백오피스{% endblock %}
+
+{% block content %}
+<div class="bo-breadcrumb">
+    <span>운영 데이터 관리</span>
+    <span class="bo-breadcrumb-sep">/</span>
+    <span>통합 로그</span>
+</div>
+<h1 class="bo-page-title">통합 로그</h1>
+<p class="bo-page-desc">관리·인증 활동, 시스템 알람, 위험구역 이벤트를 한 화면에서 시간순으로 추적합니다.</p>
+
+<form method="get" class="bo-card" style="display:grid;grid-template-columns:1fr 180px 140px 140px auto;gap:12px 16px;align-items:end;">
+    <div class="bo-field" style="margin:0;">
+        <label>키워드</label>
+        <input type="text" name="keyword" value="{{ q.keyword }}" placeholder="주체/대상/메시지/구역">
+    </div>
+    <div class="bo-field" style="margin:0;">
+        <label>구분</label>
+        <select name="cat">
+            <option value="">전체</option>
+            {% for code, label in categories %}
+            <option value="{{ code }}" {% if q.cat == code %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div class="bo-field" style="margin:0;">
+        <label>시작일</label>
+        <input type="date" name="from" value="{{ q.from }}">
+    </div>
+    <div class="bo-field" style="margin:0;">
+        <label>종료일</label>
+        <input type="date" name="to" value="{{ q.to }}">
+    </div>
+    <div style="display:flex;gap:8px;">
+        <a href="{% url 'backoffice:unified-log-list' %}" class="bo-btn">초기화</a>
+        <button type="submit" class="bo-btn bo-btn-dark">검색</button>
+    </div>
+</form>
+
+<div class="bo-card bo-mt-16">
+    <div class="bo-table-toolbar">
+        <div class="bo-table-toolbar-left">
+            <span>전체 로그 <strong>{{ total }}건</strong></span>
+        </div>
+    </div>
+
+    <table class="bo-table">
+        <colgroup>
+            <col style="width:170px;"><col style="width:130px;"><col style="width:160px;"><col style="width:140px;"><col><col style="width:90px;">
+        </colgroup>
+        <thead>
+            <tr>
+                <th>발생일시</th>
+                <th>구분</th>
+                <th>액션/이벤트</th>
+                <th>주체</th>
+                <th>대상/내용</th>
+                <th>등급</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for r in rows %}
+            <tr>
+                <td>{{ r.when|date:"Y-m-d H:i:s" }}</td>
+                <td>
+                    {% if r.cat == 'activity' %}
+                        <span class="bo-badge bo-badge-status-disabled">{{ r.cat_label }}</span>
+                    {% elif r.cat == 'alarm' %}
+                        <span class="bo-badge" style="background:#fff7ed;color:#c2410c;">{{ r.cat_label }}</span>
+                    {% else %}
+                        <span class="bo-badge" style="background:#eef2ff;color:#4338ca;">{{ r.cat_label }}</span>
+                    {% endif %}
+                </td>
+                <td>
+                    {{ r.action }}
+                    {% if r.sub %}<div style="font-size:11px;color:var(--bo-text-muted);"><code>{{ r.sub }}</code></div>{% endif %}
+                </td>
+                <td>{{ r.actor|default:"-" }}</td>
+                <td style="max-width:320px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="{{ r.target }}">{{ r.target|default:"-" }}</td>
+                <td>
+                    {% if r.level == 'success' %}
+                        <span class="bo-badge bo-badge-status-active">정상</span>
+                    {% elif r.level == 'caution' %}
+                        <span class="bo-badge bo-badge-status-locked">주의</span>
+                    {% elif r.level == 'danger' %}
+                        <span class="bo-badge" style="background:#fee2e2;color:#b91c1c;">위험</span>
+                    {% elif r.level == 'critical' %}
+                        <span class="bo-badge" style="background:#fecaca;color:#991b1b;">긴급</span>
+                    {% else %}
+                        <span class="bo-badge bo-badge-status-disabled">정보</span>
+                    {% endif %}
+                </td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="6" class="bo-table-empty">조건에 맞는 로그가 없습니다.</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <div class="bo-pagination">
+        <div class="bo-pagination-info">{{ page_start }} - {{ page_end }} / {{ total }}</div>
+        <div class="bo-pagination-pages">
+            {% if page > 1 %}<a href="?{% for k,v in q.items %}{{ k }}={{ v|urlencode }}&{% endfor %}page={{ page|add:'-1' }}">‹</a>{% else %}<span class="is-disabled">‹</span>{% endif %}
+            {% for p in page_range %}
+                {% if p == page %}<span class="is-current">{{ p }}</span>{% else %}<a href="?{% for k,v in q.items %}{{ k }}={{ v|urlencode }}&{% endfor %}page={{ p }}">{{ p }}</a>{% endif %}
+            {% endfor %}
+            {% if page < last_page %}<a href="?{% for k,v in q.items %}{{ k }}={{ v|urlencode }}&{% endfor %}page={{ page|add:'1' }}">›</a>{% else %}<span class="is-disabled">›</span>{% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -27,8 +27,13 @@ RUN pip install -r requirements.docker.txt
 # 앱 코드 (.dockerignore 로 .venv/db/bak/zip 제외)
 COPY . /app
 
+# [P-DAPHNE] 정적 파일 수집 — daphne 단독 구동의 전제.
+#   urls.py 의 static 헬퍼가 STATIC_ROOT(staticfiles/)를 서빙하므로,
+#   빌드 시 collectstatic 으로 채워 둔다 (과거 daphne 화면 깨짐의 근본 원인 = 이 단계 부재).
+RUN python manage.py collectstatic --noinput
+
 EXPOSE 8000 9809
 
-# 기본 명령은 Django ASGI 개발 서버(channels 라우팅 포함).
-# Celery 서비스는 compose 의 command 로 override.
-CMD ["python", "manage.py", "runserver", "0.0.0.0:8000", "--noreload"]
+# 기본 명령: daphne ASGI 단독 구동 (collectstatic 으로 정적 파일 문제 해소됨).
+# Celery 서비스는 compose/K8s 의 command 로 override.
+CMD ["daphne", "-b", "0.0.0.0", "-p", "8000", "mysite.asgi:application"]

@@ -1,0 +1,22 @@
+# 05b_media_pvc.yaml — Django 업로드(media) 공유 볼륨
+# ※ 클러스터에 이미 적용·운영 중인 PVC(media-pvc, Bound)를 매니페스트로 동기화한 파일.
+#    (클러스터에는 적용돼 있었으나 manifests 디렉터리에 누락돼 있던 drift 해소)
+#
+# [문제] 볼륨 없이는 업로드 파일(MapImage → /app/media/maps/)이 각 Pod의
+#        휘발성 디스크에 저장됨 → Pod마다 보이는 파일이 다르고, 재시작 시 유실.
+# [해결] 이 PVC를 모든 django Pod의 /app/media 에 공동 마운트 (05_django.yaml).
+#
+# [accessMode 근거] RWO는 "노드 단위" 제약 → kind 단일 노드에선 다중 Pod 동시
+#   마운트 가능. 다중 노드 확장 시 RWX(NFS 등)·S3 전환 필요 — 인지된 한계.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: media-pvc
+  namespace: sensa
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+  storageClassName: standard

@@ -171,6 +171,7 @@ urlpatterns = [
     # v6 — 감사 로그 + 장비 변경 이력
     # ═══════════════════════════════════════════════════════
     path('audit-logs/', views.audit_log_list, name='audit-log-list'),
+    path('logs/', views.unified_log_list, name='unified-log-list'),
     path('api/devices/<int:pk>/history/', views.device_history_api, name='api-device-history'),
 
     # ═══════════════════════════════════════════════════════
